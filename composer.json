@@ -1,0 +1,30 @@
+{
+    "name": "nwidart/corsec",
+    "description": "",
+    "authors": [
+        {
+            "name": "Nicolas Widart",
+            "email": "n.widart@gmail.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {
+
+            }
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Corsec\\": "app/",
+            "Modules\\Corsec\\Database\\Factories\\": "database/factories/",
+            "Modules\\Corsec\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Corsec\\Tests\\": "tests/"
+        }
+    }
+}

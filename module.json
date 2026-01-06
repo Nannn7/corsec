@@ -1,0 +1,11 @@
+{
+    "name": "Corsec",
+    "alias": "corsec",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Corsec\\Providers\\CorsecServiceProvider"
+    ],
+    "files": []
+}
