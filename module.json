@@ -7,5 +7,21 @@
     "providers": [
         "Modules\\Corsec\\Providers\\CorsecServiceProvider"
     ],
-    "files": []
+    "files": [],
+    "menu": {
+        "main": [
+            {
+                "title": "Letter",
+                "path": "letter",
+                "icon": "ki-filled ki-document text-lg text-primary",
+                "classes": "",
+                "attributes": [],
+                "permission": "",
+                "roles": [
+                    "administrator",
+                    "maker"
+                ]
+            }
+        ]
+    }
 }
