@@ -4,15 +4,31 @@ namespace Modules\Corsec\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
-class CorsecController extends Controller
+class LetterController extends Controller
 {
+    protected $user;
+
+    public function __construct()
+    {
+        $this->middleware('auth');
+        $this->middleware(function ($request, $next) {
+            $this->user = Auth::user();
+            return $next($request);
+        });
+    }
     /**
      * Display a listing of the resource.
      */
     public function index()
     {
-        return view('corsec::index');
+        $user = Auth::user();
+        if (!$user || !$user->can('corsec.read')) {
+            abort(403, 'Sorry! You are not allowed to view services.');
+        }
+
+        return view('corsec::letter.index');
     }
 
     /**

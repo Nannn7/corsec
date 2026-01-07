@@ -1,8 +1,10 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Modules\Corsec\Http\Controllers\CorsecController;
+use Modules\Corsec\Http\Controllers\DashboardController;
+use Modules\Corsec\Http\Controllers\LetterController;
 
-Route::middleware(['auth', 'verified'])->group(function () {
-    Route::resource('corsecs', CorsecController::class)->names('corsec');
+Route::middleware(['auth'])->group(function () {
+    Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+    Route::resource('letter', LetterController::class);
 });
