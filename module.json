@@ -20,6 +20,30 @@
                 "roles": [
                     "administrator",
                     "maker"
+                ],
+                "sub": [
+                    {
+                        "title": "Incoming Letter",
+                        "path": "letter.incoming",
+                        "classes": "",
+                        "attributes": [],
+                        "permission": "",
+                        "roles": [
+                            "administrator",
+                            "maker"
+                        ]
+                    },
+                    {
+                        "title": "Outgoing Letter",
+                        "path": "letter.outgoing",
+                        "classes": "",
+                        "attributes": [],
+                        "permission": "",
+                        "roles": [
+                            "administrator",
+                            "maker"
+                        ]
+                    }
                 ]
             }
         ]

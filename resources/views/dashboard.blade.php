@@ -1,6 +1,6 @@
 @extends('layouts.main')
 @section('breadcrumbs')
-    {{ Breadcrumbs::render('dashboard') }}
+    {{ Breadcrumbs::render('corsec.dashboard') }}
 @endsection
 @section('content')
     <div class="container">

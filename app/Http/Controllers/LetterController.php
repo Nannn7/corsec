@@ -18,17 +18,33 @@ class LetterController extends Controller
             return $next($request);
         });
     }
+
+    private function authorizeRead()
+    {
+        if (!$this->user || !$this->user->can('corsec.read')) {
+            abort(403, 'Sorry! You are not allowed to access this page.');
+        }
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index()
     {
-        $user = Auth::user();
-        if (!$user || !$user->can('corsec.read')) {
-            abort(403, 'Sorry! You are not allowed to view services.');
-        }
-
+        $this->authorizeRead();
         return view('corsec::letter.index');
+    }
+
+    public function incoming()
+    {
+        $this->authorizeRead();
+        return view('corsec::letter.incoming');
+    }
+
+    public function outgoing()
+    {
+        $this->authorizeRead();
+        return view('corsec::letter.outgoing');
     }
 
     /**

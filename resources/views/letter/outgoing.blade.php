@@ -1,18 +1,18 @@
 @extends('layouts.main')
 
 @section('breadcrumbs')
-    {{ Breadcrumbs::render('letter.index') }}
+    {{ Breadcrumbs::render('letter.outgoing.index') }}
 @endsection
 
 @section('content')
     <div class="card">
         <div class="card-header">
-            <h3 class="card-title">Letters</h3>
+            <h3 class="card-title">Outgoing Letters</h3>
         </div>
 
         <div class="card-body">
             <p class="text-gray-600">
-                Ini halaman utama module <strong>Letters</strong>.
+                Ini halaman <strong>Outgoing Letters</strong>.
             </p>
         </div>
     </div>
