@@ -45,6 +45,48 @@
                         ]
                     }
                 ]
+            },
+            {
+                "title": "Meeting",
+                "path": "meeting",
+                "icon": "ki-filled ki-people text-lg text-primary",
+                "classes": "",
+                "attributes": [],
+                "permission": "",
+                "roles": [
+                    "administrator",
+                    "maker",
+                    "checker",
+                    "approver"
+                ]
+            },
+            {
+                "title": "Work Plan",
+                "path": "workplan",
+                "icon": "ki-filled ki-calendar text-lg text-primary",
+                "classes": "",
+                "attributes": [],
+                "permission": "",
+                "roles": [
+                    "administrator",
+                    "maker",
+                    "checker",
+                    "approver"
+                ]
+            }
+        ],
+        "otorisator": [
+            {
+                "title": "Approval Requests",
+                "path": "approval",
+                "icon": "ki-filled ki-shield-tick text-lg text-primary",
+                "classes": "",
+                "attributes": [],
+                "permission": "",
+                "roles": [
+                    "administrator",
+                    "approver"
+                ]
             }
         ]
     }
