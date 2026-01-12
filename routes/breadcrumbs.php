@@ -14,7 +14,7 @@ Breadcrumbs::for('dashboard', function (BreadcrumbTrail $trail) {
 // Letters
 Breadcrumbs::for('letter.index', function (BreadcrumbTrail $trail) {
     $trail->parent('dashboard');
-    $trail->push('Letters', route('letter.index'));
+    $trail->push('Letter', route('letter.index'));
 });
 Breadcrumbs::for('letter.incoming.index', function (BreadcrumbTrail $trail) {
     $trail->parent('letter.index');
@@ -23,4 +23,22 @@ Breadcrumbs::for('letter.incoming.index', function (BreadcrumbTrail $trail) {
 Breadcrumbs::for('letter.outgoing.index', function (BreadcrumbTrail $trail) {
     $trail->parent('letter.index');
     $trail->push('Outgoing Letter', route('letter.outgoing.index'));
+});
+
+// Meeting
+Breadcrumbs::for('meeting.index', function (BreadcrumbTrail $trail) {
+    $trail->parent('dashboard');
+    $trail->push('meeting', route('meeting.index'));
+});
+
+// Workplan
+Breadcrumbs::for('workplan.index', function (BreadcrumbTrail $trail) {
+    $trail->parent('dashboard');
+    $trail->push('Workplan', route('workplan.index'));
+});
+
+// Approver
+Breadcrumbs::for('approval.index', function (BreadcrumbTrail $trail) {
+    $trail->parent('dashboard');
+    $trail->push('approval', route('approval.index'));
 });
