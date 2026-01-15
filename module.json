@@ -75,6 +75,20 @@
                 ]
             }
         ],
+        "master": [
+            {
+                "title": "Direktorat",
+                "path": "directorate",
+                "icon": "ki-filled ki-abstract-14 text-lg text-primary",
+                "classes": "",
+                "attributes": [],
+                "permission": "",
+                "roles": [
+                    "administrator",
+                    "maker"
+                ]
+            }
+        ],
         "otorisator": [
             {
                 "title": "Approval Requests",

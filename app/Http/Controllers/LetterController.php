@@ -35,54 +35,9 @@ class LetterController extends Controller
         return view('corsec::letter.index');
     }
 
-    public function incoming()
-    {
-        $this->authorizeRead();
-        return view('corsec::letter.incoming');
-    }
-
     public function outgoing()
     {
         $this->authorizeRead();
         return view('corsec::letter.outgoing');
     }
-
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        return view('corsec::create');
-    }
-
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request) {}
-
-    /**
-     * Show the specified resource.
-     */
-    public function show($id)
-    {
-        return view('corsec::show');
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit($id)
-    {
-        return view('corsec::edit');
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, $id) {}
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy($id) {}
 }

@@ -1,0 +1,80 @@
+<?php
+
+namespace Modules\Corsec\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+use Modules\Usermanagement\Models\User;
+
+class Directorate extends Model
+{
+    use SoftDeletes;
+
+    protected $table = 'corsec_directorates';
+
+    protected $fillable = [
+        'uuid',
+        'code',
+        'name',
+        'description',
+        'status',
+        'authorized_at',
+        'authorized_status',
+        'authorized_by',
+        'created_by',
+        'updated_by',
+        'deleted_by',
+    ];
+
+    protected $casts = [
+        'status' => 'boolean',
+        'authorized_at' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+        'deleted_at' => 'datetime',
+    ];
+
+    protected static function booted(): void
+    {
+        static::creating(function ($model) {
+            $model->uuid ??= (string) Str::uuid();
+        });
+    }
+
+    // ===== Relations
+    public function users()
+    {
+        return $this->hasMany(User::class, 'directorate_id');
+    }
+
+    public function incomingLetters()
+    {
+        return $this->hasMany(IncomingLetter::class, 'target_directorate_id');
+    }
+
+    public function incomingLetterRoutes()
+    {
+        return $this->hasMany(IncomingLetterRoute::class, 'to_directorate_id');
+    }
+
+    public function outgoingLetters()
+    {
+        return $this->hasMany(OutgoingLetter::class, 'requester_directorate_id');
+    }
+
+    public function meetingAgendas()
+    {
+        return $this->hasMany(MeetingAgenda::class, 'owner_directorate_id');
+    }
+
+    public function meetingDecisions()
+    {
+        return $this->hasMany(MeetingDecision::class, 'owner_directorate_id');
+    }
+
+    public function workPrograms()
+    {
+        return $this->hasMany(WorkProgram::class, 'directorate_id');
+    }
+}
