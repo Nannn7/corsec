@@ -34,8 +34,8 @@ class Base extends Model
         $module     = file_get_contents($modulePath);
         $module     = json_decode($module);
 
-        // Set the connection property to the database connection specified in the module configuration
-        $this->connection = $module->database;
+        // Use module database connection when defined; otherwise fall back to default.
+        $this->connection = isset($module->database) ? $module->database : null;
     }
 
     /**

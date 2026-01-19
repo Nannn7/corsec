@@ -61,12 +61,13 @@ Route::middleware(['auth'])->group(function () {
 
     // Approver Routes
     Route::middleware('auth')->prefix('approval')->name('approval.')->group(function () {
-        Route::get('/', [ApproverController::class, 'index'])->name('index');
-        // Route::get('/datatables', [ApproverController::class, 'datatable'])->name('datatables');
-        // Route::get('/{id}', [ApproverController::class, 'show'])->name('show');
-        // Route::post('/{id}/approve', [ApproverController::class, 'approve'])->name('approve');
-        // Route::post('/{id}/reject', [ApproverController::class, 'reject'])->name('reject');
-        // Route::delete('/{id}', [ApproverController::class, 'destroy'])->name('destroy');
+        Route::get('/', [ApproverController::class, 'index'])->middleware('permission:corsec.authorize')->name('index');
+        Route::post('/{approvalRequest}/approve', [ApproverController::class, 'approve'])
+            ->middleware('permission:corsec.authorize')
+            ->name('approve');
+        Route::post('/{approvalRequest}/reject', [ApproverController::class, 'reject'])
+            ->middleware('permission:corsec.authorize')
+            ->name('reject');
     });
 
     // Directorate Routes
