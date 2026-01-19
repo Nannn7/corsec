@@ -1,17 +1,24 @@
 @extends('layouts.main')
 
 @section('breadcrumbs')
-    {{ Breadcrumbs::render('letter.incoming.create') }}
+    @if (isset($incomingLetter))
+        {{ Breadcrumbs::render('letter.incoming.edit', $incomingLetter) }}
+    @else
+        {{ Breadcrumbs::render('letter.incoming.create') }}
+    @endif
 @endsection
 
 @section('content')
+    @php
+        $incomingLetter = $incomingLetter ?? null;
+    @endphp
     <div class="grid gap-5 mx-auto w-full lg:gap-7.5">
 
         <div class="card">
             <div class="card-header">
                 <h3 class="card-title">
                     <i class="ki-filled ki-document text-primary"></i>
-                    Input Surat Masuk
+                    {{ isset($incomingLetter) ? 'Edit Surat Masuk' : 'Input Surat Masuk' }}
                 </h3>
                 <a href="{{ route('letter.incoming.index') }}" class="btn btn-sm btn-info">
                     <i class="ki-filled ki-exit-left"></i> Back
@@ -19,17 +26,23 @@
             </div>
 
             <div class="card-body">
-                <form id="incoming-letter-form" method="POST" action="{{ route('letter.incoming.store') }}"
+                <form id="incoming-letter-form" method="POST"
+                    action="{{ isset($incomingLetter) ? route('letter.incoming.update', $incomingLetter) : route('letter.incoming.store') }}"
                     enctype="multipart/form-data">
                     @csrf
-                    <input type="hidden" name="submit_for_approval" id="submit_for_approval" value="1">
+                    @if (isset($incomingLetter))
+                        @method('PUT')
+                    @else
+                        <input type="hidden" name="submit_for_approval" id="submit_for_approval" value="1">
+                    @endif
 
                     {{-- INFO SURAT --}}
                     <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
                         <div class="flex flex-col">
                             <label class="form-label">No Surat Eksternal <span class="text-danger">*</span></label>
                             <input class="input @error('external_letter_no') border-danger bg-danger-light @enderror"
-                                type="text" name="external_letter_no" value="{{ old('external_letter_no') }}"
+                                type="text" name="external_letter_no"
+                                value="{{ old('external_letter_no', $incomingLetter?->external_letter_no) }}"
                                 maxlength="255" placeholder="Contoh: 001/ABC/I/2026">
                             @error('external_letter_no')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
@@ -39,7 +52,8 @@
                         <div class="flex flex-col">
                             <label class="form-label">Tanggal Diterima <span class="text-danger">*</span></label>
                             <input class="input @error('received_date') border-danger bg-danger-light @enderror"
-                                type="date" name="received_date" value="{{ old('received_date') }}">
+                                type="date" name="received_date"
+                                value="{{ old('received_date', $incomingLetter?->received_date?->format('Y-m-d')) }}">
                             @error('received_date')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
@@ -48,7 +62,7 @@
                         <div class="flex flex-col md:col-span-2">
                             <label class="form-label">Perihal <span class="text-danger">*</span></label>
                             <input class="input @error('subject') border-danger bg-danger-light @enderror" type="text"
-                                name="subject" value="{{ old('subject') }}" maxlength="255"
+                                name="subject" value="{{ old('subject', $incomingLetter?->subject) }}" maxlength="255"
                                 placeholder="Contoh: Permohonan informasi / Undangan / dll" required>
                             @error('subject')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
@@ -58,7 +72,7 @@
                         <div class="flex flex-col md:col-span-2">
                             <label class="form-label">Pengirim <span class="text-danger">*</span></label>
                             <input class="input @error('sender') border-danger bg-danger-light @enderror" type="text"
-                                name="sender" value="{{ old('sender') }}" maxlength="255"
+                                name="sender" value="{{ old('sender', $incomingLetter?->sender) }}" maxlength="255"
                                 placeholder="Nama instansi / perusahaan / orang">
                             @error('sender')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
@@ -70,10 +84,18 @@
                             <select class="select @error('priority') border-danger bg-danger-light @enderror"
                                 name="priority">
                                 <option value="">- Pilih -</option>
-                                <option value="low" {{ old('priority') === 'low' ? 'selected' : '' }}>Low</option>
-                                <option value="normal" {{ old('priority') === 'normal' ? 'selected' : '' }}>Normal</option>
-                                <option value="high" {{ old('priority') === 'high' ? 'selected' : '' }}>High</option>
-                                <option value="urgent" {{ old('priority') === 'urgent' ? 'selected' : '' }}>Urgent</option>
+                                <option value="low"
+                                    {{ old('priority', $incomingLetter?->priority) === 'low' ? 'selected' : '' }}>
+                                    Low</option>
+                                <option value="normal"
+                                    {{ old('priority', $incomingLetter?->priority) === 'normal' ? 'selected' : '' }}>
+                                    Normal</option>
+                                <option value="high"
+                                    {{ old('priority', $incomingLetter?->priority) === 'high' ? 'selected' : '' }}>
+                                    High</option>
+                                <option value="urgent"
+                                    {{ old('priority', $incomingLetter?->priority) === 'urgent' ? 'selected' : '' }}>
+                                    Urgent</option>
                             </select>
                             @error('priority')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
@@ -83,7 +105,8 @@
                         <div class="flex flex-col">
                             <label class="form-label">Target Date (SLA) <span class="text-danger">*</span></label>
                             <input class="input @error('target_date') border-danger bg-danger-light @enderror"
-                                type="date" name="target_date" value="{{ old('target_date') }}">
+                                type="date" name="target_date"
+                                value="{{ old('target_date', $incomingLetter?->target_date?->format('Y-m-d')) }}">
                             @error('target_date')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
@@ -92,7 +115,7 @@
                         <div class="flex flex-col">
                             <label class="form-label">Deskripsi / Catatan</label>
                             <textarea class="textarea @error('description') border-danger bg-danger-light @enderror" name="description"
-                                rows="4" placeholder="Keterangan tambahan...">{{ old('description') }}</textarea>
+                                rows="4" placeholder="Keterangan tambahan...">{{ old('description', $incomingLetter?->description) }}</textarea>
                             @error('description')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
@@ -105,7 +128,7 @@
                                 <option value="">- Pilih Direktorat -</option>
                                 @foreach ($directorates as $b)
                                     <option value="{{ $b->id }}"
-                                        {{ (string) old('target_directorate_id') === (string) $b->id ? 'selected' : '' }}>
+                                        {{ (string) old('target_directorate_id', $incomingLetter?->target_directorate_id) === (string) $b->id ? 'selected' : '' }}>
                                         {{ $b->name }}
                                     </option>
                                 @endforeach
@@ -121,8 +144,12 @@
                     {{-- UPLOAD --}}
                     <div class="grid grid-cols-1 gap-5 mt-8">
                         <div class="flex flex-col">
-                            <label class="form-label">Upload Surat Masuk (PDF/JPG/PNG) <span
-                                    class="text-danger">*</span></label>
+                            <label class="form-label">
+                                {{ isset($incomingLetter) ? 'Tambah Lampiran (PDF/JPG/PNG)' : 'Upload Surat Masuk (PDF/JPG/PNG)' }}
+                                @if (!isset($incomingLetter))
+                                    <span class="text-danger">*</span>
+                                @endif
+                            </label>
 
                             <input class="file-input @error('files.*') border-danger bg-danger-light @enderror"
                                 type="file" name="files[]" multiple accept=".pdf,.jpg,.jpeg,.png">
@@ -140,14 +167,22 @@
                         <a href="{{ route('letter.incoming.index') }}" class="btn btn-light">
                             Cancel
                         </a>
-                        @can('corsec.create')
-                            <button type="button" id="save-draft" class="btn btn-light">
-                                <i class="ki-filled ki-archive"></i> Save Draft
-                            </button>
-                            <button type="submit" id="submit-approval" class="btn btn-primary">
-                                <i class="ki-filled ki-check"></i> Request Approval
-                            </button>
-                        @endcan
+                        @if (isset($incomingLetter))
+                            @can('corsec.update')
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="ki-filled ki-check"></i> Update
+                                </button>
+                            @endcan
+                        @else
+                            @can('corsec.create')
+                                <button type="button" id="save-draft" class="btn btn-light">
+                                    <i class="ki-filled ki-archive"></i> Save Draft
+                                </button>
+                                <button type="submit" id="submit-approval" class="btn btn-primary">
+                                    <i class="ki-filled ki-check"></i> Request Approval
+                                </button>
+                            @endcan
+                        @endif
                     </div>
 
                 </form>
@@ -204,7 +239,7 @@
                         errors.push('Perihal wajib diisi.');
                     }
 
-                    if (sender && sender.value.length > maxTextLength) {
+                    if (sender && sender.value.length === 0) {
                         errors.push('Pengirim wajib diisi.');
                     }
 

@@ -18,7 +18,6 @@ use Modules\Corsec\Models\Attachable;
 use Modules\Corsec\Models\Approval;
 use Modules\Corsec\Models\Comment;
 use Modules\Corsec\Services\IncomingLetterWorkflowService;
-use Modules\Basicdata\Models\Branch;
 use Modules\Corsec\Models\Directorate;
 
 class IncomingLetterController extends Controller
@@ -159,9 +158,9 @@ class IncomingLetterController extends Controller
     public function show(IncomingLetter $incomingLetter)
     {
         $incomingLetter->load([
-            'targetBranch',
-            'routes.fromBranch',
-            'routes.toBranch',
+            'targetDirectorate',
+            'routes.fromDirectorate',
+            'routes.toDirectorate',
             'routes.fromUser',
             'routes.toUser',
             'attachables.attachment',
@@ -174,9 +173,9 @@ class IncomingLetterController extends Controller
             ->latest()
             ->get();
 
-        $branches = Branch::query()->orderBy('name')->get(['id', 'name']);
+        $directorates = Directorate::query()->orderBy('name')->get(['id', 'name']);
 
-        return view('corsec::letter.incoming.show', compact('incomingLetter', 'approvals', 'branches'));
+        return view('corsec::letter.incoming.show', compact('incomingLetter', 'approvals', 'directorates'));
     }
 
     /**
@@ -184,8 +183,8 @@ class IncomingLetterController extends Controller
      */
     public function edit(IncomingLetter $incomingLetter)
     {
-        $branches = Branch::query()->orderBy('name')->get(['id', 'name']);
-        return view('corsec::letter.incoming.edit', compact('incomingLetter', 'branches'));
+        $directorates = Directorate::query()->orderBy('name')->get(['id', 'name']);
+        return view('corsec::letter.incoming.create', compact('incomingLetter', 'directorates'));
     }
 
     /**
@@ -207,7 +206,7 @@ class IncomingLetterController extends Controller
 
         $user = auth()->user();
 
-        return DB::transaction(function () use ($request, $incomingLetter, $user) {
+        DB::transaction(function () use ($request, $incomingLetter, $user) {
             $incomingLetter->update([
                 'external_letter_no' => $request->external_letter_no,
                 'subject' => $request->subject,
@@ -242,11 +241,11 @@ class IncomingLetterController extends Controller
                     ]);
                 }
             }
-
-            return redirect()
-                ->route('letter.incoming.show', $incomingLetter)
-                ->with('success', 'Surat masuk berhasil diupdate.');
         });
+
+        return redirect()
+            ->route('letter.incoming.index')
+            ->with('success', 'Surat masuk berhasil diupdate.');
     }
 
     public function datatables(Request $request)
@@ -372,18 +371,10 @@ class IncomingLetterController extends Controller
         }
 
         try {
-            $letter = IncomingLetter::find($id);
-            if (!$letter) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Surat masuk tidak ditemukan.'
-                ], 404);
-            }
-
             // optional: scope akses delete
             if (!$user->hasRole('administrator')) {
                 // minimal: hanya creator yg bisa delete
-                if ((int)$letter->created_by !== (int)$user->id) {
+                if ((int)$incomingLetter->created_by !== (int)$user->id) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Tidak punya akses untuk menghapus surat ini.'
@@ -391,9 +382,9 @@ class IncomingLetterController extends Controller
                 }
             }
 
-            DB::transaction(function () use ($letter, $user) {
-                $letter->update(['deleted_by' => $user->id]);
-                $letter->delete(); // soft delete
+            DB::transaction(function () use ($incomingLetter, $user) {
+                $incomingLetter->update(['deleted_by' => $user->id]);
+                $incomingLetter->delete(); // soft delete
             });
 
             return response()->json([
@@ -402,7 +393,7 @@ class IncomingLetterController extends Controller
             ]);
         } catch (Exception $e) {
             Log::error('IncomingLetter delete error: ' . $e->getMessage(), [
-                'incoming_letter_id' => $id,
+                'incoming_letter_id' => $incomingLetter->id,
                 'user_id' => $user?->id
             ]);
 
@@ -465,14 +456,14 @@ class IncomingLetterController extends Controller
     public function circulate(Request $request, IncomingLetter $incomingLetter)
     {
         $request->validate([
-            'to_branch_id' => ['required', 'exists:branches,id'],
+            'to_directorate_id' => ['required', 'exists:directorates,id'],
             'note' => ['nullable', 'string'],
         ]);
 
         $this->workflow->circulateToDirectorate(
             incomingLetter: $incomingLetter,
             actor: auth()->user(),
-            toBranchId: (int)$request->to_branch_id,
+            toDirectorateId: (int)$request->to_directorate_id,
             note: $request->note
         );
 

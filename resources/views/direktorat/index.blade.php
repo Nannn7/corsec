@@ -167,6 +167,10 @@
         const dataTableOptions = {
             apiEndpoint: apiUrl,
             pageSize: 5,
+            _state: {
+                sortField: 'id',
+                sortOrder: 'asc'
+            },
             columns: {
                 select: {
                     render: (item, data, context) => {

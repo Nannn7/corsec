@@ -12,15 +12,19 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Modules\Corsec\Exports\DirectorateExport;
 use Modules\Corsec\Http\Requests\DirectorateRequest;
+use Modules\Corsec\Models\ApprovalRequest;
+use Modules\Corsec\Services\ApprovalRequestService;
 
 class DirectorateController extends Controller
 {
     protected $user;
+    private readonly ApprovalRequestService $approvalService;
 
     public function __construct()
     {
         // Mengatur middleware auth
         $this->middleware('auth');
+        $this->approvalService = app(ApprovalRequestService::class);
 
         // Mengatur user setelah middleware auth dijalankan
         $this->middleware(function ($request, $next) {
@@ -69,21 +73,29 @@ class DirectorateController extends Controller
 
         try {
             $validated = $request->validated();
-            $directorate = DB::transaction(function () use ($validated, $request, $user) {
-                return Directorate::create([
-                    'code' => $validated['code'],
-                    'name' => $validated['name'],
-                    'description' => $validated['description'] ?? null,
-                    'status' => $request->boolean('status', true),
-                    'created_by' => $user->id,
-                    'updated_by' => $user->id,
-                ]);
-            });
-            Log::info('Directorate created successfully', ['directorate_id' => $directorate->id, 'user_id' => $user->id]);
+            $payload = [
+                'code' => $validated['code'],
+                'name' => $validated['name'],
+                'description' => $validated['description'] ?? null,
+                'status' => $request->boolean('status', true),
+                'created_by' => $user->id,
+                'updated_by' => $user->id,
+            ];
+
+            $this->approvalService->createRequest(
+                Directorate::class,
+                ApprovalRequest::ACTION_CREATE,
+                null,
+                $payload,
+                null,
+                'Pengajuan create directorate'
+            );
+
+            Log::info('Directorate create submitted for approval', ['user_id' => $user->id]);
 
             return redirect()
                 ->route('directorate.index')
-                ->with('success', 'Directorate created successfully.');
+                ->with('success', 'Directorate submitted for approval.');
         } catch (Exception $e) {
             Log::error('Failed to create directorate: ' . $e->getMessage(), ['user_id' => $user->id]);
 
@@ -144,20 +156,28 @@ class DirectorateController extends Controller
 
         try {
             $validated = $request->validated();
-            DB::transaction(function () use ($validated, $request, $directorate, $user) {
-                $directorate->update([
-                    'code' => $validated['code'],
-                    'name' => $validated['name'],
-                    'description' => $validated['description'] ?? null,
-                    'status' => $request->boolean('status', $directorate->status),
-                    'updated_by' => $user->id,
-                ]);
-            });
-            Log::info('Directorate updated successfully', ['directorate_id' => $directorate->id, 'user_id' => $user->id]);
+            $payload = [
+                'code' => $validated['code'],
+                'name' => $validated['name'],
+                'description' => $validated['description'] ?? null,
+                'status' => $request->boolean('status', $directorate->status),
+                'updated_by' => $user->id,
+            ];
+
+            $this->approvalService->createRequest(
+                Directorate::class,
+                ApprovalRequest::ACTION_UPDATE,
+                (string) $directorate->id,
+                $payload,
+                $directorate->only(array_keys($payload)),
+                'Pengajuan update directorate'
+            );
+
+            Log::info('Directorate update submitted for approval', ['directorate_id' => $directorate->id, 'user_id' => $user->id]);
 
             return redirect()
                 ->route('directorate.index')
-                ->with('success', 'Directorate updated successfully.');
+                ->with('success', 'Directorate update submitted for approval.');
         } catch (Exception $e) {
             Log::error('Failed to update directorate: ' . $e->getMessage(), ['directorate_id' => $id, 'user_id' => $user->id]);
 

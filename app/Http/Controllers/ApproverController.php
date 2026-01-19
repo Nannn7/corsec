@@ -4,15 +4,45 @@ namespace Modules\Corsec\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Modules\Corsec\Models\ApprovalRequest;
+use Modules\Corsec\Services\ApprovalRequestService;
 
 class ApproverController extends Controller
 {
+    public function __construct(private readonly ApprovalRequestService $approvalService)
+    {
+        $this->middleware('auth');
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index()
     {
-        return view('corsec::approval.index');
+        $requests = ApprovalRequest::query()
+            ->latest()
+            ->get();
+
+        return view('corsec::approval.index', compact('requests'));
+    }
+
+    public function approve(ApprovalRequest $approvalRequest)
+    {
+        $this->approvalService->approve($approvalRequest, Auth::user());
+
+        return back()->with('success', 'Approval berhasil diproses.');
+    }
+
+    public function reject(Request $request, ApprovalRequest $approvalRequest)
+    {
+        $request->validate([
+            'review_notes' => ['nullable', 'string'],
+        ]);
+
+        $this->approvalService->reject($approvalRequest, Auth::user(), $request->review_notes);
+
+        return back()->with('success', 'Approval berhasil ditolak.');
     }
 
     /**

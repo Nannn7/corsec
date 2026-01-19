@@ -74,7 +74,7 @@
                                     </span>
                                 </th>
 
-                                <th class="min-w-[200px]" data-datatable-column="targetBranch">
+                                <th class="min-w-[200px]" data-datatable-column="targetDirectorate">
                                     <span class="sort">
                                         <span class="sort-label">Tujuan</span>
                                         <span class="sort-icon"></span>
@@ -266,13 +266,13 @@
                     render: (item, data) => data.sender ?? '-',
                 },
 
-                targetBranch: {
+                targetDirectorate: {
                     title: 'Tujuan',
                     render: (item, data) => {
-                        // controller: ->with(['targetBranch'])
-                        return data.target_branch ?
-                            `${data.target_branch.name}` :
-                            (data.targetBranch ? `${data.targetBranch.name}` : '-');
+                        // controller: ->with(['targetDirectorate'])
+                        return data.target_directorate ?
+                            `${data.target_directorate.name}` :
+                            (data.targetDirectorate ? `${data.targetDirectorate.name}` : '-');
                     },
                 },
 

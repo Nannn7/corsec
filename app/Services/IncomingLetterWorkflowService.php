@@ -33,19 +33,19 @@ class IncomingLetterWorkflowService
         });
     }
 
-    public function circulateToDirectorate(IncomingLetter $incomingLetter, User $actor, int $toBranchId, ?string $note): void
+    public function circulateToDirectorate(IncomingLetter $incomingLetter, User $actor, int $toDirectorateId, ?string $note): void
     {
-        DB::transaction(function () use ($incomingLetter, $actor, $toBranchId, $note) {
+        DB::transaction(function () use ($incomingLetter, $actor, $toDirectorateId, $note) {
             $incomingLetter->update([
-                'target_branch_id' => $toBranchId,
+                'target_directorate_id' => $toDirectorateId,
                 'status' => IncomingLetter::STATUS_DISPATCHED,
                 'updated_by' => $actor->id,
             ]);
 
             IncomingLetterRoute::create([
                 'incoming_letter_id' => $incomingLetter->id,
-                'from_branch_id' => $actor->branch_id,
-                'to_branch_id' => $toBranchId,
+                'from_directorate_id' => $actor->directorate_id,
+                'to_directorate_id' => $toDirectorateId,
                 'from_user_id' => $actor->id,
                 'to_user_id' => null,
                 'note' => $note,
@@ -79,12 +79,12 @@ class IncomingLetterWorkflowService
 
             if ($action === 'approve') {
                 // kalau approve pertama (EO corp affair) => lanjut sirkulasi / dispatched (atau remain untuk corsec pilih target)
-                // simple: status jadi dispatched kalau target_branch_id sudah ada, kalau belum tetap draft tapi authorized_status = authorized
+                // simple: status jadi dispatched kalau target_directorate_id sudah ada, kalau belum tetap draft tapi authorized_status = authorized
                 $incomingLetter->update([
                     'authorized_status' => 'authorized',
                     'authorized_at' => now(),
                     'authorized_by' => $actor->id,
-                    'status' => $incomingLetter->target_branch_id ? IncomingLetter::STATUS_DISPATCHED : IncomingLetter::STATUS_DRAFT,
+                    'status' => $incomingLetter->target_directorate_id ? IncomingLetter::STATUS_DISPATCHED : IncomingLetter::STATUS_DRAFT,
                     'updated_by' => $actor->id,
                 ]);
             }
@@ -120,7 +120,7 @@ class IncomingLetterWorkflowService
     {
         DB::transaction(function () use ($incomingLetter, $actor, $targetDate, $note, $evidenceFiles) {
             // pastiin yang update itu direktorat yang sama
-            if ($incomingLetter->target_branch_id && $actor->branch_id !== $incomingLetter->target_branch_id) {
+            if ($incomingLetter->target_directorate_id && $actor->directorate_id !== $incomingLetter->target_directorate_id) {
                 abort(403, 'Bukan direktorat tujuan surat ini.');
             }
 
