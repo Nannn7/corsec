@@ -17,14 +17,21 @@ class IncomingLetterExport implements FromCollection, WithHeadings, WithMapping
 
     public function collection()
     {
-        $query = IncomingLetter::query()->with(['targetBranch'])->latest();
+        $query = IncomingLetter::query()->with(['targetDirectorate', 'sender', 'letterType'])->latest();
 
         if ($this->search !== '') {
             $s = $this->search;
             $query->where(function ($q) use ($s) {
                 $q->where('subject', 'ilike', "%{$s}%")
-                    ->orWhere('sender', 'ilike', "%{$s}%")
-                    ->orWhere('external_letter_no', 'ilike', "%{$s}%");
+                    ->orWhere('external_letter_no', 'ilike', "%{$s}%")
+                    ->orWhereHas('sender', function ($senderQuery) use ($s) {
+                        $senderQuery->where('name', 'ilike', "%{$s}%")
+                            ->orWhere('code', 'ilike', "%{$s}%");
+                    })
+                    ->orWhereHas('letterType', function ($letterTypeQuery) use ($s) {
+                        $letterTypeQuery->where('name', 'ilike', "%{$s}%")
+                            ->orWhere('code', 'ilike', "%{$s}%");
+                    });
             });
         }
 
@@ -33,7 +40,7 @@ class IncomingLetterExport implements FromCollection, WithHeadings, WithMapping
             $u = $this->user;
             $query->where(function ($w) use ($u) {
                 $w->where('created_by', $u->id)
-                    ->orWhere('target_branch_id', $u->branch_id);
+                    ->orWhere('target_directorate_id', $u->directorate_id);
             });
         }
 
@@ -46,6 +53,7 @@ class IncomingLetterExport implements FromCollection, WithHeadings, WithMapping
             'No Surat',
             'Perihal',
             'Pengirim',
+            'Jenis Surat',
             'Tanggal Terima',
             'Direktorat',
             'Target Date',
@@ -59,9 +67,10 @@ class IncomingLetterExport implements FromCollection, WithHeadings, WithMapping
         return [
             $row->external_letter_no ?? '-',
             $row->subject ?? '-',
-            $row->sender ?? '-',
+            $row->sender?->name ?? '-',
+            $row->letterType?->name ?? '-',
             $row->received_date ? $row->received_date->format('Y-m-d') : '-',
-            $row->targetBranch?->name ?? '-',
+            $row->targetDirectorate?->name ?? '-',
             $row->target_date ? $row->target_date->format('Y-m-d') : '-',
             $row->status ?? '-',
             $row->created_at ? $row->created_at->format('Y-m-d H:i:s') : '-',

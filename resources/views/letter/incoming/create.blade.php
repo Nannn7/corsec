@@ -69,12 +69,36 @@
                             @enderror
                         </div>
 
-                        <div class="flex flex-col md:col-span-2">
+                        <div class="flex flex-col">
                             <label class="form-label">Pengirim <span class="text-danger">*</span></label>
-                            <input class="input @error('sender') border-danger bg-danger-light @enderror" type="text"
-                                name="sender" value="{{ old('sender', $incomingLetter?->sender) }}" maxlength="255"
-                                placeholder="Nama instansi / perusahaan / orang">
-                            @error('sender')
+                            <select class="select @error('sender_id') border-danger bg-danger-light @enderror"
+                                name="sender_id">
+                                <option value="">- Pilih Pengirim -</option>
+                                @foreach ($senders as $sender)
+                                    <option value="{{ $sender->id }}"
+                                        {{ (string) old('sender_id', $incomingLetter?->sender_id) === (string) $sender->id ? 'selected' : '' }}>
+                                        {{ $sender->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            @error('sender_id')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+
+                        <div class="flex flex-col">
+                            <label class="form-label">Jenis Surat <span class="text-danger">*</span></label>
+                            <select class="select @error('letter_type_id') border-danger bg-danger-light @enderror"
+                                name="letter_type_id">
+                                <option value="">- Pilih Jenis Surat -</option>
+                                @foreach ($letterTypes as $letterType)
+                                    <option value="{{ $letterType->id }}"
+                                        {{ (string) old('letter_type_id', $incomingLetter?->letter_type_id) === (string) $letterType->id ? 'selected' : '' }}>
+                                        {{ $letterType->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            @error('letter_type_id')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
                         </div>
@@ -113,15 +137,6 @@
                         </div>
 
                         <div class="flex flex-col">
-                            <label class="form-label">Deskripsi / Catatan</label>
-                            <textarea class="textarea @error('description') border-danger bg-danger-light @enderror" name="description"
-                                rows="4" placeholder="Keterangan tambahan...">{{ old('description', $incomingLetter?->description) }}</textarea>
-                            @error('description')
-                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
-                            @enderror
-                        </div>
-
-                        <div class="flex flex-col md:pt-6">
                             <label class="form-label">Direktorat / Unit Tujuan <span class="text-danger">*</span></label>
                             <select class="select @error('target_directorate_id') border-danger bg-danger-light @enderror"
                                 name="target_directorate_id">
@@ -137,9 +152,21 @@
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
                         </div>
+
                     </div>
 
-                    <div class="my-7 border-t border-gray-200"></div>
+                    <div class="my-8 border-t border-gray-200"></div>
+
+                    <div class="grid grid-cols-1 gap-5 mt-8">
+                        <div class="flex flex-col">
+                            <label class="form-label">Deskripsi / Catatan</label>
+                            <textarea class="textarea w-full @error('description') border-danger bg-danger-light @enderror" name="description"
+                                rows="4" placeholder="Keterangan tambahan...">{{ old('description', $incomingLetter?->description) }}</textarea>
+                            @error('description')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+                    </div>
 
                     {{-- UPLOAD --}}
                     <div class="grid grid-cols-1 gap-5 mt-8">
@@ -224,7 +251,8 @@
 
                     const externalLetterNo = form.querySelector('input[name="external_letter_no"]');
                     const subject = form.querySelector('input[name="subject"]');
-                    const sender = form.querySelector('input[name="sender"]');
+                    const sender = form.querySelector('select[name="sender_id"]');
+                    const letterType = form.querySelector('select[name="letter_type_id"]');
                     const receivedDate = form.querySelector('input[name="received_date"]');
                     const targetDate = form.querySelector('input[name="target_date"]');
                     const priority = form.querySelector('select[name="priority"]');
@@ -241,6 +269,10 @@
 
                     if (sender && sender.value.length === 0) {
                         errors.push('Pengirim wajib diisi.');
+                    }
+
+                    if (letterType && letterType.value.length === 0) {
+                        errors.push('Jenis surat wajib diisi.');
                     }
 
                     if (receivedDate && receivedDate.value && isNaN(Date.parse(receivedDate.value))) {

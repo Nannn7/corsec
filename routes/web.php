@@ -8,6 +8,8 @@ use Modules\Corsec\Http\Controllers\MeetingController;
 use Modules\Corsec\Http\Controllers\WorkplanController;
 use Modules\Corsec\Http\Controllers\ApproverController;
 use Modules\Corsec\Http\Controllers\DirectorateController;
+use Modules\Corsec\Http\Controllers\SenderController;
+use Modules\Corsec\Http\Controllers\LetterTypeController;
 
 Route::middleware(['auth'])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
@@ -62,6 +64,8 @@ Route::middleware(['auth'])->group(function () {
     // Approver Routes
     Route::middleware('auth')->prefix('approval')->name('approval.')->group(function () {
         Route::get('/', [ApproverController::class, 'index'])->middleware('permission:corsec.authorize')->name('index');
+        Route::get('/datatables', [ApproverController::class, 'datatables'])->middleware('permission:corsec.authorize')->name('datatables');
+        Route::get('/{approvalRequest}', [ApproverController::class, 'show'])->middleware('permission:corsec.authorize')->name('show');
         Route::post('/{approvalRequest}/approve', [ApproverController::class, 'approve'])
             ->middleware('permission:corsec.authorize')
             ->name('approve');
@@ -85,6 +89,42 @@ Route::middleware(['auth'])->group(function () {
             'edit'    => 'directorate.edit',
             'update'  => 'directorate.update',
             'destroy' => 'directorate.destroy',
+        ],
+    ]);
+
+    // Sender Routes
+    Route::prefix('sender')->name('sender.')->group(function () {
+        Route::get('datatables', [SenderController::class, 'dataForDatatables'])->name('datatables');
+        Route::get('export', [SenderController::class, 'export'])->name('export');
+        Route::post('delete-multiple', [SenderController::class, 'deleteMultiple'])->name('deleteMultiple');
+    });
+    Route::resource('sender', SenderController::class, [
+        'names' => [
+            'index'   => 'sender.index',
+            'show'    => 'sender.show',
+            'create'  => 'sender.create',
+            'store'   => 'sender.store',
+            'edit'    => 'sender.edit',
+            'update'  => 'sender.update',
+            'destroy' => 'sender.destroy',
+        ],
+    ]);
+
+    // Letter Type Routes
+    Route::prefix('letter-type')->name('letter-type.')->group(function () {
+        Route::get('datatables', [LetterTypeController::class, 'dataForDatatables'])->name('datatables');
+        Route::get('export', [LetterTypeController::class, 'export'])->name('export');
+        Route::post('delete-multiple', [LetterTypeController::class, 'deleteMultiple'])->name('deleteMultiple');
+    });
+    Route::resource('letter-type', LetterTypeController::class, [
+        'names' => [
+            'index'   => 'letter-type.index',
+            'show'    => 'letter-type.show',
+            'create'  => 'letter-type.create',
+            'store'   => 'letter-type.store',
+            'edit'    => 'letter-type.edit',
+            'update'  => 'letter-type.update',
+            'destroy' => 'letter-type.destroy',
         ],
     ]);
 });

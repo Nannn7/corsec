@@ -67,9 +67,16 @@
                                     </span>
                                 </th>
 
-                                <th class="min-w-[200px]" data-datatable-column="sender">
+                                <th class="min-w-[200px]" data-datatable-column="sender_id">
                                     <span class="sort">
                                         <span class="sort-label">Pengirim</span>
+                                        <span class="sort-icon"></span>
+                                    </span>
+                                </th>
+
+                                <th class="min-w-[200px]" data-datatable-column="letter_type_id">
+                                    <span class="sort">
+                                        <span class="sort-label">Jenis Surat</span>
                                         <span class="sort-icon"></span>
                                     </span>
                                 </th>
@@ -261,9 +268,18 @@
                     title: 'Perihal'
                 },
 
-                sender: {
+                sender_id: {
                     title: 'Pengirim',
-                    render: (item, data) => data.sender ?? '-',
+                    render: (item, data) => {
+                        return data.sender ? `${data.sender.name}` : '-';
+                    },
+                },
+
+                letter_type_id: {
+                    title: 'Jenis Surat',
+                    render: (item, data) => {
+                        return data.letter_type ? `${data.letter_type.name}` : '-';
+                    },
                 },
 
                 targetDirectorate: {

@@ -19,6 +19,8 @@ use Modules\Corsec\Models\Approval;
 use Modules\Corsec\Models\Comment;
 use Modules\Corsec\Services\IncomingLetterWorkflowService;
 use Modules\Corsec\Models\Directorate;
+use Modules\Corsec\Models\Sender;
+use Modules\Corsec\Models\LetterType;
 
 class IncomingLetterController extends Controller
 {
@@ -31,7 +33,7 @@ class IncomingLetterController extends Controller
     public function index(Request $request)
     {
         $q = IncomingLetter::query()
-            ->with(['targetDirectorate'])
+            ->with(['targetDirectorate', 'sender', 'letterType'])
             ->latest();
 
         // filter
@@ -45,8 +47,15 @@ class IncomingLetterController extends Controller
             $kw = $request->string('keyword')->toString();
             $q->where(function ($w) use ($kw) {
                 $w->where('subject', 'ilike', "%{$kw}%")
-                    ->orWhere('sender', 'ilike', "%{$kw}%")
-                    ->orWhere('external_letter_no', 'ilike', "%{$kw}%");
+                    ->orWhere('external_letter_no', 'ilike', "%{$kw}%")
+                    ->orWhereHas('sender', function ($senderQuery) use ($kw) {
+                        $senderQuery->where('name', 'ilike', "%{$kw}%")
+                            ->orWhere('code', 'ilike', "%{$kw}%");
+                    })
+                    ->orWhereHas('letterType', function ($letterTypeQuery) use ($kw) {
+                        $letterTypeQuery->where('name', 'ilike', "%{$kw}%")
+                            ->orWhere('code', 'ilike', "%{$kw}%");
+                    });
             });
         }
 
@@ -63,10 +72,11 @@ class IncomingLetterController extends Controller
             });
         }
 
-        $letters = $q->paginate(15)->withQueryString();
         $directorates = Directorate::query()->orderBy('name')->get(['id', 'name']);
+        $senders = Sender::query()->orderBy('name')->get(['id', 'name']);
+        $letterTypes = LetterType::query()->orderBy('name')->get(['id', 'name']);
 
-        return view('corsec::letter.incoming.index', compact('letters', 'directorates'));
+        return view('corsec::letter.incoming.index', compact('directorates', 'senders', 'letterTypes'));
     }
 
     /**
@@ -75,7 +85,9 @@ class IncomingLetterController extends Controller
     public function create()
     {
         $directorates = Directorate::query()->orderBy('name')->get(['id', 'name']);
-        return view('corsec::letter.incoming.create', compact('directorates'));
+        $senders = Sender::query()->orderBy('name')->get(['id', 'name']);
+        $letterTypes = LetterType::query()->orderBy('name')->get(['id', 'name']);
+        return view('corsec::letter.incoming.create', compact('directorates', 'senders', 'letterTypes'));
     }
 
     /**
@@ -86,7 +98,8 @@ class IncomingLetterController extends Controller
         $request->validate([
             'external_letter_no' => ['nullable', 'string', 'max:255'],
             'subject' => ['required', 'string', 'max:255'],
-            'sender' => ['nullable', 'string', 'max:255'],
+            'sender_id' => ['nullable', 'exists:corsec_senders,id'],
+            'letter_type_id' => ['nullable', 'exists:corsec_letter_types,id'],
             'received_date' => ['nullable', 'date'],
             'priority' => ['nullable', 'string', 'max:50'],
             'description' => ['nullable', 'string'],
@@ -102,7 +115,8 @@ class IncomingLetterController extends Controller
             $letter = IncomingLetter::create([
                 'external_letter_no' => $request->external_letter_no,
                 'subject' => $request->subject,
-                'sender' => $request->sender,
+                'sender_id' => $request->sender_id,
+                'letter_type_id' => $request->letter_type_id,
                 'received_date' => $request->received_date,
                 'priority' => $request->priority,
                 'description' => $request->description,
@@ -159,6 +173,8 @@ class IncomingLetterController extends Controller
     {
         $incomingLetter->load([
             'targetDirectorate',
+            'sender',
+            'letterType',
             'routes.fromDirectorate',
             'routes.toDirectorate',
             'routes.fromUser',
@@ -184,7 +200,9 @@ class IncomingLetterController extends Controller
     public function edit(IncomingLetter $incomingLetter)
     {
         $directorates = Directorate::query()->orderBy('name')->get(['id', 'name']);
-        return view('corsec::letter.incoming.create', compact('incomingLetter', 'directorates'));
+        $senders = Sender::query()->orderBy('name')->get(['id', 'name']);
+        $letterTypes = LetterType::query()->orderBy('name')->get(['id', 'name']);
+        return view('corsec::letter.incoming.create', compact('incomingLetter', 'directorates', 'senders', 'letterTypes'));
     }
 
     /**
@@ -195,7 +213,8 @@ class IncomingLetterController extends Controller
         $request->validate([
             'external_letter_no' => ['nullable', 'string', 'max:255'],
             'subject' => ['required', 'string', 'max:255'],
-            'sender' => ['nullable', 'string', 'max:255'],
+            'sender_id' => ['nullable', 'exists:corsec_senders,id'],
+            'letter_type_id' => ['nullable', 'exists:corsec_letter_types,id'],
             'received_date' => ['nullable', 'date'],
             'priority' => ['nullable', 'string', 'max:50'],
             'description' => ['nullable', 'string'],
@@ -210,7 +229,8 @@ class IncomingLetterController extends Controller
             $incomingLetter->update([
                 'external_letter_no' => $request->external_letter_no,
                 'subject' => $request->subject,
-                'sender' => $request->sender,
+                'sender_id' => $request->sender_id,
+                'letter_type_id' => $request->letter_type_id,
                 'received_date' => $request->received_date,
                 'priority' => $request->priority,
                 'description' => $request->description,
@@ -260,7 +280,7 @@ class IncomingLetterController extends Controller
 
         try {
             $query = IncomingLetter::query()
-                ->with(['targetDirectorate'])
+                ->with(['targetDirectorate', 'sender', 'letterType'])
                 ->latest();
 
             // search (sesuai template: param "search")
@@ -268,8 +288,15 @@ class IncomingLetterController extends Controller
             if ($search !== '') {
                 $query->where(function ($q) use ($search) {
                     $q->where('subject', 'ilike', "%{$search}%")
-                        ->orWhere('sender', 'ilike', "%{$search}%")
-                        ->orWhere('external_letter_no', 'ilike', "%{$search}%");
+                        ->orWhere('external_letter_no', 'ilike', "%{$search}%")
+                        ->orWhereHas('sender', function ($senderQuery) use ($search) {
+                            $senderQuery->where('name', 'ilike', "%{$search}%")
+                                ->orWhere('code', 'ilike', "%{$search}%");
+                        })
+                        ->orWhereHas('letterType', function ($letterTypeQuery) use ($search) {
+                            $letterTypeQuery->where('name', 'ilike', "%{$search}%")
+                                ->orWhere('code', 'ilike', "%{$search}%");
+                        });
                 });
             }
 
@@ -300,7 +327,8 @@ class IncomingLetterController extends Controller
             $allowedSort = [
                 'external_letter_no',
                 'subject',
-                'sender',
+                'sender_id',
+                'letter_type_id',
                 'status',
                 'received_date',
                 'target_date',

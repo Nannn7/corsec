@@ -5,6 +5,7 @@ namespace Modules\Corsec\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Modules\Corsec\Models\ApprovalRequest;
 use Modules\Corsec\Services\ApprovalRequestService;
 
@@ -20,11 +21,139 @@ class ApproverController extends Controller
      */
     public function index()
     {
-        $requests = ApprovalRequest::query()
-            ->latest()
-            ->get();
+        $modules = ApprovalRequest::query()
+            ->select('model')
+            ->distinct()
+            ->orderBy('model')
+            ->pluck('model')
+            ->mapWithKeys(function ($model) {
+                return [$model => class_basename($model)];
+            });
 
-        return view('corsec::approval.index', compact('requests'));
+        $actions = [
+            'create' => 'Create',
+            'update' => 'Update',
+            'delete' => 'Delete',
+        ];
+
+        return view('corsec::approval.index', compact('modules', 'actions'));
+    }
+
+    public function datatables(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->can('corsec.authorize')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sorry! You are not allowed to view approval requests.'
+            ], 403);
+        }
+
+        try {
+            $query = ApprovalRequest::query()
+                ->with(['createdBy', 'authorizedBy'])
+                ->latest();
+
+            $search = trim((string) $request->get('search', ''));
+            if ($search !== '') {
+                $query->where(function ($q) use ($search) {
+                    $q->where('model', 'ilike', "%{$search}%")
+                        ->orWhere('action', 'ilike', "%{$search}%")
+                        ->orWhere('status', 'ilike', "%{$search}%")
+                        ->orWhere('description', 'ilike', "%{$search}%")
+                        ->orWhereHas('createdBy', function ($userQuery) use ($search) {
+                            $userQuery->where('name', 'ilike', "%{$search}%");
+                        })
+                        ->orWhereHas('authorizedBy', function ($userQuery) use ($search) {
+                            $userQuery->where('name', 'ilike', "%{$search}%");
+                        });
+                });
+            }
+
+            $filters = json_decode($request->get('filters', '[]'), true);
+            if (is_array($filters)) {
+                foreach ($filters as $filter) {
+                    $column = $filter['column'] ?? null;
+                    $value = $filter['value'] ?? null;
+                    if (!$column || $value === null || $value === '') {
+                        continue;
+                    }
+
+                    if ($column === 'model') {
+                        $query->where('model', $value);
+                    } elseif ($column === 'action') {
+                        $query->where('action', $value);
+                    } elseif ($column === 'status') {
+                        $query->where('status', $value);
+                    }
+                }
+            }
+
+            $totalRecords    = ApprovalRequest::count();
+            $filteredRecords = (clone $query)->count();
+
+            $sortField = (string) $request->get('sortField', 'id');
+            $sortOrder = (string) $request->get('sortOrder', 'desc');
+
+            $allowedSort = [
+                'id',
+                'model',
+                'action',
+                'status',
+                'description',
+                'created_at',
+                'authorized_at',
+            ];
+
+            if (!in_array($sortField, $allowedSort, true)) {
+                $sortField = 'id';
+            }
+            if (!in_array(strtolower($sortOrder), ['asc', 'desc'], true)) {
+                $sortOrder = 'desc';
+            }
+
+            $query->orderBy($sortField, $sortOrder);
+
+            $page = max((int) $request->get('page', 1), 1);
+            $size = max((int) $request->get('size', 10), 1);
+            $offset = ($page - 1) * $size;
+
+            $data = $query->skip($offset)->take($size)->get()->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'model' => class_basename($item->model),
+                    'action' => $item->action,
+                    'action_badge' => $item->action_badge,
+                    'description' => $item->description,
+                    'status' => $item->status,
+                    'status_badge' => $item->status_badge,
+                    'created_by_name' => $item->createdBy?->name,
+                    'created_at' => $item->created_at,
+                    'authorized_by_name' => $item->authorizedBy?->name,
+                    'authorized_at' => $item->authorized_at,
+                ];
+            });
+
+            $pageCount = (int) ceil($filteredRecords / $size);
+
+            return response()->json([
+                'recordsTotal' => $totalRecords,
+                'recordsFiltered' => $filteredRecords,
+                'pageCount' => $pageCount,
+                'page' => $page,
+                'totalCount' => $totalRecords,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Approval datatables error: ' . $e->getMessage(), [
+                'user_id' => $user?->id
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load approval requests.'
+            ], 500);
+        }
     }
 
     public function approve(ApprovalRequest $approvalRequest)
@@ -63,7 +192,11 @@ class ApproverController extends Controller
      */
     public function show($id)
     {
-        return view('corsec::show');
+        $approvalRequest = ApprovalRequest::query()
+            ->with(['createdBy', 'authorizedBy'])
+            ->findOrFail($id);
+
+        return view('corsec::approval.show', compact('approvalRequest'));
     }
 
     /**
