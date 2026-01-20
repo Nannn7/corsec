@@ -32,7 +32,8 @@ class IncomingLetter extends Model
         'uuid',
         'external_letter_no',
         'subject',
-        'sender',
+        'sender_id',
+        'letter_type_id',
         'received_date',
         'target_directorate_id',
         'priority',
@@ -57,6 +58,16 @@ class IncomingLetter extends Model
     public function targetDirectorate()
     {
         return $this->belongsTo(Directorate::class, 'target_directorate_id');
+    }
+
+    public function sender(): BelongsTo
+    {
+        return $this->belongsTo(Sender::class, 'sender_id');
+    }
+
+    public function letterType(): BelongsTo
+    {
+        return $this->belongsTo(LetterType::class, 'letter_type_id');
     }
 
     public function routes(): HasMany

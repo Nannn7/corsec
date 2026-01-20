@@ -77,9 +77,33 @@
         ],
         "master": [
             {
-                "title": "Direktorat",
+                "title": "Directorate",
                 "path": "directorate",
-                "icon": "ki-filled ki-abstract-14 text-lg text-primary",
+                "icon": "ki-filled ki-people text-lg text-primary",
+                "classes": "",
+                "attributes": [],
+                "permission": "",
+                "roles": [
+                    "administrator",
+                    "maker"
+                ]
+            },
+            {
+                "title": "Senders",
+                "path": "sender",
+                "icon": "ki-filled ki-data text-lg text-primary",
+                "classes": "",
+                "attributes": [],
+                "permission": "",
+                "roles": [
+                    "administrator",
+                    "maker"
+                ]
+            },
+            {
+                "title": "Letter Types",
+                "path": "letter-type",
+                "icon": "ki-filled ki-menu text-lg text-primary",
                 "classes": "",
                 "attributes": [],
                 "permission": "",

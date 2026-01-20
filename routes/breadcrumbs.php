@@ -52,6 +52,11 @@ Breadcrumbs::for('approval.index', function (BreadcrumbTrail $trail) {
     $trail->push('Approval', route('approval.index'));
 });
 
+Breadcrumbs::for('approval.show', function (BreadcrumbTrail $trail, $approvalRequest) {
+    $trail->parent('approval.index');
+    $trail->push('Detail #' . $approvalRequest->id, route('approval.show', $approvalRequest));
+});
+
 // Directorate
 Breadcrumbs::for('corsec.directorate', function (BreadcrumbTrail $trail) {
     $trail->parent('dashboard');
@@ -66,6 +71,38 @@ Breadcrumbs::for('directorate.create', function (BreadcrumbTrail $trail) {
 Breadcrumbs::for('directorate.edit', function (BreadcrumbTrail $trail) {
     $trail->parent('corsec.directorate');
     $trail->push('Edit Direktorat');
+});
+
+// Sender
+Breadcrumbs::for('corsec.sender', function (BreadcrumbTrail $trail) {
+    $trail->parent('dashboard');
+    $trail->push('Sender', route('sender.index'));
+});
+
+Breadcrumbs::for('sender.create', function (BreadcrumbTrail $trail) {
+    $trail->parent('corsec.sender');
+    $trail->push('Tambah Sender', route('sender.create'));
+});
+
+Breadcrumbs::for('sender.edit', function (BreadcrumbTrail $trail) {
+    $trail->parent('corsec.sender');
+    $trail->push('Edit Sender');
+});
+
+// Letter Type
+Breadcrumbs::for('corsec.letter-type', function (BreadcrumbTrail $trail) {
+    $trail->parent('dashboard');
+    $trail->push('Letter Types', route('letter-type.index'));
+});
+
+Breadcrumbs::for('letter-type.create', function (BreadcrumbTrail $trail) {
+    $trail->parent('corsec.letter-type');
+    $trail->push('Tambah Letter Type', route('letter-type.create'));
+});
+
+Breadcrumbs::for('letter-type.edit', function (BreadcrumbTrail $trail) {
+    $trail->parent('corsec.letter-type');
+    $trail->push('Edit Letter Type');
 });
 
 

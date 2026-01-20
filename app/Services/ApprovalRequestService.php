@@ -3,6 +3,7 @@
 namespace Modules\Corsec\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Modules\Corsec\Models\ApprovalRequest;
 use Modules\Usermanagement\Models\User;
 
@@ -16,6 +17,7 @@ class ApprovalRequestService
         ?array $requestOld = null,
         ?string $description = null
     ): ApprovalRequest {
+        $userId = Auth::id();
         $approval = ApprovalRequest::create([
             'model' => $modelClass,
             'action' => $action,
@@ -24,6 +26,8 @@ class ApprovalRequestService
             'request_new' => $requestNew,
             'status' => ApprovalRequest::STATUS_PENDING,
             'description' => $description,
+            'created_by' => $userId,
+            'updated_by' => $userId,
         ]);
 
         $approval->update([

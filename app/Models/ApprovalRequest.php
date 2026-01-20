@@ -4,6 +4,7 @@ namespace Modules\Corsec\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Modules\Usermanagement\Models\User;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 
 /**
@@ -59,6 +60,9 @@ class ApprovalRequest extends Base
         'authorized_by',
         'reviewer_ip',
         'reviewer_agent',
+        'created_by',
+        'updated_by',
+        'deleted_by',
     ];
 
     /**
@@ -72,6 +76,10 @@ class ApprovalRequest extends Base
         'updated_at'    => 'datetime',
         'deleted_at'    => 'datetime',
         'authorized_at' => 'datetime',
+        'created_by'    => 'integer',
+        'updated_by'    => 'integer',
+        'deleted_by'    => 'integer',
+        'authorized_by' => 'integer',
     ];
 
     /**
@@ -223,5 +231,15 @@ class ApprovalRequest extends Base
     public function authorizer()
     {
         return $this->hasOne(User::class, 'id', 'authorized_by');
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function authorizedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'authorized_by');
     }
 }
