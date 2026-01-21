@@ -53,6 +53,16 @@ class Directorate extends Model
         return $this->hasMany(IncomingLetter::class, 'target_directorate_id');
     }
 
+    public function incomingLetterCirculations()
+    {
+        return $this->belongsToMany(
+            IncomingLetter::class,
+            'corsec_incoming_letter_directorates',
+            'directorate_id',
+            'incoming_letter_id'
+        );
+    }
+
     public function incomingLetterRoutes()
     {
         return $this->hasMany(IncomingLetterRoute::class, 'to_directorate_id');

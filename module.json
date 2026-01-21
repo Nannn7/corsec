@@ -19,7 +19,9 @@
                 "permission": "",
                 "roles": [
                     "administrator",
-                    "maker"
+                    "maker",
+                    "checker",
+                    "approver"
                 ],
                 "sub": [
                     {
@@ -30,7 +32,9 @@
                         "permission": "",
                         "roles": [
                             "administrator",
-                            "maker"
+                            "maker",
+                            "checker",
+                            "approver"
                         ]
                     },
                     {
@@ -41,7 +45,9 @@
                         "permission": "",
                         "roles": [
                             "administrator",
-                            "maker"
+                            "maker",
+                            "checker",
+                            "approver"
                         ]
                     }
                 ]
@@ -123,6 +129,7 @@
                 "permission": "",
                 "roles": [
                     "administrator",
+                    "checker",
                     "approver"
                 ]
             }

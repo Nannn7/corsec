@@ -30,14 +30,24 @@ class IncomingLetter extends Model
 
     protected $fillable = [
         'uuid',
+        'registration_no',
         'external_letter_no',
+        'letter_date',
         'subject',
+        'summary',
+        'sender',
         'sender_id',
+        'sender_other',
         'letter_type_id',
         'received_date',
         'target_directorate_id',
         'priority',
         'target_date',
+        'followup_action',
+        'followup_detail',
+        'followup_note',
+        'followup_submitted_at',
+        'followup_submitted_by',
         'status',
         'description',
         'authorized_at',
@@ -50,7 +60,10 @@ class IncomingLetter extends Model
 
     protected $casts = [
         'received_date' => 'date',
+        'letter_date' => 'date',
         'target_date' => 'date',
+        'followup_detail' => 'array',
+        'followup_submitted_at' => 'datetime',
         'authorized_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
@@ -73,6 +86,16 @@ class IncomingLetter extends Model
     public function routes(): HasMany
     {
         return $this->hasMany(IncomingLetterRoute::class, 'incoming_letter_id');
+    }
+
+    public function circulationDirectorates()
+    {
+        return $this->belongsToMany(
+            Directorate::class,
+            'corsec_incoming_letter_directorates',
+            'incoming_letter_id',
+            'directorate_id'
+        )->withTimestamps();
     }
 
     public function comments(): MorphMany

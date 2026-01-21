@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Corsec\Exports\IncomingLetterExport;
 use Modules\Corsec\Models\IncomingLetter;
@@ -96,28 +98,61 @@ class IncomingLetterController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'external_letter_no' => ['nullable', 'string', 'max:255'],
+            'external_letter_no' => ['required', 'string', 'max:255'],
+            'letter_date' => ['required', 'date'],
             'subject' => ['required', 'string', 'max:255'],
-            'sender_id' => ['nullable', 'exists:corsec_senders,id'],
-            'letter_type_id' => ['nullable', 'exists:corsec_letter_types,id'],
+            'summary' => ['required', 'string'],
+            'sender_id' => ['required', 'string'],
+            'sender_other' => ['nullable', 'string', 'max:150'],
+            'letter_type_id' => ['required', 'exists:corsec_letter_types,id'],
             'received_date' => ['nullable', 'date'],
             'priority' => ['nullable', 'string', 'max:50'],
             'description' => ['nullable', 'string'],
-            'target_directorate_id' => ['nullable', 'exists:corsec_directorates,id'],
+            'target_directorate_id' => ['required', 'exists:corsec_directorates,id'],
             'target_date' => ['nullable', 'date'],
-            'files.*' => ['nullable', 'file', 'max:10240'], // 10MB
+            'circulation_directorate_ids' => ['required', 'array'],
+            'circulation_directorate_ids.*' => ['required', 'exists:corsec_directorates,id'],
+            'files' => ['required', 'array'],
+            'files.*' => ['file', 'max:10240'], // 10MB
         ]);
 
         $user = auth()->user();
         $submitForApproval = $request->boolean('submit_for_approval', true);
+        $circulationDirectorateIds = array_values(array_filter(
+            (array) $request->input('circulation_directorate_ids', [])
+        ));
 
-        $letter = DB::transaction(function () use ($request, $user) {
+        $senderId = $request->input('sender_id');
+        $senderName = null;
+        if ($senderId === 'other') {
+            $request->validate([
+                'sender_other' => ['required', 'string', 'max:150'],
+            ]);
+            $senderName = $request->sender_other;
+        } else {
+            $request->validate([
+                'sender_id' => ['required', Rule::exists('corsec_senders', 'id')],
+            ]);
+            $senderName = Sender::query()->whereKey($senderId)->value('name');
+        }
+
+        if (!in_array((int) $request->target_directorate_id, array_map('intval', $circulationDirectorateIds), true)) {
+            throw ValidationException::withMessages([
+                'target_directorate_id' => 'Leader tindak lanjut harus termasuk di daftar sirkulasi.',
+            ]);
+        }
+
+        $letter = DB::transaction(function () use ($request, $user, $circulationDirectorateIds, $senderId, $senderName) {
             $letter = IncomingLetter::create([
                 'external_letter_no' => $request->external_letter_no,
+                'letter_date' => $request->letter_date,
                 'subject' => $request->subject,
-                'sender_id' => $request->sender_id,
+                'summary' => $request->summary,
+                'sender' => $senderName,
+                'sender_id' => $senderId === 'other' ? null : $senderId,
+                'sender_other' => $senderId === 'other' ? $request->sender_other : null,
                 'letter_type_id' => $request->letter_type_id,
-                'received_date' => $request->received_date,
+                'received_date' => $request->received_date ?? now()->toDateString(),
                 'priority' => $request->priority,
                 'description' => $request->description,
                 'target_directorate_id' => $request->target_directorate_id,
@@ -126,6 +161,16 @@ class IncomingLetterController extends Controller
                 'created_by' => $user->id,
                 'updated_by' => $user->id,
             ]);
+
+            if (!$letter->registration_no) {
+                $letter->update([
+                    'registration_no' => 'REG-' . now()->format('Ymd') . '-' . str_pad((string) $letter->id, 6, '0', STR_PAD_LEFT),
+                ]);
+            }
+
+            if (!empty($circulationDirectorateIds)) {
+                $letter->circulationDirectorates()->sync($circulationDirectorateIds);
+            }
 
             // upload attachments
             if ($request->hasFile('files')) {
@@ -175,6 +220,7 @@ class IncomingLetterController extends Controller
             'targetDirectorate',
             'sender',
             'letterType',
+            'circulationDirectorates',
             'routes.fromDirectorate',
             'routes.toDirectorate',
             'routes.fromUser',
@@ -211,25 +257,57 @@ class IncomingLetterController extends Controller
     public function update(Request $request, IncomingLetter $incomingLetter)
     {
         $request->validate([
-            'external_letter_no' => ['nullable', 'string', 'max:255'],
+            'external_letter_no' => ['required', 'string', 'max:255'],
+            'letter_date' => ['required', 'date'],
             'subject' => ['required', 'string', 'max:255'],
-            'sender_id' => ['nullable', 'exists:corsec_senders,id'],
-            'letter_type_id' => ['nullable', 'exists:corsec_letter_types,id'],
+            'summary' => ['required', 'string'],
+            'sender_id' => ['required', 'string'],
+            'sender_other' => ['nullable', 'string', 'max:150'],
+            'letter_type_id' => ['required', 'exists:corsec_letter_types,id'],
             'received_date' => ['nullable', 'date'],
             'priority' => ['nullable', 'string', 'max:50'],
             'description' => ['nullable', 'string'],
-            'target_directorate_id' => ['nullable', 'exists:corsec_directorates,id'],
+            'target_directorate_id' => ['required', 'exists:corsec_directorates,id'],
             'target_date' => ['nullable', 'date'],
+            'circulation_directorate_ids' => ['required', 'array'],
+            'circulation_directorate_ids.*' => ['required', 'exists:corsec_directorates,id'],
             'files.*' => ['nullable', 'file', 'max:10240'],
         ]);
 
         $user = auth()->user();
+        $circulationDirectorateIds = array_values(array_filter(
+            (array) $request->input('circulation_directorate_ids', [])
+        ));
 
-        DB::transaction(function () use ($request, $incomingLetter, $user) {
+        $senderId = $request->input('sender_id');
+        $senderName = null;
+        if ($senderId === 'other') {
+            $request->validate([
+                'sender_other' => ['required', 'string', 'max:150'],
+            ]);
+            $senderName = $request->sender_other;
+        } else {
+            $request->validate([
+                'sender_id' => ['required', Rule::exists('corsec_senders', 'id')],
+            ]);
+            $senderName = Sender::query()->whereKey($senderId)->value('name');
+        }
+
+        if (!in_array((int) $request->target_directorate_id, array_map('intval', $circulationDirectorateIds), true)) {
+            throw ValidationException::withMessages([
+                'target_directorate_id' => 'Leader tindak lanjut harus termasuk di daftar sirkulasi.',
+            ]);
+        }
+
+        DB::transaction(function () use ($request, $incomingLetter, $user, $circulationDirectorateIds, $senderName, $senderId) {
             $incomingLetter->update([
                 'external_letter_no' => $request->external_letter_no,
+                'letter_date' => $request->letter_date,
                 'subject' => $request->subject,
-                'sender_id' => $request->sender_id,
+                'summary' => $request->summary,
+                'sender' => $senderName,
+                'sender_id' => $senderId === 'other' ? null : $senderId,
+                'sender_other' => $senderId === 'other' ? $request->sender_other : null,
                 'letter_type_id' => $request->letter_type_id,
                 'received_date' => $request->received_date,
                 'priority' => $request->priority,
@@ -238,6 +316,8 @@ class IncomingLetterController extends Controller
                 'target_date' => $request->target_date,
                 'updated_by' => $user->id,
             ]);
+
+            $incomingLetter->circulationDirectorates()->sync($circulationDirectorateIds);
 
             if ($request->hasFile('files')) {
                 foreach ($request->file('files') as $file) {
@@ -280,14 +360,16 @@ class IncomingLetterController extends Controller
 
         try {
             $query = IncomingLetter::query()
-                ->with(['targetDirectorate', 'sender', 'letterType'])
+                ->with(['targetDirectorate', 'sender', 'letterType', 'circulationDirectorates'])
                 ->latest();
 
             // search (sesuai template: param "search")
             $search = trim((string) $request->get('search', ''));
             if ($search !== '') {
                 $query->where(function ($q) use ($search) {
-                    $q->where('subject', 'ilike', "%{$search}%")
+                    $q->where('registration_no', 'ilike', "%{$search}%")
+                        ->orWhere('subject', 'ilike', "%{$search}%")
+                        ->orWhere('summary', 'ilike', "%{$search}%")
                         ->orWhere('external_letter_no', 'ilike', "%{$search}%")
                         ->orWhereHas('sender', function ($senderQuery) use ($search) {
                             $senderQuery->where('name', 'ilike', "%{$search}%")
@@ -326,7 +408,10 @@ class IncomingLetterController extends Controller
 
             $allowedSort = [
                 'external_letter_no',
+                'registration_no',
+                'letter_date',
                 'subject',
+                'summary',
                 'sender_id',
                 'letter_type_id',
                 'status',
@@ -502,7 +587,7 @@ class IncomingLetterController extends Controller
     public function approvalAction(Request $request, IncomingLetter $incomingLetter)
     {
         $request->validate([
-            'action' => ['required', 'in:approve,return,reject'],
+            'action' => ['required', 'in:approve,reject,return'],
             'note' => ['nullable', 'string'],
         ]);
 
@@ -521,16 +606,72 @@ class IncomingLetterController extends Controller
     {
         $request->validate([
             'target_date' => ['nullable', 'date'],
+            'followup_action' => ['required', 'string', 'max:100'],
             'followup_note' => ['nullable', 'string'],
+            'followup_meeting_participants' => ['nullable', 'string'],
+            'followup_meeting_date' => ['nullable', 'date'],
+            'followup_meeting_location' => ['nullable', 'string'],
+            'followup_response_target_date' => ['nullable', 'date'],
+            'followup_social_participants' => ['nullable', 'string'],
+            'followup_social_date' => ['nullable', 'date'],
+            'followup_social_location' => ['nullable', 'string'],
+            'followup_social_directorate' => ['nullable', 'string'],
+            'followup_invitation_positions' => ['nullable', 'string'],
+            'followup_review_target_date' => ['nullable', 'date'],
+            'submit_for_approval' => ['nullable', 'boolean'],
             'evidence_files.*' => ['nullable', 'file', 'max:10240'],
         ]);
+
+        $followupAction = $request->string('followup_action')->toString();
+        $followupDetail = match ($followupAction) {
+            'meeting' => [
+                'participants' => $request->followup_meeting_participants,
+                'date' => $request->followup_meeting_date,
+                'location' => $request->followup_meeting_location,
+            ],
+            'response_letter' => [
+                'target_date' => $request->followup_response_target_date,
+            ],
+            'socialization' => [
+                'participants' => $request->followup_social_participants,
+                'date' => $request->followup_social_date,
+                'location' => $request->followup_social_location,
+                'coordinated_directorate' => $request->followup_social_directorate,
+            ],
+            'invitation' => [
+                'positions' => $request->followup_invitation_positions,
+            ],
+            'review' => [
+                'target_date' => $request->followup_review_target_date,
+            ],
+            default => [],
+        };
+
+        if ($followupAction === 'meeting' && (!$request->followup_meeting_participants || !$request->followup_meeting_date)) {
+            return back()->withErrors(['followup_action' => 'Detail meeting wajib diisi.'])->withInput();
+        }
+        if ($followupAction === 'response_letter' && !$request->followup_response_target_date) {
+            return back()->withErrors(['followup_action' => 'Target tanggal surat jawaban wajib diisi.'])->withInput();
+        }
+        if ($followupAction === 'socialization' && (!$request->followup_social_participants || !$request->followup_social_date)) {
+            return back()->withErrors(['followup_action' => 'Detail sosialisasi wajib diisi.'])->withInput();
+        }
+        if ($followupAction === 'invitation' && !$request->followup_invitation_positions) {
+            return back()->withErrors(['followup_action' => 'Detail peserta undangan wajib diisi.'])->withInput();
+        }
+        if ($followupAction === 'review' && !$request->followup_review_target_date) {
+            return back()->withErrors(['followup_action' => 'Target update sisdur wajib diisi.'])->withInput();
+        }
 
         $this->workflow->directorateUpdate(
             incomingLetter: $incomingLetter,
             actor: auth()->user(),
             targetDate: $request->target_date,
-            note: $request->followup_note,
-            evidenceFiles: $request->file('evidence_files', [])
+            followupAction: $followupAction,
+            followupDetail: $followupDetail,
+            followupNote: $request->followup_note,
+            evidenceFiles: $request->file('evidence_files', []),
+            submitForApproval: $request->boolean('submit_for_approval', true)
         );
 
         return back()->with('success', 'Update tindak lanjut berhasil disimpan.');
@@ -540,7 +681,7 @@ class IncomingLetterController extends Controller
     public function verifyAction(Request $request, IncomingLetter $incomingLetter)
     {
         $request->validate([
-            'action' => ['required', 'in:verify,return'],
+            'action' => ['required', 'in:verify,return,approve,reject'],
             'note' => ['nullable', 'string'],
         ]);
 
