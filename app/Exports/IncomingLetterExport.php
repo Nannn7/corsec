@@ -17,12 +17,16 @@ class IncomingLetterExport implements FromCollection, WithHeadings, WithMapping
 
     public function collection()
     {
-        $query = IncomingLetter::query()->with(['targetDirectorate', 'sender', 'letterType'])->latest();
+        $query = IncomingLetter::query()
+            ->with(['targetDirectorate', 'sender', 'letterType', 'circulationDirectorates'])
+            ->latest();
 
         if ($this->search !== '') {
             $s = $this->search;
             $query->where(function ($q) use ($s) {
-                $q->where('subject', 'ilike', "%{$s}%")
+                $q->where('registration_no', 'ilike', "%{$s}%")
+                    ->orWhere('subject', 'ilike', "%{$s}%")
+                    ->orWhere('summary', 'ilike', "%{$s}%")
                     ->orWhere('external_letter_no', 'ilike', "%{$s}%")
                     ->orWhereHas('sender', function ($senderQuery) use ($s) {
                         $senderQuery->where('name', 'ilike', "%{$s}%")
@@ -50,12 +54,16 @@ class IncomingLetterExport implements FromCollection, WithHeadings, WithMapping
     public function headings(): array
     {
         return [
+            'No Registrasi',
             'No Surat',
+            'Tanggal Surat',
             'Perihal',
+            'Ringkasan',
             'Pengirim',
             'Jenis Surat',
             'Tanggal Terima',
-            'Direktorat',
+            'Sirkulasi',
+            'Leader Tindak Lanjut',
             'Target Date',
             'Status',
             'Dibuat',
@@ -64,12 +72,19 @@ class IncomingLetterExport implements FromCollection, WithHeadings, WithMapping
 
     public function map($row): array
     {
+        $circulations = $row->circulationDirectorates?->pluck('name')->filter()->values()->all() ?? [];
+        $circulationLabel = count($circulations) > 0 ? implode(', ', $circulations) : '-';
+
         return [
+            $row->registration_no ?? '-',
             $row->external_letter_no ?? '-',
+            $row->letter_date ? $row->letter_date->format('Y-m-d') : '-',
             $row->subject ?? '-',
-            $row->sender?->name ?? '-',
+            $row->summary ?? '-',
+            $row->sender?->name ?? ($row->sender_other ?? ($row->getAttribute('sender') ?? '-')),
             $row->letterType?->name ?? '-',
             $row->received_date ? $row->received_date->format('Y-m-d') : '-',
+            $circulationLabel,
             $row->targetDirectorate?->name ?? '-',
             $row->target_date ? $row->target_date->format('Y-m-d') : '-',
             $row->status ?? '-',

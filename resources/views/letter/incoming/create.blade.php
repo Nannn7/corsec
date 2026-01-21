@@ -39,22 +39,38 @@
                     {{-- INFO SURAT --}}
                     <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
                         <div class="flex flex-col">
-                            <label class="form-label">No Surat Eksternal <span class="text-danger">*</span></label>
+                            <label class="form-label">No. Registrasi</label>
+                            <input class="input" type="text" name="registration_no" readonly
+                                value="{{ old('registration_no', $incomingLetter?->registration_no ?? 'Auto Generated') }}">
+                        </div>
+
+                        <div class="flex flex-col">
+                            <label class="form-label">Tanggal Terima <span class="text-danger">*</span></label>
+                            <input class="input @error('received_date') border-danger bg-danger-light @enderror"
+                                type="date" name="received_date" readonly
+                                value="{{ old('received_date', $incomingLetter?->received_date?->format('Y-m-d') ?? now()->format('Y-m-d')) }}">
+                            @error('received_date')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+
+                        <div class="flex flex-col">
+                            <label class="form-label">Nomor Surat <span class="text-danger">*</span></label>
                             <input class="input @error('external_letter_no') border-danger bg-danger-light @enderror"
                                 type="text" name="external_letter_no"
                                 value="{{ old('external_letter_no', $incomingLetter?->external_letter_no) }}"
-                                maxlength="255" placeholder="Contoh: 001/ABC/I/2026">
+                                maxlength="255" placeholder="Contoh: 001/ABC/I/2026" required>
                             @error('external_letter_no')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
                         </div>
 
                         <div class="flex flex-col">
-                            <label class="form-label">Tanggal Diterima <span class="text-danger">*</span></label>
-                            <input class="input @error('received_date') border-danger bg-danger-light @enderror"
-                                type="date" name="received_date"
-                                value="{{ old('received_date', $incomingLetter?->received_date?->format('Y-m-d')) }}">
-                            @error('received_date')
+                            <label class="form-label">Tanggal Surat <span class="text-danger">*</span></label>
+                            <input class="input @error('letter_date') border-danger bg-danger-light @enderror"
+                                type="date" name="letter_date"
+                                value="{{ old('letter_date', $incomingLetter?->letter_date?->format('Y-m-d')) }}" required>
+                            @error('letter_date')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
                         </div>
@@ -69,10 +85,19 @@
                             @enderror
                         </div>
 
+                        <div class="flex flex-col md:col-span-2">
+                            <label class="form-label">Ringkasan Isi Surat <span class="text-danger">*</span></label>
+                            <textarea class="textarea w-full @error('summary') border-danger bg-danger-light @enderror" name="summary"
+                                rows="1" placeholder="Ringkasan isi surat..." required>{{ old('summary', $incomingLetter?->summary) }}</textarea>
+                            @error('summary')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+
                         <div class="flex flex-col">
                             <label class="form-label">Pengirim <span class="text-danger">*</span></label>
                             <select class="select @error('sender_id') border-danger bg-danger-light @enderror"
-                                name="sender_id">
+                                name="sender_id" id="sender_id" required>
                                 <option value="">- Pilih Pengirim -</option>
                                 @foreach ($senders as $sender)
                                     <option value="{{ $sender->id }}"
@@ -80,17 +105,32 @@
                                         {{ $sender->name }}
                                     </option>
                                 @endforeach
+                                <option value="other"
+                                    {{ old('sender_id', $incomingLetter?->sender_id ?? ($incomingLetter?->sender_other ? 'other' : '')) === 'other' ? 'selected' : '' }}>
+                                    Other
+                                </option>
                             </select>
                             @error('sender_id')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
                         </div>
 
+                        <div class="flex flex-col" id="sender-other-wrapper" style="display: none;">
+                            <label class="form-label">Pengirim Lainnya <span class="text-danger">*</span></label>
+                            <input class="input @error('sender_other') border-danger bg-danger-light @enderror"
+                                type="text" name="sender_other" id="sender_other"
+                                value="{{ old('sender_other', $incomingLetter?->sender_other) }}"
+                                maxlength="150" placeholder="Tulis nama pengirim">
+                            @error('sender_other')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+
                         <div class="flex flex-col">
-                            <label class="form-label">Jenis Surat <span class="text-danger">*</span></label>
+                            <label class="form-label">Action Surat <span class="text-danger">*</span></label>
                             <select class="select @error('letter_type_id') border-danger bg-danger-light @enderror"
-                                name="letter_type_id">
-                                <option value="">- Pilih Jenis Surat -</option>
+                                name="letter_type_id" required>
+                                <option value="">- Pilih Action Surat -</option>
                                 @foreach ($letterTypes as $letterType)
                                     <option value="{{ $letterType->id }}"
                                         {{ (string) old('letter_type_id', $incomingLetter?->letter_type_id) === (string) $letterType->id ? 'selected' : '' }}>
@@ -99,6 +139,49 @@
                                 @endforeach
                             </select>
                             @error('letter_type_id')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+
+                        <div class="flex flex-col">
+                            <label class="form-label">Sirkulasi <span class="text-danger">*</span></label>
+                            @php
+                                $selectedCirculations = old(
+                                    'circulation_directorate_ids',
+                                    $incomingLetter?->circulationDirectorates?->pluck('id')->toArray() ?? [],
+                                );
+                            @endphp
+                            <div class="relative">
+                                <button type="button"
+                                    class="select w-full flex items-center justify-between text-left bg-white text-gray-800 @error('circulation_directorate_ids') border-danger bg-danger-light @enderror"
+                                    style="text-align: left; justify-content: flex-start;"
+                                    id="circulation-dropdown">
+                                    <span id="circulation-selected-text"
+                                        class="block truncate text-left w-full"
+                                        style="text-align: left;">Pilih sirkulasi...</span>
+                                </button>
+                                <div id="circulation-options"
+                                    class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
+                                    style="background-color: #ffffff;">
+                                    <div class="p-3 space-y-2 bg-white">
+                                        @foreach ($directorates as $b)
+                                            @php
+                                                $isChecked = in_array(
+                                                    (string) $b->id,
+                                                    array_map('strval', $selectedCirculations),
+                                                    true,
+                                                );
+                                            @endphp
+                                            <label class="flex items-center gap-2">
+                                                <input type="checkbox" name="circulation_directorate_ids[]"
+                                                    value="{{ $b->id }}" {{ $isChecked ? 'checked' : '' }}>
+                                                <span>{{ $b->name }}</span>
+                                            </label>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            </div>
+                            @error('circulation_directorate_ids')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
                         </div>
@@ -137,10 +220,10 @@
                         </div>
 
                         <div class="flex flex-col">
-                            <label class="form-label">Direktorat / Unit Tujuan <span class="text-danger">*</span></label>
+                            <label class="form-label">Leader Tindak Lanjut <span class="text-danger">*</span></label>
                             <select class="select @error('target_directorate_id') border-danger bg-danger-light @enderror"
-                                name="target_directorate_id">
-                                <option value="">- Pilih Direktorat -</option>
+                                name="target_directorate_id" required>
+                                <option value="">- Pilih Leader -</option>
                                 @foreach ($directorates as $b)
                                     <option value="{{ $b->id }}"
                                         {{ (string) old('target_directorate_id', $incomingLetter?->target_directorate_id) === (string) $b->id ? 'selected' : '' }}>
@@ -225,6 +308,12 @@
             const approvalInput = document.getElementById('submit_for_approval');
             const saveDraftButton = document.getElementById('save-draft');
             const submitApprovalButton = document.getElementById('submit-approval');
+            const circulationDropdown = document.getElementById('circulation-dropdown');
+            const circulationOptions = document.getElementById('circulation-options');
+            const circulationSelectedText = document.getElementById('circulation-selected-text');
+            const senderSelect = document.getElementById('sender_id');
+            const senderOtherWrapper = document.getElementById('sender-other-wrapper');
+            const senderOtherInput = document.getElementById('sender_other');
 
             if (saveDraftButton) {
                 saveDraftButton.addEventListener('click', function() {
@@ -243,15 +332,59 @@
                 });
             }
 
+            function toggleSenderOther() {
+                if (!senderSelect || !senderOtherWrapper || !senderOtherInput) return;
+                if (senderSelect.value === 'other') {
+                    senderOtherWrapper.style.display = 'flex';
+                    senderOtherInput.required = true;
+                } else {
+                    senderOtherWrapper.style.display = 'none';
+                    senderOtherInput.required = false;
+                    senderOtherInput.value = '';
+                }
+            }
+
+            if (senderSelect) {
+                senderSelect.addEventListener('change', toggleSenderOther);
+                toggleSenderOther();
+            }
+
+            function updateCirculationLabel() {
+                if (!circulationSelectedText || !circulationOptions) return;
+                const checkboxes = circulationOptions.querySelectorAll('input[type="checkbox"]:checked');
+                const names = Array.from(checkboxes).map((item) => {
+                    const label = item.closest('label');
+                    return label ? label.textContent.trim() : '';
+                }).filter(Boolean);
+                circulationSelectedText.textContent = names.length > 0 ? names.join(', ') : 'Pilih sirkulasi...';
+            }
+
+            if (circulationDropdown && circulationOptions) {
+                circulationDropdown.addEventListener('click', function() {
+                    circulationOptions.classList.toggle('hidden');
+                });
+
+                document.addEventListener('click', function(event) {
+                    if (!circulationDropdown.contains(event.target) && !circulationOptions.contains(event.target)) {
+                        circulationOptions.classList.add('hidden');
+                    }
+                });
+
+                circulationOptions.addEventListener('change', updateCirculationLabel);
+                updateCirculationLabel();
+            }
+
             if (form) {
                 form.addEventListener('submit', function(event) {
                     const errors = [];
                     const maxTextLength = 255;
                     const maxFileSize = 10 * 1024 * 1024;
+                    const isEdit = {{ isset($incomingLetter) ? 'true' : 'false' }};
 
                     const externalLetterNo = form.querySelector('input[name="external_letter_no"]');
                     const subject = form.querySelector('input[name="subject"]');
                     const sender = form.querySelector('select[name="sender_id"]');
+                    const senderOther = form.querySelector('input[name="sender_other"]');
                     const letterType = form.querySelector('select[name="letter_type_id"]');
                     const receivedDate = form.querySelector('input[name="received_date"]');
                     const targetDate = form.querySelector('input[name="target_date"]');
@@ -270,9 +403,24 @@
                     if (sender && sender.value.length === 0) {
                         errors.push('Pengirim wajib diisi.');
                     }
+                    if (sender && sender.value === 'other') {
+                        if (!senderOther || senderOther.value.trim().length === 0) {
+                            errors.push('Pengirim lainnya wajib diisi.');
+                        }
+                    }
 
                     if (letterType && letterType.value.length === 0) {
                         errors.push('Jenis surat wajib diisi.');
+                    }
+
+                    const letterDate = form.querySelector('input[name="letter_date"]');
+                    if (letterDate && letterDate.value && isNaN(Date.parse(letterDate.value))) {
+                        errors.push('Tanggal surat wajib diisi.');
+                    }
+
+                    const summary = form.querySelector('textarea[name="summary"]');
+                    if (summary && summary.value.trim().length === 0) {
+                        errors.push('Ringkasan isi surat wajib diisi.');
                     }
 
                     if (receivedDate && receivedDate.value && isNaN(Date.parse(receivedDate.value))) {
@@ -290,13 +438,24 @@
                         }
                     }
 
+                    if (targetDirectorate && targetDirectorate.value.length === 0) {
+                        errors.push('Leader tindak lanjut wajib dipilih.');
+                    }
+
                     if (targetDirectorate && targetDirectorate.value) {
                         const option = targetDirectorate.querySelector(
                             `option[value="${targetDirectorate.value}"]`
                         );
                         if (!option && targetDirectorate.value.length > 0) {
-                            errors.push('Direktorat tujuan wajib dipilih.');
+                            errors.push('Leader tindak lanjut wajib dipilih.');
                         }
+                    }
+
+                    const circulationChecks = form.querySelectorAll(
+                        'input[name="circulation_directorate_ids[]"]:checked'
+                    );
+                    if (!circulationChecks || circulationChecks.length === 0) {
+                        errors.push('Sirkulasi wajib dipilih minimal 1 direktorat.');
                     }
 
                     if (filesInput && filesInput.files.length > 0) {
@@ -311,6 +470,10 @@
                                 break;
                             }
                         }
+                    }
+
+                    if (!isEdit && filesInput && filesInput.files.length === 0) {
+                        errors.push('Upload surat masuk wajib diisi.');
                     }
 
                     if (errors.length > 0) {

@@ -53,9 +53,23 @@
                                     <input class="checkbox checkbox-sm" data-datatable-check="true" type="checkbox" />
                                 </th>
 
+                                <th class="min-w-[160px]" data-datatable-column="registration_no">
+                                    <span class="sort">
+                                        <span class="sort-label">No Registrasi</span>
+                                        <span class="sort-icon"></span>
+                                    </span>
+                                </th>
+
                                 <th class="min-w-[160px]" data-datatable-column="external_letter_no">
                                     <span class="sort">
                                         <span class="sort-label">No Surat</span>
+                                        <span class="sort-icon"></span>
+                                    </span>
+                                </th>
+
+                                <th class="min-w-[160px]" data-datatable-column="letter_date">
+                                    <span class="sort">
+                                        <span class="sort-label">Tanggal Surat</span>
                                         <span class="sort-icon"></span>
                                     </span>
                                 </th>
@@ -81,9 +95,16 @@
                                     </span>
                                 </th>
 
+                                <th class="min-w-[220px]" data-datatable-column="circulationDirectorates">
+                                    <span class="sort">
+                                        <span class="sort-label">Sirkulasi</span>
+                                        <span class="sort-icon"></span>
+                                    </span>
+                                </th>
+
                                 <th class="min-w-[200px]" data-datatable-column="targetDirectorate">
                                     <span class="sort">
-                                        <span class="sort-label">Tujuan</span>
+                                        <span class="sort-label">Leader</span>
                                         <span class="sort-icon"></span>
                                     </span>
                                 </th>
@@ -259,9 +280,21 @@
                     },
                 },
 
+                registration_no: {
+                    title: 'No Registrasi',
+                    render: (item, data) => data.registration_no ?? '-',
+                },
+
                 external_letter_no: {
                     title: 'No Surat',
                     render: (item, data) => data.external_letter_no ?? '-',
+                },
+
+                letter_date: {
+                    title: 'Tanggal Surat',
+                    render: (item, data) => {
+                        return data.letter_date ? window.formatTanggalIndonesia(data.letter_date) : '-';
+                    },
                 },
 
                 subject: {
@@ -271,7 +304,9 @@
                 sender_id: {
                     title: 'Pengirim',
                     render: (item, data) => {
-                        return data.sender ? `${data.sender.name}` : '-';
+                        if (data.sender && data.sender.name) return `${data.sender.name}`;
+                        if (data.sender_other) return data.sender_other;
+                        return data.sender ?? '-';
                     },
                 },
 
@@ -282,10 +317,18 @@
                     },
                 },
 
-                targetDirectorate: {
-                    title: 'Tujuan',
+                circulationDirectorates: {
+                    title: 'Sirkulasi',
                     render: (item, data) => {
-                        // controller: ->with(['targetDirectorate'])
+                        const list = data.circulation_directorates ?? data.circulationDirectorates ?? [];
+                        if (!Array.isArray(list) || list.length === 0) return '-';
+                        return list.map((row) => row.name).filter(Boolean).join(', ');
+                    },
+                },
+
+                targetDirectorate: {
+                    title: 'Leader',
+                    render: (item, data) => {
                         return data.target_directorate ?
                             `${data.target_directorate.name}` :
                             (data.targetDirectorate ? `${data.targetDirectorate.name}` : '-');
@@ -321,17 +364,15 @@
                             </a>`;
                         @endcan
 
-                        @can('corsec.update')
+                        @if (auth()->user()?->hasRole('administrator') || auth()->user()?->can('corsec.create'))
                             html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${data.id}/edit">
                                 <i class="ki-outline ki-notepad-edit"></i>
                             </a>`;
-                        @endcan
 
-                        @can('corsec.delete')
                             html += `<a onclick="deleteData('${data.id}')" class="btn btn-sm btn-icon btn-clear btn-danger">
                                 <i class="ki-outline ki-trash"></i>
                             </a>`;
-                        @endcan
+                        @endif
 
                         html += `</div>`;
                         return html;

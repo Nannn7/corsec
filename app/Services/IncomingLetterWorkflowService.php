@@ -70,55 +70,66 @@ class IncomingLetterWorkflowService
 
             if ($approval) {
                 $approval->update([
-                    'status' => $action === 'approve' ? 'approved' : ($action === 'return' ? 'returned' : 'rejected'),
+                    'status' => $action === 'approve' ? 'approved' : 'returned',
                     'note' => $note,
                     'acted_by' => $actor->id,
                     'acted_at' => now(),
                 ]);
             }
 
-            if ($action === 'approve') {
-                // kalau approve pertama (EO corp affair) => lanjut sirkulasi / dispatched (atau remain untuk corsec pilih target)
-                // simple: status jadi dispatched kalau target_directorate_id sudah ada, kalau belum tetap draft tapi authorized_status = authorized
-                $incomingLetter->update([
-                    'authorized_status' => 'authorized',
-                    'authorized_at' => now(),
-                    'authorized_by' => $actor->id,
-                    'status' => $incomingLetter->target_directorate_id ? IncomingLetter::STATUS_DISPATCHED : IncomingLetter::STATUS_DRAFT,
-                    'updated_by' => $actor->id,
-                ]);
-            }
-
-            if ($action === 'return') {
-                $incomingLetter->update([
-                    'status' => IncomingLetter::STATUS_RETURNED,
-                    'authorized_status' => 'returned',
-                    'updated_by' => $actor->id,
-                ]);
-
-                if ($note) {
-                    Comment::create([
-                        'commentable_type' => IncomingLetter::class,
-                        'commentable_id' => $incomingLetter->id,
-                        'body' => '[RETURN] ' . $note,
-                        'created_by' => $actor->id,
+            if ($incomingLetter->status === IncomingLetter::STATUS_ON_APPROVAL) {
+                if ($action === 'approve') {
+                    $incomingLetter->update([
+                        'authorized_status' => 'authorized',
+                        'authorized_at' => now(),
+                        'authorized_by' => $actor->id,
+                        'status' => $incomingLetter->target_directorate_id ? IncomingLetter::STATUS_DISPATCHED : IncomingLetter::STATUS_DRAFT,
+                        'updated_by' => $actor->id,
+                    ]);
+                } else {
+                    $incomingLetter->update([
+                        'status' => IncomingLetter::STATUS_RETURNED,
+                        'authorized_status' => 'returned',
+                        'updated_by' => $actor->id,
+                    ]);
+                }
+            } elseif ($incomingLetter->status === IncomingLetter::STATUS_WAITING_DIR_APPROVAL) {
+                if ($action === 'approve') {
+                    $incomingLetter->update([
+                        'status' => IncomingLetter::STATUS_WAITING_VERIFICATION,
+                        'updated_by' => $actor->id,
+                    ]);
+                } else {
+                    $incomingLetter->update([
+                        'status' => IncomingLetter::STATUS_RETURNED,
+                        'updated_by' => $actor->id,
                     ]);
                 }
             }
 
-            if ($action === 'reject') {
-                $incomingLetter->update([
-                    'status' => IncomingLetter::STATUS_REJECTED,
-                    'authorized_status' => 'rejected',
-                    'updated_by' => $actor->id,
+            if ($action !== 'approve' && $note) {
+                Comment::create([
+                    'commentable_type' => IncomingLetter::class,
+                    'commentable_id' => $incomingLetter->id,
+                    'body' => '[RETURN] ' . $note,
+                    'created_by' => $actor->id,
                 ]);
             }
         });
     }
 
-    public function directorateUpdate(IncomingLetter $incomingLetter, User $actor, $targetDate, ?string $note, array $evidenceFiles): void
+    public function directorateUpdate(
+        IncomingLetter $incomingLetter,
+        User $actor,
+        $targetDate,
+        ?string $followupAction,
+        array $followupDetail,
+        ?string $followupNote,
+        array $evidenceFiles,
+        bool $submitForApproval
+    ): void
     {
-        DB::transaction(function () use ($incomingLetter, $actor, $targetDate, $note, $evidenceFiles) {
+        DB::transaction(function () use ($incomingLetter, $actor, $targetDate, $followupAction, $followupDetail, $followupNote, $evidenceFiles, $submitForApproval) {
             // pastiin yang update itu direktorat yang sama
             if ($incomingLetter->target_directorate_id && $actor->directorate_id !== $incomingLetter->target_directorate_id) {
                 abort(403, 'Bukan direktorat tujuan surat ini.');
@@ -126,18 +137,12 @@ class IncomingLetterWorkflowService
 
             $incomingLetter->update([
                 'target_date' => $targetDate ?? $incomingLetter->target_date,
+                'followup_action' => $followupAction,
+                'followup_detail' => $followupDetail,
+                'followup_note' => $followupNote,
                 'status' => IncomingLetter::STATUS_IN_PROGRESS,
                 'updated_by' => $actor->id,
             ]);
-
-            if ($note) {
-                Comment::create([
-                    'commentable_type' => IncomingLetter::class,
-                    'commentable_id' => $incomingLetter->id,
-                    'body' => '[TINDAK LANJUT] ' . $note,
-                    'created_by' => $actor->id,
-                ]);
-            }
 
             // upload bukti penyelesaian
             foreach ($evidenceFiles as $file) {
@@ -162,25 +167,28 @@ class IncomingLetterWorkflowService
                 ]);
             }
 
-            // setelah staff direktorat update, biasanya butuh approval EO+DD direktorat
-            $incomingLetter->update([
-                'status' => IncomingLetter::STATUS_WAITING_DIR_APPROVAL,
-                'updated_by' => $actor->id,
-            ]);
+            if ($submitForApproval) {
+                $incomingLetter->update([
+                    'status' => IncomingLetter::STATUS_WAITING_DIR_APPROVAL,
+                    'followup_submitted_at' => now(),
+                    'followup_submitted_by' => $actor->id,
+                    'updated_by' => $actor->id,
+                ]);
 
-            Approval::create([
-                'approvable_type' => IncomingLetter::class,
-                'approvable_id' => $incomingLetter->id,
-                'status' => 'pending',
-                'note' => 'Menunggu approval EO+DD Direktorat',
-            ]);
+                Approval::create([
+                    'approvable_type' => IncomingLetter::class,
+                    'approvable_id' => $incomingLetter->id,
+                    'status' => 'pending',
+                    'note' => 'Menunggu approval EO+DD Direktorat',
+                ]);
+            }
         });
     }
 
     public function verifyAction(IncomingLetter $incomingLetter, User $actor, string $action, ?string $note): void
     {
         DB::transaction(function () use ($incomingLetter, $actor, $action, $note) {
-            if ($action === 'verify') {
+            if (in_array($action, ['verify', 'approve'], true)) {
                 $incomingLetter->update([
                     'status' => IncomingLetter::STATUS_VERIFIED,
                     'updated_by' => $actor->id,
@@ -196,7 +204,7 @@ class IncomingLetterWorkflowService
                 ]);
             }
 
-            if ($action === 'return') {
+            if (in_array($action, ['return', 'reject'], true)) {
                 $incomingLetter->update([
                     'status' => IncomingLetter::STATUS_RETURNED,
                     'updated_by' => $actor->id,
