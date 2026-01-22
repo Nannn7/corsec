@@ -271,12 +271,18 @@
             columns: {
                 select: {
                     render: (item, data) => {
-                        const checkbox = document.createElement('input');
-                        checkbox.className = 'checkbox checkbox-sm';
-                        checkbox.type = 'checkbox';
-                        checkbox.value = data.id.toString();
-                        checkbox.setAttribute('data-datatable-row-check', 'true');
-                        return checkbox.outerHTML.trim();
+                        @can('corsec.delete')
+                            const status = (data.status ?? '').toString().toLowerCase();
+                            const deletableStatuses = ['draft', 'returned'];
+                            if (!deletableStatuses.includes(status)) return '';
+                            const checkbox = document.createElement('input');
+                            checkbox.className = 'checkbox checkbox-sm';
+                            checkbox.type = 'checkbox';
+                            checkbox.value = data.id.toString();
+                            checkbox.setAttribute('data-datatable-row-check', 'true');
+                            return checkbox.outerHTML.trim();
+                        @endcan
+                        return '';
                     },
                 },
 
@@ -356,6 +362,11 @@
                 actions: {
                     title: 'Action',
                     render: (item, data) => {
+                        const status = (data.status ?? '').toString().toLowerCase();
+                        const editableStatuses = ['draft', 'returned'];
+                        const deletableStatuses = ['draft', 'returned'];
+                        const canEditStatus = editableStatuses.includes(status);
+                        const canDeleteStatus = deletableStatuses.includes(status);
                         let html = `<div class="flex flex-nowrap justify-center">`;
 
                         @can('corsec.read')
@@ -365,13 +376,17 @@
                         @endcan
 
                         @if (auth()->user()?->hasRole('administrator') || auth()->user()?->can('corsec.create'))
-                            html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${data.id}/edit">
-                                <i class="ki-outline ki-notepad-edit"></i>
-                            </a>`;
+                            if (canEditStatus) {
+                                html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${data.id}/edit">
+                                    <i class="ki-outline ki-notepad-edit"></i>
+                                </a>`;
+                            }
 
-                            html += `<a onclick="deleteData('${data.id}')" class="btn btn-sm btn-icon btn-clear btn-danger">
-                                <i class="ki-outline ki-trash"></i>
-                            </a>`;
+                            if (canDeleteStatus) {
+                                html += `<a onclick="deleteData('${data.id}')" class="btn btn-sm btn-icon btn-clear btn-danger">
+                                    <i class="ki-outline ki-trash"></i>
+                                </a>`;
+                            }
                         @endif
 
                         html += `</div>`;

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
@@ -23,6 +24,8 @@ use Modules\Corsec\Services\IncomingLetterWorkflowService;
 use Modules\Corsec\Models\Directorate;
 use Modules\Corsec\Models\Sender;
 use Modules\Corsec\Models\LetterType;
+use Modules\Corsec\Notifications\IncomingLetterDirectorateNotification;
+use Modules\Usermanagement\Models\User;
 
 class IncomingLetterController extends Controller
 {
@@ -204,6 +207,16 @@ class IncomingLetterController extends Controller
             $this->workflow->submitToEoCorpAffair($letter, $user);
         }
 
+        if (!empty($circulationDirectorateIds)) {
+            $users = User::query()
+                ->whereIn('directorate_id', $circulationDirectorateIds)
+                ->get();
+
+            if ($users->isNotEmpty()) {
+                Notification::send($users, new IncomingLetterDirectorateNotification($letter, $user));
+            }
+        }
+
         return redirect()
             ->route('letter.incoming.show', $letter)
             ->with('success', $submitForApproval
@@ -232,6 +245,7 @@ class IncomingLetterController extends Controller
         $approvals = Approval::query()
             ->where('approvable_type', IncomingLetter::class)
             ->where('approvable_id', $incomingLetter->id)
+            ->with(['actor.directorate'])
             ->latest()
             ->get();
 
@@ -604,7 +618,9 @@ class IncomingLetterController extends Controller
     // Staff Direktorat update tindak lanjut + upload bukti
     public function directorateUpdate(Request $request, IncomingLetter $incomingLetter)
     {
-        $request->validate([
+        $submitForApproval = $request->boolean('submit_for_approval', true);
+
+        $rules = [
             'target_date' => ['nullable', 'date'],
             'followup_action' => ['required', 'string', 'max:100'],
             'followup_note' => ['nullable', 'string'],
@@ -619,8 +635,16 @@ class IncomingLetterController extends Controller
             'followup_invitation_positions' => ['nullable', 'string'],
             'followup_review_target_date' => ['nullable', 'date'],
             'submit_for_approval' => ['nullable', 'boolean'],
-            'evidence_files.*' => ['nullable', 'file', 'max:10240'],
-        ]);
+        ];
+
+        if ($submitForApproval) {
+            $rules['evidence_files'] = ['required', 'array', 'min:1'];
+            $rules['evidence_files.*'] = ['file', 'max:10240'];
+        } else {
+            $rules['evidence_files.*'] = ['nullable', 'file', 'max:10240'];
+        }
+
+        $request->validate($rules);
 
         $followupAction = $request->string('followup_action')->toString();
         $followupDetail = match ($followupAction) {
@@ -671,7 +695,7 @@ class IncomingLetterController extends Controller
             followupDetail: $followupDetail,
             followupNote: $request->followup_note,
             evidenceFiles: $request->file('evidence_files', []),
-            submitForApproval: $request->boolean('submit_for_approval', true)
+            submitForApproval: $submitForApproval
         );
 
         return back()->with('success', 'Update tindak lanjut berhasil disimpan.');

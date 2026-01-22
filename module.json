@@ -90,8 +90,7 @@
                 "attributes": [],
                 "permission": "",
                 "roles": [
-                    "administrator",
-                    "maker"
+                    "administrator"
                 ]
             },
             {
@@ -102,8 +101,7 @@
                 "attributes": [],
                 "permission": "",
                 "roles": [
-                    "administrator",
-                    "maker"
+                    "administrator"
                 ]
             },
             {
@@ -114,8 +112,7 @@
                 "attributes": [],
                 "permission": "",
                 "roles": [
-                    "administrator",
-                    "maker"
+                    "administrator"
                 ]
             }
         ],
