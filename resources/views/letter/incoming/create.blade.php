@@ -11,6 +11,7 @@
 @section('content')
     @php
         $incomingLetter = $incomingLetter ?? null;
+        $isEditableStatus = !$incomingLetter || in_array($incomingLetter->status, ['draft', 'returned'], true);
     @endphp
     <div class="grid gap-5 mx-auto w-full lg:gap-7.5">
 
@@ -279,9 +280,11 @@
                         </a>
                         @if (isset($incomingLetter))
                             @can('corsec.update')
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="ki-filled ki-check"></i> Update
-                                </button>
+                                @if ($isEditableStatus)
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="ki-filled ki-check"></i> Update
+                                    </button>
+                                @endif
                             @endcan
                         @else
                             @can('corsec.create')

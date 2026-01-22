@@ -5,6 +5,38 @@
 @endsection
 
 @section('content')
+    @php
+        $user = auth()->user();
+        $status = $incomingLetter->status;
+        $isAdmin = $user?->hasRole('administrator');
+        $isChecker = $user?->hasRole('checker');
+        $isApprover = $user?->hasRole('approver');
+        $isTargetDirectorate =
+            $user &&
+            $incomingLetter->target_directorate_id &&
+            (int) $user->directorate_id === (int) $incomingLetter->target_directorate_id;
+        $canDirectorateUpdate =
+            in_array($status, ['dispatched', 'in_progress', 'returned'], true) && ($isAdmin || $isTargetDirectorate);
+        $canCheckerApproval =
+            in_array($status, ['on_approval', 'waiting_verification'], true) && ($isAdmin || $isChecker);
+        $checkerApproved =
+            $approvals->where('status', 'approved')->where('note', 'EO+DD Direktorat - Checker Approved')->count() > 0;
+        $canCheckerDirApproval = $status === 'waiting_dir_approval' && !$checkerApproved && ($isAdmin || $isChecker);
+        $canApproverApproval = $status === 'waiting_dir_approval' && $checkerApproved && ($isAdmin || $isApprover);
+        $statusSteps = [
+            'draft' => 'Draft',
+            'on_approval' => 'On Approval',
+            'dispatched' => 'Dispatched',
+            'in_progress' => 'In Progress',
+            'waiting_dir_approval' => 'Waiting Dir Approval',
+            'waiting_verification' => 'Waiting Verification',
+            'verified' => 'Verified',
+            'returned' => 'Returned',
+            'rejected' => 'Rejected',
+        ];
+        $incomingFiles = $incomingLetter->attachables?->where('category', 'incoming')->values() ?? collect();
+        $evidenceFiles = $incomingLetter->attachables?->where('category', 'evidence')->values() ?? collect();
+    @endphp
     <div class="grid gap-5 lg:gap-7.5">
         <div class="card">
             <div class="card-header">
@@ -93,6 +125,72 @@
                             <span class="badge badge-light">{{ $incomingLetter->status ?? '-' }}</span>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Rencana Tindak Lanjut</h3>
+            </div>
+            <div class="card-body">
+                <div class="grid gap-4">
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600">Action/Status:</span>
+                        <div class="flex flex-wrap gap-2 justify-end">
+                            @foreach ($statusSteps as $key => $label)
+                                @php
+                                    $isActive = $status === $key;
+                                    $badgeClass = $isActive ? 'badge-success' : 'badge-light';
+                                @endphp
+                                <span class="badge {{ $badgeClass }}">{{ $label }}</span>
+                            @endforeach
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600">Upload Surat Masuk:</span>
+                        <div class="text-right">
+                            @if ($incomingFiles->count() > 0)
+                                <div class="flex flex-col gap-1">
+                                    @foreach ($incomingFiles as $incomingFile)
+                                        @php
+                                            $attachment = $incomingFile->attachment;
+                                        @endphp
+                                        @if ($attachment)
+                                            <a class="text-primary hover:underline"
+                                                href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($attachment->path) }}"
+                                                target="_blank" rel="noopener">
+                                                {{ $attachment->original_name ?? $attachment->file_name }}
+                                            </a>
+                                        @endif
+                                    @endforeach
+                                </div>
+                            @else
+                                <span class="text-gray-500 text-sm">Belum ada upload.</span>
+                            @endif
+                        </div>
+                    </div>
+                    @if ($evidenceFiles->count() > 0)
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Upload Hasil Tindak Lanjut:</span>
+                            <div class="text-right">
+                                <div class="flex flex-col gap-1">
+                                    @foreach ($evidenceFiles as $evidence)
+                                        @php
+                                            $attachment = $evidence->attachment;
+                                        @endphp
+                                        @if ($attachment)
+                                            <a class="text-primary hover:underline"
+                                                href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($attachment->path) }}"
+                                                target="_blank" rel="noopener">
+                                                {{ $attachment->original_name ?? $attachment->file_name }}
+                                            </a>
+                                        @endif
+                                    @endforeach
+                                </div>
+                            </div>
+                        </div>
+                    @endif
                 </div>
             </div>
         </div>
@@ -189,7 +287,7 @@
         @endif
 
         @can('corsec.update')
-            @if (in_array($incomingLetter->status, ['dispatched', 'returned', 'in_progress'], true))
+            @if ($canDirectorateUpdate)
                 <div class="card">
                     <div class="card-header">
                         <h3 class="card-title">Input Tindak Lanjut Direktorat</h3>
@@ -203,11 +301,21 @@
                                     <label class="form-label">Tindak Lanjut <span class="text-danger">*</span></label>
                                     <select class="select" name="followup_action" id="followup_action" required>
                                         <option value="">- Pilih Tindak Lanjut -</option>
-                                        <option value="meeting" {{ old('followup_action', $incomingLetter->followup_action) === 'meeting' ? 'selected' : '' }}>Meeting Koordinasi</option>
-                                        <option value="response_letter" {{ old('followup_action', $incomingLetter->followup_action) === 'response_letter' ? 'selected' : '' }}>Surat Jawaban</option>
-                                        <option value="socialization" {{ old('followup_action', $incomingLetter->followup_action) === 'socialization' ? 'selected' : '' }}>Sosialisasi</option>
-                                        <option value="invitation" {{ old('followup_action', $incomingLetter->followup_action) === 'invitation' ? 'selected' : '' }}>Peserta Undangan</option>
-                                        <option value="review" {{ old('followup_action', $incomingLetter->followup_action) === 'review' ? 'selected' : '' }}>Review / New Ketentuan</option>
+                                        <option value="meeting"
+                                            {{ old('followup_action', $incomingLetter->followup_action) === 'meeting' ? 'selected' : '' }}>
+                                            Meeting Koordinasi</option>
+                                        <option value="response_letter"
+                                            {{ old('followup_action', $incomingLetter->followup_action) === 'response_letter' ? 'selected' : '' }}>
+                                            Surat Jawaban</option>
+                                        <option value="socialization"
+                                            {{ old('followup_action', $incomingLetter->followup_action) === 'socialization' ? 'selected' : '' }}>
+                                            Sosialisasi</option>
+                                        <option value="invitation"
+                                            {{ old('followup_action', $incomingLetter->followup_action) === 'invitation' ? 'selected' : '' }}>
+                                            Peserta Undangan</option>
+                                        <option value="review"
+                                            {{ old('followup_action', $incomingLetter->followup_action) === 'review' ? 'selected' : '' }}>
+                                            Review / New Ketentuan</option>
                                     </select>
                                 </div>
 
@@ -281,8 +389,7 @@
 
                             <div class="flex flex-col">
                                 <label class="form-label">Catatan</label>
-                                <textarea class="textarea w-full" name="followup_note" rows="3"
-                                    placeholder="Tambahkan catatan...">{{ old('followup_note', $incomingLetter->followup_note) }}</textarea>
+                                <textarea class="textarea w-full" name="followup_note" rows="3" placeholder="Tambahkan catatan...">{{ old('followup_note', $incomingLetter->followup_note) }}</textarea>
                             </div>
 
                             <div class="flex flex-col">
@@ -316,6 +423,7 @@
                             <thead>
                                 <tr>
                                     <th class="min-w-[160px]">Status</th>
+                                    <th class="min-w-[180px]">Oleh</th>
                                     <th class="min-w-[220px]">Catatan</th>
                                     <th class="min-w-[160px]">Waktu</th>
                                 </tr>
@@ -324,6 +432,13 @@
                                 @foreach ($approvals as $approval)
                                     <tr>
                                         <td>{{ $approval->status ?? '-' }}</td>
+                                        <td>
+                                            {{ $approval->actor?->name ?? '-' }}
+                                            @if ($approval->actor?->directorate?->name)
+                                                <span
+                                                    class="text-gray-500 text-xs">({{ $approval->actor->directorate->name }})</span>
+                                            @endif
+                                        </td>
                                         <td>{{ $approval->note ?? '-' }}</td>
                                         <td>{{ $approval->acted_at ? $approval->acted_at->format('Y-m-d H:i:s') : '-' }}
                                         </td>
@@ -342,7 +457,7 @@
                     <h3 class="card-title">Approval</h3>
                 </div>
                 <div class="card-body">
-                    @if (in_array($incomingLetter->status, ['on_approval', 'waiting_dir_approval'], true))
+                    @if ($incomingLetter->status === 'on_approval' && $canCheckerApproval)
                         <form method="POST" action="{{ route('letter.incoming.approval.action', $incomingLetter) }}"
                             class="grid gap-4">
                             @csrf
@@ -359,7 +474,27 @@
                                 </button>
                             </div>
                         </form>
-                    @elseif ($incomingLetter->status === 'waiting_verification')
+                    @elseif ($incomingLetter->status === 'waiting_dir_approval' && ($canCheckerDirApproval || $canApproverApproval))
+                        <form method="POST" action="{{ route('letter.incoming.approval.action', $incomingLetter) }}"
+                            class="grid gap-4">
+                            @csrf
+                            <div class="text-sm text-gray-500">
+                                {{ $canCheckerDirApproval ? 'Approval EO' : 'Approval DD' }}
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="form-label">Catatan (opsional)</label>
+                                <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan..."></textarea>
+                            </div>
+                            <div class="flex flex-wrap gap-2 justify-end">
+                                <button class="btn btn-sm btn-danger" type="submit" name="action" value="reject">
+                                    <i class="ki-filled ki-cross"></i> Reject
+                                </button>
+                                <button class="btn btn-sm btn-success" type="submit" name="action" value="approve">
+                                    <i class="ki-filled ki-check"></i> Approve
+                                </button>
+                            </div>
+                        </form>
+                    @elseif ($incomingLetter->status === 'waiting_verification' && $canCheckerApproval)
                         <form method="POST" action="{{ route('letter.incoming.verify.action', $incomingLetter) }}"
                             class="grid gap-4">
                             @csrf

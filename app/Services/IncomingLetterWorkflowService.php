@@ -68,16 +68,20 @@ class IncomingLetterWorkflowService
                 ->latest()
                 ->first();
 
-            if ($approval) {
-                $approval->update([
-                    'status' => $action === 'approve' ? 'approved' : 'returned',
-                    'note' => $note,
-                    'acted_by' => $actor->id,
-                    'acted_at' => now(),
-                ]);
-            }
+            $isAdmin = $actor->hasRole('administrator');
+            $isChecker = $actor->hasRole('checker');
+            $isApprover = $actor->hasRole('approver');
 
             if ($incomingLetter->status === IncomingLetter::STATUS_ON_APPROVAL) {
+                if ($approval) {
+                    $approval->update([
+                        'status' => $action === 'approve' ? 'approved' : 'returned',
+                        'note' => $note,
+                        'acted_by' => $actor->id,
+                        'acted_at' => now(),
+                    ]);
+                }
+
                 if ($action === 'approve') {
                     $incomingLetter->update([
                         'authorized_status' => 'authorized',
@@ -94,12 +98,73 @@ class IncomingLetterWorkflowService
                     ]);
                 }
             } elseif ($incomingLetter->status === IncomingLetter::STATUS_WAITING_DIR_APPROVAL) {
+                $checkerApproved = Approval::query()
+                    ->where('approvable_type', IncomingLetter::class)
+                    ->where('approvable_id', $incomingLetter->id)
+                    ->where('status', 'approved')
+                    ->where('note', 'EO+DD Direktorat - Checker Approved')
+                    ->exists();
+
                 if ($action === 'approve') {
-                    $incomingLetter->update([
-                        'status' => IncomingLetter::STATUS_WAITING_VERIFICATION,
-                        'updated_by' => $actor->id,
-                    ]);
-                } else {
+                    if (!$checkerApproved && ($isChecker || $isAdmin)) {
+                        Approval::create([
+                            'approvable_type' => IncomingLetter::class,
+                            'approvable_id' => $incomingLetter->id,
+                            'status' => 'approved',
+                            'note' => 'EO+DD Direktorat - Checker Approved',
+                            'acted_by' => $actor->id,
+                            'acted_at' => now(),
+                        ]);
+                        return;
+                    }
+
+                    if ($checkerApproved && ($isApprover || $isAdmin)) {
+                        if ($approval) {
+                            $approval->update([
+                                'status' => 'approved',
+                                'note' => 'EO+DD Direktorat - Approver Approved',
+                                'acted_by' => $actor->id,
+                                'acted_at' => now(),
+                            ]);
+                        } else {
+                            Approval::create([
+                                'approvable_type' => IncomingLetter::class,
+                                'approvable_id' => $incomingLetter->id,
+                                'status' => 'approved',
+                                'note' => 'EO+DD Direktorat - Approver Approved',
+                                'acted_by' => $actor->id,
+                                'acted_at' => now(),
+                            ]);
+                        }
+
+                        $incomingLetter->update([
+                            'status' => IncomingLetter::STATUS_WAITING_VERIFICATION,
+                            'updated_by' => $actor->id,
+                        ]);
+
+                        return;
+                    }
+                }
+
+                if ($action !== 'approve') {
+                    if ($approval) {
+                        $approval->update([
+                            'status' => 'returned',
+                            'note' => $note ?? 'EO+DD Direktorat - Returned',
+                            'acted_by' => $actor->id,
+                            'acted_at' => now(),
+                        ]);
+                    } else {
+                        Approval::create([
+                            'approvable_type' => IncomingLetter::class,
+                            'approvable_id' => $incomingLetter->id,
+                            'status' => 'returned',
+                            'note' => $note ?? 'EO+DD Direktorat - Returned',
+                            'acted_by' => $actor->id,
+                            'acted_at' => now(),
+                        ]);
+                    }
+
                     $incomingLetter->update([
                         'status' => IncomingLetter::STATUS_RETURNED,
                         'updated_by' => $actor->id,
@@ -127,8 +192,7 @@ class IncomingLetterWorkflowService
         ?string $followupNote,
         array $evidenceFiles,
         bool $submitForApproval
-    ): void
-    {
+    ): void {
         DB::transaction(function () use ($incomingLetter, $actor, $targetDate, $followupAction, $followupDetail, $followupNote, $evidenceFiles, $submitForApproval) {
             // pastiin yang update itu direktorat yang sama
             if ($incomingLetter->target_directorate_id && $actor->directorate_id !== $incomingLetter->target_directorate_id) {
@@ -179,7 +243,7 @@ class IncomingLetterWorkflowService
                     'approvable_type' => IncomingLetter::class,
                     'approvable_id' => $incomingLetter->id,
                     'status' => 'pending',
-                    'note' => 'Menunggu approval EO+DD Direktorat',
+                    'note' => 'Menunggu approval EO dan DD Direktorat',
                 ]);
             }
         });
