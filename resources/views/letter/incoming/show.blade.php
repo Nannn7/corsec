@@ -11,6 +11,12 @@
         $isAdmin = $user?->hasRole('administrator');
         $isChecker = $user?->hasRole('checker');
         $isApprover = $user?->hasRole('approver');
+        $eoDirectorateCode = config('corsec.eo_corp_affair_directorate_code', '');
+        $isEoCorpAffairDirectorate =
+            $user &&
+            $eoDirectorateCode !== '' &&
+            $user->directorate?->code === $eoDirectorateCode;
+        $isEoCorpAffairActor = $isEoCorpAffairDirectorate && ($isChecker || $isApprover);
         $isTargetDirectorate =
             $user &&
             $incomingLetter->target_directorate_id &&
@@ -18,7 +24,7 @@
         $canDirectorateUpdate =
             in_array($status, ['dispatched', 'in_progress', 'returned'], true) && ($isAdmin || $isTargetDirectorate);
         $canCheckerApproval =
-            in_array($status, ['on_approval', 'waiting_verification'], true) && ($isAdmin || $isChecker);
+            in_array($status, ['on_approval', 'waiting_verification'], true) && ($isAdmin || $isEoCorpAffairActor);
         $checkerApproved =
             $approvals->where('status', 'approved')->where('note', 'EO+DD Direktorat - Checker Approved')->count() > 0;
         $canCheckerDirApproval = $status === 'waiting_dir_approval' && !$checkerApproved && ($isAdmin || $isChecker);

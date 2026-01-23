@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
@@ -77,9 +78,9 @@ class IncomingLetterController extends Controller
             });
         }
 
-        $directorates = Directorate::query()->orderBy('name')->get(['id', 'name']);
-        $senders = Sender::query()->orderBy('name')->get(['id', 'name']);
-        $letterTypes = LetterType::query()->orderBy('name')->get(['id', 'name']);
+        $directorates = $this->getCachedDirectorates();
+        $senders = $this->getCachedSenders();
+        $letterTypes = $this->getCachedLetterTypes();
 
         return view('corsec::letter.incoming.index', compact('directorates', 'senders', 'letterTypes'));
     }
@@ -89,9 +90,9 @@ class IncomingLetterController extends Controller
      */
     public function create()
     {
-        $directorates = Directorate::query()->orderBy('name')->get(['id', 'name']);
-        $senders = Sender::query()->orderBy('name')->get(['id', 'name']);
-        $letterTypes = LetterType::query()->orderBy('name')->get(['id', 'name']);
+        $directorates = $this->getCachedDirectorates();
+        $senders = $this->getCachedSenders();
+        $letterTypes = $this->getCachedLetterTypes();
         return view('corsec::letter.incoming.create', compact('directorates', 'senders', 'letterTypes'));
     }
 
@@ -249,7 +250,7 @@ class IncomingLetterController extends Controller
             ->latest()
             ->get();
 
-        $directorates = Directorate::query()->orderBy('name')->get(['id', 'name']);
+        $directorates = $this->getCachedDirectorates();
 
         return view('corsec::letter.incoming.show', compact('incomingLetter', 'approvals', 'directorates'));
     }
@@ -259,9 +260,9 @@ class IncomingLetterController extends Controller
      */
     public function edit(IncomingLetter $incomingLetter)
     {
-        $directorates = Directorate::query()->orderBy('name')->get(['id', 'name']);
-        $senders = Sender::query()->orderBy('name')->get(['id', 'name']);
-        $letterTypes = LetterType::query()->orderBy('name')->get(['id', 'name']);
+        $directorates = $this->getCachedDirectorates();
+        $senders = $this->getCachedSenders();
+        $letterTypes = $this->getCachedLetterTypes();
         return view('corsec::letter.incoming.create', compact('incomingLetter', 'directorates', 'senders', 'letterTypes'));
     }
 
@@ -360,6 +361,27 @@ class IncomingLetterController extends Controller
         return redirect()
             ->route('letter.incoming.index')
             ->with('success', 'Surat masuk berhasil diupdate.');
+    }
+
+    private function getCachedDirectorates()
+    {
+        return Cache::remember('corsec.directorates.list', 300, function () {
+            return Directorate::query()->orderBy('name')->get(['id', 'name', 'code']);
+        });
+    }
+
+    private function getCachedSenders()
+    {
+        return Cache::remember('corsec.senders.list', 300, function () {
+            return Sender::query()->orderBy('name')->get(['id', 'name']);
+        });
+    }
+
+    private function getCachedLetterTypes()
+    {
+        return Cache::remember('corsec.letter_types.list', 300, function () {
+            return LetterType::query()->orderBy('name')->get(['id', 'name']);
+        });
     }
 
     public function datatables(Request $request)
