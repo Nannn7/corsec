@@ -34,6 +34,12 @@ Breadcrumbs::for('letter.incoming.edit', function (BreadcrumbTrail $trail, $inco
     $trail->push('Edit Letter', route('letter.incoming.edit', $incomingLetter));
 });
 
+// Outgoing Letter
+Breadcrumbs::for('letter.outgoing.index', function (BreadcrumbTrail $trail) {
+    $trail->parent('letter.index');
+    $trail->push('Outgoing Letter', route('letter.outgoing.index'));
+});
+
 // Meeting
 Breadcrumbs::for('meeting.index', function (BreadcrumbTrail $trail) {
     $trail->parent('dashboard');

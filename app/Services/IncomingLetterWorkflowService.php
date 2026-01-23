@@ -71,8 +71,13 @@ class IncomingLetterWorkflowService
             $isAdmin = $actor->hasRole('administrator');
             $isChecker = $actor->hasRole('checker');
             $isApprover = $actor->hasRole('approver');
+            $isEoCorpAffairActor = $this->isEoCorpAffairActor($actor);
 
             if ($incomingLetter->status === IncomingLetter::STATUS_ON_APPROVAL) {
+                if (!$isAdmin && !$isEoCorpAffairActor) {
+                    abort(403, 'Approval EO Corp Affair hanya untuk checker/approver dari direktorat Corporate Secretary.');
+                }
+
                 if ($approval) {
                     $approval->update([
                         'status' => $action === 'approve' ? 'approved' : 'returned',
@@ -102,7 +107,7 @@ class IncomingLetterWorkflowService
                     ->where('approvable_type', IncomingLetter::class)
                     ->where('approvable_id', $incomingLetter->id)
                     ->where('status', 'approved')
-                    ->where('note', 'EO+DD Direktorat - Checker Approved')
+                    ->where('note', 'Checker Approved')
                     ->exists();
 
                 if ($action === 'approve') {
@@ -111,7 +116,7 @@ class IncomingLetterWorkflowService
                             'approvable_type' => IncomingLetter::class,
                             'approvable_id' => $incomingLetter->id,
                             'status' => 'approved',
-                            'note' => 'EO+DD Direktorat - Checker Approved',
+                            'note' => 'Checker Approved',
                             'acted_by' => $actor->id,
                             'acted_at' => now(),
                         ]);
@@ -122,7 +127,7 @@ class IncomingLetterWorkflowService
                         if ($approval) {
                             $approval->update([
                                 'status' => 'approved',
-                                'note' => 'EO+DD Direktorat - Approver Approved',
+                                'note' => 'Approver Approved',
                                 'acted_by' => $actor->id,
                                 'acted_at' => now(),
                             ]);
@@ -131,7 +136,7 @@ class IncomingLetterWorkflowService
                                 'approvable_type' => IncomingLetter::class,
                                 'approvable_id' => $incomingLetter->id,
                                 'status' => 'approved',
-                                'note' => 'EO+DD Direktorat - Approver Approved',
+                                'note' => 'Approver Approved',
                                 'acted_by' => $actor->id,
                                 'acted_at' => now(),
                             ]);
@@ -252,6 +257,13 @@ class IncomingLetterWorkflowService
     public function verifyAction(IncomingLetter $incomingLetter, User $actor, string $action, ?string $note): void
     {
         DB::transaction(function () use ($incomingLetter, $actor, $action, $note) {
+            $isAdmin = $actor->hasRole('administrator');
+            $isEoCorpAffairActor = $this->isEoCorpAffairActor($actor);
+
+            if (!$isAdmin && !$isEoCorpAffairActor) {
+                abort(403, 'Verifikasi EO Corp Affair hanya untuk checker/approver dari direktorat Corporate Secretary.');
+            }
+
             if (in_array($action, ['verify', 'approve'], true)) {
                 $incomingLetter->update([
                     'status' => IncomingLetter::STATUS_VERIFIED,
@@ -262,7 +274,7 @@ class IncomingLetterWorkflowService
                     'approvable_type' => IncomingLetter::class,
                     'approvable_id' => $incomingLetter->id,
                     'status' => 'approved',
-                    'note' => 'Verifikasi EO Corp Affair: selesai',
+                    'note' => 'Verifikasi EO Corp Affair',
                     'acted_by' => $actor->id,
                     'acted_at' => now(),
                 ]);
@@ -284,5 +296,23 @@ class IncomingLetterWorkflowService
                 }
             }
         });
+    }
+
+    private function isEoCorpAffairActor(User $actor): bool
+    {
+        $isChecker = $actor->hasRole('checker');
+        $isApprover = $actor->hasRole('approver');
+        if (!$isChecker && !$isApprover) {
+            return false;
+        }
+
+        $directorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+        if ($directorateCode === '') {
+            return false;
+        }
+
+        $actor->loadMissing('directorate');
+
+        return (string) ($actor->directorate?->code ?? '') === $directorateCode;
     }
 }

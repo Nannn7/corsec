@@ -163,7 +163,8 @@
                                                         @elseif (is_null($value))
                                                             <span class="italic text-gray-400">Kosong</span>
                                                         @else
-                                                            <span class="font-medium text-green-600">{{ $value }}</span>
+                                                            <span
+                                                                class="font-medium text-green-600">{{ $value }}</span>
                                                         @endif
                                                     </td>
                                                 </tr>
@@ -286,22 +287,24 @@
                     <h3 class="card-title">Tindakan</h3>
                 </div>
                 <div class="card-body">
-                    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-end">
-                        <form method="POST" action="{{ route('approval.reject', $approvalRequest) }}"
-                            class="flex flex-col gap-3 w-full lg:flex-row lg:items-center lg:w-auto">
+                    <div class="grid gap-4">
+                        <form id="approval-reject-form" method="POST"
+                            action="{{ route('approval.reject', $approvalRequest) }}" class="grid gap-3">
                             @csrf
-                            <input class="input input-sm w-full lg:min-w-[24rem] lg:flex-1" type="text"
-                                name="review_notes" placeholder="Catatan penolakan (opsional)">
-                            <button class="btn btn-sm btn-danger" type="submit">
+                            <input class="input input-sm w-full" type="text" name="review_notes"
+                                placeholder="Catatan penolakan (opsional)">
+                        </form>
+                        <div class="flex flex-wrap gap-2 justify-end">
+                            <button class="btn btn-sm btn-danger" type="submit" form="approval-reject-form">
                                 <i class="ki-filled ki-cross"></i> Tolak
                             </button>
-                        </form>
-                        <form method="POST" action="{{ route('approval.approve', $approvalRequest) }}">
-                            @csrf
-                            <button class="btn btn-sm btn-success" type="submit">
-                                <i class="ki-filled ki-check"></i> Setujui
-                            </button>
-                        </form>
+                            <form method="POST" action="{{ route('approval.approve', $approvalRequest) }}">
+                                @csrf
+                                <button class="btn btn-sm btn-success" type="submit">
+                                    <i class="ki-filled ki-check"></i> Setujui
+                                </button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>
