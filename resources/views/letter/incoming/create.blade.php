@@ -317,6 +317,8 @@
             const senderSelect = document.getElementById('sender_id');
             const senderOtherWrapper = document.getElementById('sender-other-wrapper');
             const senderOtherInput = document.getElementById('sender_other');
+            const targetDirectorateSelect = form ? form.querySelector('select[name="target_directorate_id"]') : null;
+            const targetDirectorateOptions = targetDirectorateSelect ? Array.from(targetDirectorateSelect.options) : [];
 
             if (saveDraftButton) {
                 saveDraftButton.addEventListener('click', function() {
@@ -362,6 +364,37 @@
                 circulationSelectedText.textContent = names.length > 0 ? names.join(', ') : 'Pilih sirkulasi...';
             }
 
+            function updateLeaderOptions() {
+                if (!targetDirectorateSelect || !circulationOptions || targetDirectorateOptions.length === 0) return;
+
+                const selectedValue = targetDirectorateSelect.value;
+                const checked = circulationOptions.querySelectorAll('input[type="checkbox"]:checked');
+                const allowedIds = new Set(Array.from(checked).map((item) => item.value));
+
+                targetDirectorateSelect.innerHTML = '';
+                const placeholder = targetDirectorateOptions[0];
+                if (placeholder) {
+                    targetDirectorateSelect.appendChild(placeholder.cloneNode(true));
+                }
+
+                let hasSelected = false;
+                targetDirectorateOptions.slice(1).forEach((option) => {
+                    if (allowedIds.has(option.value)) {
+                        const clone = option.cloneNode(true);
+                        if (option.value === selectedValue) {
+                            clone.selected = true;
+                            hasSelected = true;
+                        }
+                        targetDirectorateSelect.appendChild(clone);
+                    }
+                });
+
+                targetDirectorateSelect.disabled = allowedIds.size === 0;
+                if (!hasSelected) {
+                    targetDirectorateSelect.value = '';
+                }
+            }
+
             if (circulationDropdown && circulationOptions) {
                 circulationDropdown.addEventListener('click', function() {
                     circulationOptions.classList.toggle('hidden');
@@ -373,8 +406,12 @@
                     }
                 });
 
-                circulationOptions.addEventListener('change', updateCirculationLabel);
+                circulationOptions.addEventListener('change', function() {
+                    updateCirculationLabel();
+                    updateLeaderOptions();
+                });
                 updateCirculationLabel();
+                updateLeaderOptions();
             }
 
             if (form) {

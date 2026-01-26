@@ -17,7 +17,7 @@ class IncomingLetterWorkflowService
     {
         DB::transaction(function () use ($incomingLetter, $actor) {
             $incomingLetter->update([
-                'status' => IncomingLetter::STATUS_ON_APPROVAL,
+                'status' => IncomingLetter::STATUS_DISPATCHED,
                 'authorized_status' => 'pending',
                 'updated_by' => $actor->id,
             ]);
@@ -73,7 +73,7 @@ class IncomingLetterWorkflowService
             $isApprover = $actor->hasRole('approver');
             $isEoCorpAffairActor = $this->isEoCorpAffairActor($actor);
 
-            if ($incomingLetter->status === IncomingLetter::STATUS_ON_APPROVAL) {
+            if ($incomingLetter->authorized_status === 'pending' || $incomingLetter->status === IncomingLetter::STATUS_ON_APPROVAL) {
                 if (!$isAdmin && !$isEoCorpAffairActor) {
                     abort(403, 'Approval EO Corp Affair hanya untuk checker/approver dari direktorat Corporate Secretary.');
                 }
@@ -202,6 +202,9 @@ class IncomingLetterWorkflowService
             // pastiin yang update itu direktorat yang sama
             if ($incomingLetter->target_directorate_id && $actor->directorate_id !== $incomingLetter->target_directorate_id) {
                 abort(403, 'Bukan direktorat tujuan surat ini.');
+            }
+            if ($incomingLetter->authorized_status !== 'authorized') {
+                abort(403, 'Surat belum disetujui EO Corp Affair.');
             }
 
             $incomingLetter->update([
