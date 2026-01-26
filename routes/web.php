@@ -37,6 +37,7 @@ Route::middleware(['auth'])->group(function () {
             Route::post('/{incomingLetter}/circulate', [IncomingLetterController::class, 'circulate'])->middleware('permission:corsec.update')->name('circulate');
             Route::post('/{incomingLetter}/approval', [IncomingLetterController::class, 'approvalAction'])->middleware('permission:corsec.authorize')->name('approval.action');
             Route::post('/{incomingLetter}/directorate-update', [IncomingLetterController::class, 'directorateUpdate'])->middleware('permission:corsec.update')->name('directorate.update');
+            Route::post('/{incomingLetter}/monitoring', [IncomingLetterController::class, 'addMonitoringDirectorates'])->middleware('permission:corsec.update')->name('monitoring.add');
             Route::post('/{incomingLetter}/verify', [IncomingLetterController::class, 'verifyAction'])->middleware('permission:corsec.authorize')->name('verify.action');
             Route::post('/{incomingLetter}/note', [IncomingLetterController::class, 'directorNote'])->middleware('permission:corsec.update')->name('director.note');
             // DELETE (pakai model binding biar ga tabrakan)

@@ -68,13 +68,23 @@ class IncomingLetterController extends Controller
         // scope akses: selain admin/corsec, direktorat cuma liat yg ditargetkan ke directoratedia
         $user = Auth::user();
         if (!$user->hasRole('administrator')) {
+            $directorateId = $user->directorate_id ?? $user->directorateid;
+            $isEoCorpAffairActor = $this->isEoCorpAffairActor($user);
             // kalau user bukan corsec directorate (asumsi corsec = directoratetertentu -> nanti bisa refine)
             // simple rule: user boleh lihat kalau:
             // - dia creator
             // - atau target directorate= directorateuser
-            $q->where(function ($w) use ($user) {
+            $q->where(function ($w) use ($user, $directorateId, $isEoCorpAffairActor) {
                 $w->where('created_by', $user->id)
-                    ->orWhere('target_directorateid', $user->directorateid);
+                    ->orWhere('target_directorate_id', $user->directorate_id ?? $user->directorateid);
+                if (!empty($directorateId)) {
+                    $w->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
+                        $circulationQuery->where('directorate_id', $directorateId);
+                    });
+                }
+                if ($isEoCorpAffairActor) {
+                    $w->orWhereNotNull('id');
+                }
             });
         }
 
@@ -242,6 +252,21 @@ class IncomingLetterController extends Controller
             'attachables.attachment',
             'comments.createdBy',
         ]);
+
+        $user = Auth::user();
+        if ($user && !$user->hasRole('administrator')) {
+            $directorateId = $user->directorate_id ?? $user->directorateid;
+            $isCreator = (int) $incomingLetter->created_by === (int) $user->id;
+            $isTargetDirectorate = $directorateId && (int) $incomingLetter->target_directorate_id === (int) $directorateId;
+            $isCirculationDirectorate = $directorateId &&
+                $incomingLetter->circulationDirectorates?->contains('id', (int) $directorateId);
+            $isEoCorpAffairActor = $this->isEoCorpAffairActor($user);
+            $canEoCorpAffairSee = $isEoCorpAffairActor;
+
+            if (!$isCreator && !$isTargetDirectorate && !$isCirculationDirectorate && !$canEoCorpAffairSee) {
+                abort(403, 'Anda tidak memiliki akses untuk melihat surat ini.');
+            }
+        }
 
         $approvals = Approval::query()
             ->where('approvable_type', IncomingLetter::class)
@@ -428,9 +453,19 @@ class IncomingLetterController extends Controller
 
             // scope akses (copy dari index lo, biar konsisten)
             if (!$user->hasRole('administrator')) {
-                $query->where(function ($w) use ($user) {
+                $directorateId = $user->directorate_id ?? $user->directorateid;
+                $isEoCorpAffairActor = $this->isEoCorpAffairActor($user);
+                $query->where(function ($w) use ($user, $directorateId, $isEoCorpAffairActor) {
                     $w->where('created_by', $user->id)
-                        ->orWhere('target_directorate_id', $user->directorate_id);
+                        ->orWhere('target_directorate_id', $user->directorate_id ?? $user->directorateid);
+                    if (!empty($directorateId)) {
+                        $w->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
+                            $circulationQuery->where('directorate_id', $directorateId);
+                        });
+                    }
+                    if ($isEoCorpAffairActor) {
+                        $w->orWhereNotNull('id');
+                    }
                 });
             }
 
@@ -646,16 +681,30 @@ class IncomingLetterController extends Controller
             'target_date' => ['nullable', 'date'],
             'followup_action' => ['required', 'string', 'max:100'],
             'followup_note' => ['nullable', 'string'],
-            'followup_meeting_participants' => ['nullable', 'string'],
+            'followup_meeting_participants' => ['nullable', 'array'],
+            'followup_meeting_participants.*' => ['nullable', 'exists:corsec_directorates,id'],
+            'followup_meeting_time' => ['nullable', 'date_format:H:i'],
             'followup_meeting_date' => ['nullable', 'date'],
             'followup_meeting_location' => ['nullable', 'string'],
             'followup_response_target_date' => ['nullable', 'date'],
-            'followup_social_participants' => ['nullable', 'string'],
+            'followup_social_material' => ['nullable', 'string'],
+            'followup_social_note' => ['nullable', 'string'],
+            'followup_social_participants' => ['nullable', 'array'],
+            'followup_social_participants.*' => ['nullable', 'exists:corsec_directorates,id'],
             'followup_social_date' => ['nullable', 'date'],
             'followup_social_location' => ['nullable', 'string'],
-            'followup_social_directorate' => ['nullable', 'string'],
-            'followup_invitation_positions' => ['nullable', 'string'],
-            'followup_review_target_date' => ['nullable', 'date'],
+            'followup_social_directorate' => ['nullable', 'array'],
+            'followup_social_directorate.*' => ['nullable', 'exists:corsec_directorates,id'],
+            'followup_invitation_nik' => ['nullable', 'string', 'max:50'],
+            'followup_invitation_name' => ['nullable', 'string', 'max:150'],
+            'followup_invitation_directorate' => ['nullable', 'string', 'max:150'],
+            'followup_invitation_position' => ['nullable', 'string', 'max:150'],
+            'followup_invitation_registration' => ['nullable', 'in:sudah,belum'],
+            'followup_invitation_note' => ['nullable', 'string'],
+            'followup_review_regulation_number' => ['nullable', 'string', 'max:150'],
+            'followup_review_regulation_title' => ['nullable', 'string', 'max:255'],
+            'followup_review_upload_date' => ['nullable', 'date'],
+            'followup_review_note' => ['nullable', 'string'],
             'submit_for_approval' => ['nullable', 'boolean'],
         ];
 
@@ -673,6 +722,7 @@ class IncomingLetterController extends Controller
             'meeting' => [
                 'participants' => $request->followup_meeting_participants,
                 'date' => $request->followup_meeting_date,
+                'time' => $request->followup_meeting_time,
                 'location' => $request->followup_meeting_location,
             ],
             'response_letter' => [
@@ -683,30 +733,49 @@ class IncomingLetterController extends Controller
                 'date' => $request->followup_social_date,
                 'location' => $request->followup_social_location,
                 'coordinated_directorate' => $request->followup_social_directorate,
+                'material' => $request->followup_social_material,
+                'note' => $request->followup_social_note,
             ],
             'invitation' => [
-                'positions' => $request->followup_invitation_positions,
+                'nik' => $request->followup_invitation_nik,
+                'name' => $request->followup_invitation_name,
+                'directorate' => $request->followup_invitation_directorate,
+                'position' => $request->followup_invitation_position,
+                'registration' => $request->followup_invitation_registration,
+                'note' => $request->followup_invitation_note,
             ],
             'review' => [
-                'target_date' => $request->followup_review_target_date,
+                'regulation_number' => $request->followup_review_regulation_number,
+                'regulation_title' => $request->followup_review_regulation_title,
+                'upload_date' => $request->followup_review_upload_date,
+                'note' => $request->followup_review_note,
             ],
             default => [],
         };
 
-        if ($followupAction === 'meeting' && (!$request->followup_meeting_participants || !$request->followup_meeting_date)) {
+        if ($followupAction === 'meeting' && (
+                !$request->followup_meeting_participants ||
+                count((array) $request->followup_meeting_participants) === 0 ||
+                !$request->followup_meeting_date ||
+                !$request->followup_meeting_time
+            )) {
             return back()->withErrors(['followup_action' => 'Detail meeting wajib diisi.'])->withInput();
         }
         if ($followupAction === 'response_letter' && !$request->followup_response_target_date) {
             return back()->withErrors(['followup_action' => 'Target tanggal surat jawaban wajib diisi.'])->withInput();
         }
-        if ($followupAction === 'socialization' && (!$request->followup_social_participants || !$request->followup_social_date)) {
+        if ($followupAction === 'socialization' && (
+                !$request->followup_social_participants ||
+                count((array) $request->followup_social_participants) === 0 ||
+                !$request->followup_social_date
+            )) {
             return back()->withErrors(['followup_action' => 'Detail sosialisasi wajib diisi.'])->withInput();
         }
-        if ($followupAction === 'invitation' && !$request->followup_invitation_positions) {
+        if ($followupAction === 'invitation' && (!$request->followup_invitation_nik || !$request->followup_invitation_name)) {
             return back()->withErrors(['followup_action' => 'Detail peserta undangan wajib diisi.'])->withInput();
         }
-        if ($followupAction === 'review' && !$request->followup_review_target_date) {
-            return back()->withErrors(['followup_action' => 'Target update sisdur wajib diisi.'])->withInput();
+        if ($followupAction === 'review' && (!$request->followup_review_regulation_number || !$request->followup_review_regulation_title || !$request->followup_review_upload_date)) {
+            return back()->withErrors(['followup_action' => 'Detail review/new ketentuan wajib diisi.'])->withInput();
         }
 
         $this->workflow->directorateUpdate(
@@ -756,5 +825,73 @@ class IncomingLetterController extends Controller
         ]);
 
         return back()->with('success', 'Catatan direksi tersimpan.');
+    }
+
+    public function addMonitoringDirectorates(Request $request, IncomingLetter $incomingLetter)
+    {
+        $user = Auth::user();
+        $directorateId = $user?->directorate_id ?? $user?->directorateid;
+        if (!$user || (!$user->hasRole('administrator') && (int) $incomingLetter->target_directorate_id !== (int) $directorateId)) {
+            abort(403, 'Hanya leader direktorat yang dapat menambahkan monitoring.');
+        }
+
+        $request->validate([
+            'monitoring_directorate_id' => ['required', 'exists:corsec_directorates,id'],
+            'monitoring_note' => ['nullable', 'string'],
+        ]);
+
+        $newIds = array_values(array_filter([(int) $request->input('monitoring_directorate_id')]));
+        if (count($newIds) === 0) {
+            return back()->withErrors(['monitoring_directorate_id' => 'Pilih minimal satu direktorat.'])->withInput();
+        }
+
+        $incomingLetter->circulationDirectorates()->syncWithoutDetaching($newIds);
+
+        $note = $request->string('monitoring_note')->toString();
+        if ($note !== '') {
+            Comment::create([
+                'commentable_type' => IncomingLetter::class,
+                'commentable_id' => $incomingLetter->id,
+                'body' => '[MONITORING] ' . $note,
+                'created_by' => $user->id,
+            ]);
+        }
+
+        $users = User::query()
+            ->whereIn('directorate_id', $newIds)
+            ->get();
+
+        if ($users->isNotEmpty()) {
+            Notification::send($users, new IncomingLetterDirectorateNotification($incomingLetter, $user));
+        }
+
+        return back()->with('success', 'Direktorat monitoring berhasil ditambahkan.');
+    }
+
+    private function isEoCorpAffairActor(?User $user): bool
+    {
+        if (!$user || !$user->hasRole(['checker', 'approver'])) {
+            return false;
+        }
+
+        $eoDirectorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+        if ($eoDirectorateCode === '') {
+            $eoDirectorateCode = '';
+        }
+
+        $user->loadMissing('directorate');
+        $directorateCode = $user->directorate?->code;
+        $directorateName = $user->directorate?->name;
+
+        if ($directorateCode && $eoDirectorateCode !== '' && $directorateCode === $eoDirectorateCode) {
+            return true;
+        }
+
+        if ($directorateName) {
+            $normalized = Str::lower($directorateName);
+            return Str::contains($normalized, 'corporate secretary');
+        }
+
+        return false;
     }
 }
