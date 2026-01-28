@@ -13,28 +13,61 @@
         $isApprover = $user?->hasRole('approver');
         $eoDirectorateCode = config('corsec.eo_corp_affair_directorate_code', '');
         $isEoCorpAffairDirectorate =
-            $user &&
-            $eoDirectorateCode !== '' &&
-            $user->directorate?->code === $eoDirectorateCode;
+            $user && $eoDirectorateCode !== '' && $user->directorate?->code === $eoDirectorateCode;
         $isEoCorpAffairActor = $isEoCorpAffairDirectorate && ($isChecker || $isApprover);
         $isTargetDirectorate =
             $user &&
             $incomingLetter->target_directorate_id &&
             (int) $user->directorate_id === (int) $incomingLetter->target_directorate_id;
         $isMonitoringDirectorate =
-            $user &&
-            $incomingLetter->circulationDirectorates?->contains('id', (int) $user->directorate_id);
+            $user && $incomingLetter->circulationDirectorates?->contains('id', (int) $user->directorate_id);
         $canDirectorateUpdate =
             in_array($status, ['dispatched', 'in_progress', 'returned'], true) &&
             !$isEoCorpAffairActor &&
             ($isAdmin || ($isTargetDirectorate && $incomingLetter->authorized_status === 'authorized'));
-        $canCheckerApproval =
-            (($incomingLetter->authorized_status === 'pending' || in_array($status, ['on_approval', 'waiting_verification'], true)) &&
-                ($isAdmin || $isEoCorpAffairActor));
         $checkerApproved =
-            $approvals->where('status', 'approved')->where('note', 'EO+DD Direktorat - Checker Approved')->count() > 0;
-        $canCheckerDirApproval = $status === 'waiting_dir_approval' && !$checkerApproved && ($isAdmin || $isChecker);
-        $canApproverApproval = $status === 'waiting_dir_approval' && $checkerApproved && ($isAdmin || $isApprover);
+            $approvals
+                ->where('status', 'approved')
+                ->filter(function ($approval) {
+                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
+                })
+                ->count() > 0;
+        $userHasEoDirApproval =
+            $user &&
+            $approvals
+                ->where('acted_by', $user->id)
+                ->filter(function ($approval) {
+                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Approved') ||
+                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Returned');
+                })
+                ->count() > 0;
+        $userHasDdDirApproval =
+            $user &&
+            $approvals
+                ->where('acted_by', $user->id)
+                ->filter(function ($approval) {
+                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'DD Direktorat Approved') ||
+                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'DD Direktorat Returned');
+                })
+                ->count() > 0;
+        $userHasEoCorpAffairApproval =
+            $user &&
+            $approvals
+                ->where('acted_by', $user->id)
+                ->filter(function ($approval) {
+                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Corp Affair Approved') ||
+                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Corp Affair Returned');
+                })
+                ->count() > 0;
+        $canCheckerDirApproval =
+            $status === 'waiting_dir_approval' && !$checkerApproved && ($isAdmin || $isChecker) && !$userHasEoDirApproval;
+        $canApproverApproval =
+            $status === 'waiting_dir_approval' && $checkerApproved && ($isAdmin || $isApprover) && !$userHasDdDirApproval;
+        $canCheckerApproval =
+            ($incomingLetter->authorized_status === 'pending' ||
+                in_array($status, ['on_approval', 'waiting_verification'], true)) &&
+            ($isAdmin || $isEoCorpAffairActor) &&
+            !$userHasEoCorpAffairApproval;
         $statusSteps = [
             'draft' => 'Draft',
             'on_approval' => 'On Approval',
@@ -48,6 +81,8 @@
         ];
         $incomingFiles = $incomingLetter->attachables?->where('category', 'incoming')->values() ?? collect();
         $evidenceFiles = $incomingLetter->attachables?->where('category', 'evidence')->values() ?? collect();
+        $socialMaterialFiles =
+            $incomingLetter->attachables?->where('category', 'social_material')->values() ?? collect();
         $directorateMap = $directorates?->keyBy('id') ?? collect();
     @endphp
     <div class="grid gap-5 lg:gap-7.5">
@@ -148,22 +183,19 @@
                     <h3 class="card-title">Tambah Monitoring Direktorat</h3>
                 </div>
                 <div class="card-body">
-                    @php
-                        $currentCirculationIds = $incomingLetter->circulationDirectorates?->pluck('id')->map('strval')->toArray() ?? [];
-                    @endphp
                     <form method="POST" action="{{ route('letter.incoming.monitoring.add', $incomingLetter) }}"
-                        class="grid gap-4">
+                        class="grid gap-4 js-ajax-form" data-form-type="monitoring">
                         @csrf
                         <div class="flex flex-col">
                             <label class="form-label">Direktorat Monitoring <span class="text-danger">*</span></label>
-                            <select class="select @error('monitoring_directorate_id') border-danger bg-danger-light @enderror"
+                            <select
+                                class="select @error('monitoring_directorate_id') border-danger bg-danger-light @enderror"
                                 name="monitoring_directorate_id" required>
                                 <option value="">- Pilih Direktorat -</option>
                                 @foreach ($directorates as $directorate)
-                                    <option value="{{ $directorate->id }}"
-                                        {{ in_array((string) $directorate->id, $currentCirculationIds, true) ? 'selected' : '' }}>
-                                        {{ $directorate->name }}
-                                    </option>
+                                    @if ((int) $directorate->id !== (int) $incomingLetter->target_directorate_id)
+                                        <option value="{{ $directorate->id }}">{{ $directorate->name }}</option>
+                                    @endif
                                 @endforeach
                             </select>
                             @error('monitoring_directorate_id')
@@ -199,7 +231,9 @@
                         <div class="flex flex-wrap gap-2 justify-end">
                             @foreach ($statusSteps as $key => $label)
                                 @php
-                                    $isActive = $status === $key || ($key === 'on_approval' && $incomingLetter->authorized_status === 'pending');
+                                    $isActive =
+                                        $status === $key ||
+                                        ($key === 'on_approval' && $incomingLetter->authorized_status === 'pending');
                                     $badgeClass = $isActive ? 'badge-success' : 'badge-light';
                                 @endphp
                                 <span class="badge {{ $badgeClass }}">{{ $label }}</span>
@@ -302,7 +336,8 @@
                                 } elseif (!is_null($participantsValue)) {
                                     $participantNames = [trim((string) $participantsValue)];
                                 }
-                                $participantLabel = count($participantNames) > 0 ? implode(', ', $participantNames) : '-';
+                                $participantLabel =
+                                    count($participantNames) > 0 ? implode(', ', $participantNames) : '-';
                             @endphp
                             <div class="flex justify-between items-center">
                                 <span class="text-gray-600">Peserta:</span>
@@ -337,7 +372,8 @@
                                 } elseif (!is_null($participantsValue)) {
                                     $participantNames = [trim((string) $participantsValue)];
                                 }
-                                $participantLabel = count($participantNames) > 0 ? implode(', ', $participantNames) : '-';
+                                $participantLabel =
+                                    count($participantNames) > 0 ? implode(', ', $participantNames) : '-';
                                 $coordinatedValue = $followupDetail['coordinated_directorate'] ?? [];
                                 $coordinatedNames = [];
                                 if (is_array($coordinatedValue)) {
@@ -348,7 +384,8 @@
                                 } elseif (!is_null($coordinatedValue)) {
                                     $coordinatedNames = [trim((string) $coordinatedValue)];
                                 }
-                                $coordinatedLabel = count($coordinatedNames) > 0 ? implode(', ', $coordinatedNames) : '-';
+                                $coordinatedLabel =
+                                    count($coordinatedNames) > 0 ? implode(', ', $coordinatedNames) : '-';
                             @endphp
                             <div class="flex justify-between items-center">
                                 <span class="text-gray-600">Peserta:</span>
@@ -364,7 +401,26 @@
                             </div>
                             <div class="flex justify-between items-center">
                                 <span class="text-gray-600">Bahan:</span>
-                                <span class="font-medium">{{ $followupDetail['material'] ?? '-' }}</span>
+                                <span class="font-medium">
+                                    @if ($socialMaterialFiles->count() > 0)
+                                        <span class="flex flex-col gap-1 items-end">
+                                            @foreach ($socialMaterialFiles as $material)
+                                                @php
+                                                    $attachment = $material->attachment;
+                                                @endphp
+                                                @if ($attachment)
+                                                    <a class="text-primary hover:underline"
+                                                        href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($attachment->path) }}"
+                                                        target="_blank" rel="noopener">
+                                                        {{ $attachment->original_name ?? $attachment->file_name }}
+                                                    </a>
+                                                @endif
+                                            @endforeach
+                                        </span>
+                                    @else
+                                        {{ $followupDetail['material'] ?? '-' }}
+                                    @endif
+                                </span>
                             </div>
                             <div class="flex justify-between items-center">
                                 <span class="text-gray-600">Koordinasi Direktorat:</span>
@@ -375,6 +431,18 @@
                                 <span class="font-medium">{{ $followupDetail['note'] ?? '-' }}</span>
                             </div>
                         @elseif ($incomingLetter->followup_action === 'invitation')
+                            @php
+                                $invitationDirectorateValue = $followupDetail['directorate'] ?? null;
+                                $invitationDirectorateLabel = '-';
+                                if (!is_null($invitationDirectorateValue) && $invitationDirectorateValue !== '') {
+                                    $invitationDirectorateLabel = $invitationDirectorateValue;
+                                    if (is_numeric($invitationDirectorateValue)) {
+                                        $invitationDirectorateLabel =
+                                            $directorateMap->get((int) $invitationDirectorateValue)?->name ??
+                                            $invitationDirectorateValue;
+                                    }
+                                }
+                            @endphp
                             <div class="flex justify-between items-center">
                                 <span class="text-gray-600">NIK:</span>
                                 <span class="font-medium">{{ $followupDetail['nik'] ?? '-' }}</span>
@@ -385,7 +453,7 @@
                             </div>
                             <div class="flex justify-between items-center">
                                 <span class="text-gray-600">Direktorat:</span>
-                                <span class="font-medium">{{ $followupDetail['directorate'] ?? '-' }}</span>
+                                <span class="font-medium">{{ $invitationDirectorateLabel }}</span>
                             </div>
                             <div class="flex justify-between items-center">
                                 <span class="text-gray-600">Jabatan:</span>
@@ -398,7 +466,7 @@
                                 </span>
                             </div>
                             <div class="flex justify-between items-center">
-                                <span class="text-gray-600">Catatan:</span>
+                                <span class="text-gray-600">Catatan Pendaftaran:</span>
                                 <span class="font-medium">{{ $followupDetail['note'] ?? '-' }}</span>
                             </div>
                         @elseif ($incomingLetter->followup_action === 'review')
@@ -442,7 +510,8 @@
                     </div>
                     <div class="card-body">
                         <form method="POST" action="{{ route('letter.incoming.directorate.update', $incomingLetter) }}"
-                            enctype="multipart/form-data" class="grid gap-4">
+                            enctype="multipart/form-data" class="grid gap-4 js-ajax-form" data-form-type="followup"
+                            id="followup-form">
                             @csrf
                             <div class="grid gap-4 lg:grid-cols-2">
                                 <div class="flex flex-col lg:col-span-2">
@@ -467,12 +536,18 @@
                                     </select>
                                 </div>
 
-                                <div class="flex flex-col followup-field hidden" data-followup="meeting">
+                                <div class="flex flex-col followup-field hidden" data-followup="meeting"
+                                    data-field="followup_meeting_participants">
                                     <label class="form-label">Peserta Meeting <span class="text-danger">*</span></label>
                                     @php
-                                        $meetingParticipants = old('followup_meeting_participants', $incomingLetter->followup_detail['participants'] ?? []);
+                                        $meetingParticipants = old(
+                                            'followup_meeting_participants',
+                                            $incomingLetter->followup_detail['participants'] ?? [],
+                                        );
                                         if (!is_array($meetingParticipants)) {
-                                            $meetingParticipants = array_filter(array_map('trim', explode(',', (string) $meetingParticipants)));
+                                            $meetingParticipants = array_filter(
+                                                array_map('trim', explode(',', (string) $meetingParticipants)),
+                                            );
                                         }
                                         $meetingParticipantIds = array_map('strval', $meetingParticipants);
                                     @endphp
@@ -482,8 +557,8 @@
                                             style="text-align: left; justify-content: flex-start;"
                                             id="meeting-participants-dropdown">
                                             <span id="meeting-participants-selected-text"
-                                                class="block truncate text-left w-full"
-                                                style="text-align: left;">Pilih peserta...</span>
+                                                class="block truncate text-left w-full" style="text-align: left;">Pilih
+                                                peserta...</span>
                                         </button>
                                         <div id="meeting-participants-options"
                                             class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
@@ -512,7 +587,7 @@
                                         value="{{ old('followup_meeting_time', $incomingLetter->followup_detail['time'] ?? '') }}">
                                 </div>
                                 <div class="flex flex-col followup-field hidden" data-followup="meeting">
-                                    <label class="form-label">Tempat Meeting</label>
+                                    <label class="form-label">Tempat Meeting <span class="text-danger">*</span></label>
                                     <input class="input" type="text" name="followup_meeting_location"
                                         value="{{ old('followup_meeting_location', $incomingLetter->followup_detail['location'] ?? '') }}"
                                         placeholder="Lokasi...">
@@ -525,12 +600,18 @@
                                         value="{{ old('followup_response_target_date', $incomingLetter->followup_detail['target_date'] ?? '') }}">
                                 </div>
 
-                                <div class="flex flex-col followup-field hidden" data-followup="socialization">
+                                <div class="flex flex-col followup-field hidden" data-followup="socialization"
+                                    data-field="followup_social_participants">
                                     <label class="form-label">Peserta Sosialisasi <span class="text-danger">*</span></label>
                                     @php
-                                        $socialParticipants = old('followup_social_participants', $incomingLetter->followup_detail['participants'] ?? []);
+                                        $socialParticipants = old(
+                                            'followup_social_participants',
+                                            $incomingLetter->followup_detail['participants'] ?? [],
+                                        );
                                         if (!is_array($socialParticipants)) {
-                                            $socialParticipants = array_filter(array_map('trim', explode(',', (string) $socialParticipants)));
+                                            $socialParticipants = array_filter(
+                                                array_map('trim', explode(',', (string) $socialParticipants)),
+                                            );
                                         }
                                         $socialParticipantIds = array_map('strval', $socialParticipants);
                                     @endphp
@@ -540,8 +621,8 @@
                                             style="text-align: left; justify-content: flex-start;"
                                             id="social-participants-dropdown">
                                             <span id="social-participants-selected-text"
-                                                class="block truncate text-left w-full"
-                                                style="text-align: left;">Pilih peserta...</span>
+                                                class="block truncate text-left w-full" style="text-align: left;">Pilih
+                                                peserta...</span>
                                         </button>
                                         <div id="social-participants-options"
                                             class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
@@ -572,9 +653,8 @@
                                 </div>
                                 <div class="flex flex-col followup-field hidden" data-followup="socialization">
                                     <label class="form-label">Bahan Sosialisasi</label>
-                                    <input class="input" type="text" name="followup_social_material"
-                                        value="{{ old('followup_social_material', $incomingLetter->followup_detail['material'] ?? '') }}"
-                                        placeholder="Bahan sosialisasi...">
+                                    <input class="file-input" type="file" name="followup_social_material"
+                                        accept=".pdf,.jpg,.jpeg,.png">
                                 </div>
                                 <div class="flex flex-col followup-field hidden" data-followup="socialization">
                                     <label class="form-label">Koordinasi Direktorat</label>
@@ -584,7 +664,9 @@
                                             $incomingLetter->followup_detail['coordinated_directorate'] ?? [],
                                         );
                                         if (!is_array($coordinatedDirectorates)) {
-                                            $coordinatedDirectorates = array_filter(array_map('trim', explode(',', (string) $coordinatedDirectorates)));
+                                            $coordinatedDirectorates = array_filter(
+                                                array_map('trim', explode(',', (string) $coordinatedDirectorates)),
+                                            );
                                         }
                                         $coordinatedDirectorateIds = array_map('strval', $coordinatedDirectorates);
                                     @endphp
@@ -594,8 +676,8 @@
                                             style="text-align: left; justify-content: flex-start;"
                                             id="social-coordination-dropdown">
                                             <span id="social-coordination-selected-text"
-                                                class="block truncate text-left w-full"
-                                                style="text-align: left;">Pilih direktorat...</span>
+                                                class="block truncate text-left w-full" style="text-align: left;">Pilih
+                                                direktorat...</span>
                                         </button>
                                         <div id="social-coordination-options"
                                             class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
@@ -615,31 +697,34 @@
                                 </div>
                                 <div class="flex flex-col followup-field hidden" data-followup="socialization">
                                     <label class="form-label">Catatan Sosialisasi</label>
-                                    <textarea class="textarea w-full" name="followup_social_note" rows="3"
-                                        placeholder="Catatan sosialisasi...">{{ old('followup_social_note', $incomingLetter->followup_detail['note'] ?? '') }}</textarea>
+                                    <textarea class="textarea w-full" name="followup_social_note" rows="3" placeholder="Catatan sosialisasi...">{{ old('followup_social_note', $incomingLetter->followup_detail['note'] ?? '') }}</textarea>
                                 </div>
 
                                 <div class="flex flex-col followup-field hidden" data-followup="invitation">
                                     <label class="form-label">NIK <span class="text-danger">*</span></label>
                                     <input class="input" type="text" name="followup_invitation_nik"
+                                        id="followup-invitation-nik" maxlength="16" inputmode="numeric" pattern="[0-9]*"
                                         value="{{ old('followup_invitation_nik', $incomingLetter->followup_detail['nik'] ?? '') }}"
                                         placeholder="NIK peserta...">
                                 </div>
                                 <div class="flex flex-col followup-field hidden" data-followup="invitation">
                                     <label class="form-label">Nama Peserta <span class="text-danger">*</span></label>
                                     <input class="input" type="text" name="followup_invitation_name"
+                                        id="followup-invitation-name"
                                         value="{{ old('followup_invitation_name', $incomingLetter->followup_detail['name'] ?? '') }}"
                                         placeholder="Nama peserta...">
                                 </div>
                                 <div class="flex flex-col followup-field hidden" data-followup="invitation">
                                     <label class="form-label">Direktorat</label>
                                     <input class="input" type="text" name="followup_invitation_directorate"
+                                        id="followup-invitation-directorate"
                                         value="{{ old('followup_invitation_directorate', $incomingLetter->followup_detail['directorate'] ?? '') }}"
                                         placeholder="Direktorat peserta...">
                                 </div>
                                 <div class="flex flex-col followup-field hidden" data-followup="invitation">
                                     <label class="form-label">Jabatan</label>
                                     <input class="input" type="text" name="followup_invitation_position"
+                                        id="followup-invitation-position"
                                         value="{{ old('followup_invitation_position', $incomingLetter->followup_detail['position'] ?? '') }}"
                                         placeholder="Jabatan peserta...">
                                 </div>
@@ -659,8 +744,7 @@
                                 </div>
                                 <div class="flex flex-col followup-field hidden" data-followup="invitation">
                                     <label class="form-label">Catatan</label>
-                                    <textarea class="textarea w-full" name="followup_invitation_note" rows="3"
-                                        placeholder="Catatan peserta...">{{ old('followup_invitation_note', $incomingLetter->followup_detail['note'] ?? '') }}</textarea>
+                                    <textarea class="textarea w-full" name="followup_invitation_note" rows="3" placeholder="Catatan peserta...">{{ old('followup_invitation_note', $incomingLetter->followup_detail['note'] ?? '') }}</textarea>
                                 </div>
 
                                 <div class="flex flex-col followup-field hidden" data-followup="review">
@@ -682,8 +766,7 @@
                                 </div>
                                 <div class="flex flex-col followup-field hidden" data-followup="review">
                                     <label class="form-label">Catatan</label>
-                                    <textarea class="textarea w-full" name="followup_review_note" rows="3"
-                                        placeholder="Catatan review...">{{ old('followup_review_note', $incomingLetter->followup_detail['note'] ?? '') }}</textarea>
+                                    <textarea class="textarea w-full" name="followup_review_note" rows="3" placeholder="Catatan review...">{{ old('followup_review_note', $incomingLetter->followup_detail['note'] ?? '') }}</textarea>
                                 </div>
 
                                 <div class="flex flex-col">
@@ -730,7 +813,7 @@
                                 <tr>
                                     <th class="min-w-[160px]">Status</th>
                                     <th class="min-w-[180px]">Oleh</th>
-                                    <th class="min-w-[220px]">Catatan</th>
+                                    <th class="min-w-[240px]">Catatan</th>
                                     <th class="min-w-[160px]">Waktu</th>
                                 </tr>
                             </thead>
@@ -745,8 +828,39 @@
                                                     class="text-gray-500 text-xs">({{ $approval->actor->directorate->name }})</span>
                                             @endif
                                         </td>
-                                        <td>{{ $approval->note ?? '-' }}</td>
-                                        <td>{{ $approval->acted_at ? $approval->acted_at->format('Y-m-d H:i:s') : '-' }}
+                                        @php
+                                            $noteText = $approval->note ?? '';
+                                            $label = '';
+                                            $userNote = '';
+
+                                            $knownLabels = [
+                                                'EO Direktorat Approved',
+                                                'EO Direktorat Returned',
+                                                'DD Direktorat Approved',
+                                                'DD Direktorat Returned',
+                                                'EO Corp Affair Approved',
+                                                'EO Corp Affair Returned',
+                                                'Verifikasi EO Corp Affair',
+                                            ];
+
+                                            foreach ($knownLabels as $known) {
+                                                if (\Illuminate\Support\Str::startsWith($noteText, $known)) {
+                                                    $label = $known;
+                                                    $userNote = trim((string) \Illuminate\Support\Str::after($noteText, $known));
+                                                    if (\Illuminate\Support\Str::startsWith($userNote, '-')) {
+                                                        $userNote = trim((string) \Illuminate\Support\Str::after($userNote, '-'));
+                                                    }
+                                                    break;
+                                                }
+                                            }
+
+                                            if ($label === '' && $noteText !== '') {
+                                                $userNote = $noteText;
+                                            }
+                                        @endphp
+                                        <td>{{ $noteText !== '' ? $noteText : '-' }}</td>
+                                        <td>
+                                            {{ $approval->acted_at ? $approval->acted_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s') : '-' }}
                                         </td>
                                     </tr>
                                 @endforeach
@@ -763,9 +877,11 @@
                     <h3 class="card-title">Approval</h3>
                 </div>
                 <div class="card-body">
-                    @if (($incomingLetter->authorized_status === 'pending' || $incomingLetter->status === 'on_approval') && $canCheckerApproval)
+                    @if (
+                        ($incomingLetter->authorized_status === 'pending' || $incomingLetter->status === 'on_approval') &&
+                            $canCheckerApproval)
                         <form method="POST" action="{{ route('letter.incoming.approval.action', $incomingLetter) }}"
-                            class="grid gap-4">
+                            class="grid gap-4 js-ajax-form" data-form-type="approval">
                             @csrf
                             <div class="flex flex-col">
                                 <label class="form-label">Catatan (opsional)</label>
@@ -782,7 +898,7 @@
                         </form>
                     @elseif ($incomingLetter->status === 'waiting_dir_approval' && ($canCheckerDirApproval || $canApproverApproval))
                         <form method="POST" action="{{ route('letter.incoming.approval.action', $incomingLetter) }}"
-                            class="grid gap-4">
+                            class="grid gap-4 js-ajax-form" data-form-type="approval">
                             @csrf
                             <div class="text-sm text-gray-500">
                                 {{ $canCheckerDirApproval ? 'Approval EO' : 'Approval DD' }}
@@ -802,7 +918,7 @@
                         </form>
                     @elseif ($incomingLetter->status === 'waiting_verification' && $canCheckerApproval)
                         <form method="POST" action="{{ route('letter.incoming.verify.action', $incomingLetter) }}"
-                            class="grid gap-4">
+                            class="grid gap-4 js-ajax-form" data-form-type="verify">
                             @csrf
                             <div class="flex flex-col">
                                 <label class="form-label">Catatan (opsional)</label>
@@ -827,6 +943,7 @@
 @endsection
 
 @push('scripts')
+    <script src="{{ asset('js/corsec/incoming-validation.js') }}"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const followupSelect = document.getElementById('followup_action');
@@ -914,7 +1031,8 @@
                     const label = item.closest('label');
                     return label ? label.textContent.trim() : '';
                 }).filter(Boolean);
-                socialCoordinationSelectedText.textContent = names.length > 0 ? names.join(', ') : 'Pilih direktorat...';
+                socialCoordinationSelectedText.textContent = names.length > 0 ? names.join(', ') :
+                    'Pilih direktorat...';
             }
 
             if (socialCoordinationDropdown && socialCoordinationOptions) {
@@ -931,6 +1049,230 @@
 
                 socialCoordinationOptions.addEventListener('change', updateSocialCoordinationLabel);
                 updateSocialCoordinationLabel();
+            }
+
+            const invitationNikInput = document.getElementById('followup-invitation-nik');
+            const invitationNameInput = document.getElementById('followup-invitation-name');
+            const invitationDirectorateInput = document.getElementById('followup-invitation-directorate');
+            const invitationPositionInput = document.getElementById('followup-invitation-position');
+            const invitationLookupUrl = @json(route('letter.incoming.lookup-user'));
+            let invitationLookupTimer = null;
+
+            function fillInvitationFields(data) {
+                if (!data) return;
+                if (invitationNameInput && data.name) {
+                    invitationNameInput.value = data.name;
+                }
+                if (invitationDirectorateInput) {
+                    if (data.directorate_name) {
+                        invitationDirectorateInput.value = data.directorate_name;
+                    } else if (data.directorate_id) {
+                        invitationDirectorateInput.value = String(data.directorate_id);
+                    }
+                }
+                if (invitationPositionInput && data.position) {
+                    invitationPositionInput.value = data.position;
+                }
+            }
+
+            function lookupInvitationUser(nik) {
+                if (!invitationLookupUrl || !nik) return;
+                fetch(`${invitationLookupUrl}?nik=${encodeURIComponent(nik)}`, {
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    })
+                    .then((response) => (response.ok ? response.json() : null))
+                    .then((payload) => {
+                        if (payload && payload.success) {
+                            fillInvitationFields(payload.data);
+                        }
+                    })
+                    .catch(() => {});
+            }
+
+            if (invitationNikInput) {
+                invitationNikInput.addEventListener('input', function(event) {
+                    const nik = event.target.value.trim();
+                    if (invitationLookupTimer) {
+                        clearTimeout(invitationLookupTimer);
+                    }
+                    if (!nik) {
+                        return;
+                    }
+                    invitationLookupTimer = setTimeout(() => {
+                        lookupInvitationUser(nik);
+                    }, 400);
+                });
+            }
+
+            if (window.jQuery && window.CorsecIncomingValidation) {
+                const $document = window.jQuery(document);
+                const {
+                    clearValidation,
+                    showFieldError,
+                } = window.CorsecIncomingValidation;
+
+                function validateMonitoringForm($form) {
+                    const errors = {};
+                    const value = $form.find('[name="monitoring_directorate_id"]').val();
+                    if (!value) {
+                        errors.monitoring_directorate_id = 'Silahkan pilih minimal 1.';
+                    }
+                    return errors;
+                }
+
+                function validateFollowupForm($form) {
+                    const errors = {};
+                    const action = $form.find('[name="followup_action"]').val();
+                    if (!action) {
+                        errors.followup_action = 'Field ini tidak boleh kosong.';
+                        return errors;
+                    }
+
+                    if (action === 'meeting') {
+                        const participantsCount = $form.find(
+                            '[name="followup_meeting_participants[]"]:checked'
+                        ).length;
+                        if (participantsCount === 0) {
+                            errors.followup_meeting_participants = 'Silahkan pilih minimal 1.';
+                        }
+                        if (!$form.find('[name="followup_meeting_date"]').val()) {
+                            errors.followup_meeting_date = 'Field ini tidak boleh kosong.';
+                        }
+                        if (!$form.find('[name="followup_meeting_time"]').val()) {
+                            errors.followup_meeting_time = 'Field ini tidak boleh kosong.';
+                        }
+                        if (!$form.find('[name="followup_meeting_location"]').val()) {
+                            errors.followup_meeting_location = 'Field ini tidak boleh kosong.';
+                        }
+                    }
+
+                    if (action === 'response_letter') {
+                        if (!$form.find('[name="followup_response_target_date"]').val()) {
+                            errors.followup_response_target_date = 'Field ini tidak boleh kosong.';
+                        }
+                    }
+
+                    if (action === 'socialization') {
+                        const participantsCount = $form.find(
+                            '[name="followup_social_participants[]"]:checked'
+                        ).length;
+                        if (participantsCount === 0) {
+                            errors.followup_social_participants = 'Silahkan pilih minimal 1.';
+                        }
+                        if (!$form.find('[name="followup_social_date"]').val()) {
+                            errors.followup_social_date = 'Field ini tidak boleh kosong.';
+                        }
+                    }
+
+                    if (action === 'invitation') {
+                        if (!$form.find('[name="followup_invitation_nik"]').val()) {
+                            errors.followup_invitation_nik = 'Field ini tidak boleh kosong.';
+                        }
+                        if (!$form.find('[name="followup_invitation_name"]').val()) {
+                            errors.followup_invitation_name = 'Field ini tidak boleh kosong.';
+                        }
+                    }
+
+                    if (action === 'review') {
+                        if (!$form.find('[name="followup_review_regulation_number"]').val()) {
+                            errors.followup_review_regulation_number = 'Field ini tidak boleh kosong.';
+                        }
+                        if (!$form.find('[name="followup_review_regulation_title"]').val()) {
+                            errors.followup_review_regulation_title = 'Field ini tidak boleh kosong.';
+                        }
+                        if (!$form.find('[name="followup_review_upload_date"]').val()) {
+                            errors.followup_review_upload_date = 'Field ini tidak boleh kosong.';
+                        }
+                    }
+
+                    const submitForApproval = $form.data('submitForApproval');
+                    if (submitForApproval === '1') {
+                        const filesInput = $form.find('[name="evidence_files[]"]')[0];
+                        if (!filesInput || filesInput.files.length === 0) {
+                            errors['evidence_files[]'] = 'Harap upload file.';
+                        }
+                    }
+
+                    return errors;
+                }
+
+                $document.on('click', 'form.js-ajax-form button[type="submit"]', function() {
+                    const $form = window.jQuery(this).closest('form');
+                    const name = window.jQuery(this).attr('name');
+                    if (name) {
+                        $form.data('submitterName', name);
+                        $form.data('submitterValue', window.jQuery(this).val());
+                    }
+                    if ($form.attr('id') === 'followup-form' && name === 'submit_for_approval') {
+                        $form.data('submitForApproval', window.jQuery(this).val());
+                    }
+                });
+
+                $document.on('submit', 'form.js-ajax-form', function(event) {
+                    event.preventDefault();
+                    const $form = window.jQuery(this);
+                    const formType = $form.data('formType');
+                    clearValidation($form);
+
+                    let errors = {};
+                    if (formType === 'monitoring') {
+                        errors = validateMonitoringForm($form);
+                    }
+                    if (formType === 'followup') {
+                        errors = validateFollowupForm($form);
+                    }
+
+                    if (Object.keys(errors).length > 0) {
+                        Object.keys(errors).forEach((field) => {
+                            showFieldError($form, field, errors[field]);
+                        });
+                        return;
+                    }
+
+                    const formData = new FormData(this);
+                    const submitterName = $form.data('submitterName');
+                    const submitterValue = $form.data('submitterValue');
+                    if (submitterName) {
+                        formData.set(submitterName, submitterValue);
+                    }
+                    window.jQuery.ajax({
+                        url: $form.attr('action'),
+                        method: $form.attr('method') || 'POST',
+                        data: formData,
+                        processData: false,
+                        contentType: false,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRF-TOKEN': $form.find('input[name="_token"]').val()
+                        },
+                        success: function() {
+                            const reloadPage = () => window.location.reload();
+                            if (window.toast && typeof window.toast.success === 'function') {
+                                window.toast.success('Berhasil disimpan.');
+                                setTimeout(reloadPage, 800);
+                                return;
+                            }
+                            alert('Berhasil disimpan.');
+                            reloadPage();
+                        },
+                        error: function(xhr) {
+                            if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON
+                                .errors) {
+                                const serverErrors = xhr.responseJSON.errors;
+                                Object.keys(serverErrors).forEach((field) => {
+                                    showFieldError($form, field, serverErrors[field][
+                                        0
+                                    ]);
+                                });
+                                return;
+                            }
+                            // fallback
+                            alert('Gagal memproses. Coba lagi ya.');
+                        }
+                    });
+                });
             }
         });
     </script>

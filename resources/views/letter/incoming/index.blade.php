@@ -11,7 +11,7 @@
             data-api-url="{{ route('letter.incoming.datatables') }}" data-base-url="{{ url('letter/incoming') }}">
             <div class="flex-wrap py-5 card-header">
                 <h3 class="card-title">
-                    Surat Masuk
+                    Incoming Letters
                 </h3>
                 <div class="flex flex-wrap gap-2 lg:gap-5">
                     <div class="flex">

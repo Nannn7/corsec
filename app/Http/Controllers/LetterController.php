@@ -38,6 +38,6 @@ class LetterController extends Controller
     public function outgoing()
     {
         $this->authorizeRead();
-        return view('corsec::letter.outgoing');
+        return view('corsec::letter.outgoing.index');
     }
 }

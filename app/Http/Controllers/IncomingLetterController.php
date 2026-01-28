@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Corsec\Exports\IncomingLetterExport;
 use Modules\Corsec\Models\IncomingLetter;
@@ -27,6 +28,7 @@ use Modules\Corsec\Models\Sender;
 use Modules\Corsec\Models\LetterType;
 use Modules\Corsec\Notifications\IncomingLetterDirectorateNotification;
 use Modules\Usermanagement\Models\User;
+use Modules\Usermanagement\Models\Position;
 
 class IncomingLetterController extends Controller
 {
@@ -271,8 +273,9 @@ class IncomingLetterController extends Controller
         $approvals = Approval::query()
             ->where('approvable_type', IncomingLetter::class)
             ->where('approvable_id', $incomingLetter->id)
-            ->with(['actor.directorate'])
-            ->latest()
+            ->with(['actor.directorate', 'actor.position'])
+            ->orderByDesc('acted_at')
+            ->orderByDesc('created_at')
             ->get();
 
         $directorates = $this->getCachedDirectorates();
@@ -687,7 +690,7 @@ class IncomingLetterController extends Controller
             'followup_meeting_date' => ['nullable', 'date'],
             'followup_meeting_location' => ['nullable', 'string'],
             'followup_response_target_date' => ['nullable', 'date'],
-            'followup_social_material' => ['nullable', 'string'],
+            'followup_social_material' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
             'followup_social_note' => ['nullable', 'string'],
             'followup_social_participants' => ['nullable', 'array'],
             'followup_social_participants.*' => ['nullable', 'exists:corsec_directorates,id'],
@@ -733,7 +736,8 @@ class IncomingLetterController extends Controller
                 'date' => $request->followup_social_date,
                 'location' => $request->followup_social_location,
                 'coordinated_directorate' => $request->followup_social_directorate,
-                'material' => $request->followup_social_material,
+                'material' => $request->file('followup_social_material')?->getClientOriginalName()
+                    ?? ($incomingLetter->followup_detail['material'] ?? null),
                 'note' => $request->followup_social_note,
             ],
             'invitation' => [
@@ -754,21 +758,21 @@ class IncomingLetterController extends Controller
         };
 
         if ($followupAction === 'meeting' && (
-                !$request->followup_meeting_participants ||
-                count((array) $request->followup_meeting_participants) === 0 ||
-                !$request->followup_meeting_date ||
-                !$request->followup_meeting_time
-            )) {
+            !$request->followup_meeting_participants ||
+            count((array) $request->followup_meeting_participants) === 0 ||
+            !$request->followup_meeting_date ||
+            !$request->followup_meeting_time
+        )) {
             return back()->withErrors(['followup_action' => 'Detail meeting wajib diisi.'])->withInput();
         }
         if ($followupAction === 'response_letter' && !$request->followup_response_target_date) {
             return back()->withErrors(['followup_action' => 'Target tanggal surat jawaban wajib diisi.'])->withInput();
         }
         if ($followupAction === 'socialization' && (
-                !$request->followup_social_participants ||
-                count((array) $request->followup_social_participants) === 0 ||
-                !$request->followup_social_date
-            )) {
+            !$request->followup_social_participants ||
+            count((array) $request->followup_social_participants) === 0 ||
+            !$request->followup_social_date
+        )) {
             return back()->withErrors(['followup_action' => 'Detail sosialisasi wajib diisi.'])->withInput();
         }
         if ($followupAction === 'invitation' && (!$request->followup_invitation_nik || !$request->followup_invitation_name)) {
@@ -786,10 +790,65 @@ class IncomingLetterController extends Controller
             followupDetail: $followupDetail,
             followupNote: $request->followup_note,
             evidenceFiles: $request->file('evidence_files', []),
+            socialMaterialFile: $request->file('followup_social_material'),
             submitForApproval: $submitForApproval
         );
 
         return back()->with('success', 'Update tindak lanjut berhasil disimpan.');
+    }
+
+    public function lookupUserByNik(Request $request)
+    {
+        $validated = $request->validate([
+            'nik' => ['required', 'string', 'max:50'],
+        ]);
+
+        $nik = trim($validated['nik']);
+        if ($nik === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'NIK wajib diisi.',
+            ], 422);
+        }
+
+        $user = User::query()
+            ->with(['directorate', 'position', 'roles'])
+            ->where('nik', $nik)
+            ->first();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Data user tidak ditemukan.',
+            ], 404);
+        }
+
+        $position = $user->position;
+        if (!$position) {
+            $positionIds = $user->roles
+                ->pluck('position_id')
+                ->filter()
+                ->unique()
+                ->values();
+
+            if ($positionIds->isNotEmpty()) {
+                $position = Position::query()
+                    ->whereIn('id', $positionIds)
+                    ->orderByDesc('level')
+                    ->first();
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'nik' => $user->nik,
+                'name' => $user->name,
+                'directorate_id' => $user->directorate?->id,
+                'directorate_name' => $user->directorate?->name,
+                'position' => $position?->name,
+            ],
+        ]);
     }
 
     // EO Corp Affair verifikasi selesai

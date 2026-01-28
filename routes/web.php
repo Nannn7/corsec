@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Corsec\Http\Controllers\DashboardController;
 use Modules\Corsec\Http\Controllers\LetterController;
 use Modules\Corsec\Http\Controllers\IncomingLetterController;
+use Modules\Corsec\Http\Controllers\OutgoingLetterController;
 use Modules\Corsec\Http\Controllers\MeetingController;
 use Modules\Corsec\Http\Controllers\WorkplanController;
 use Modules\Corsec\Http\Controllers\ApproverController;
@@ -25,6 +26,7 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/datatables', [IncomingLetterController::class, 'datatables'])->middleware('permission:corsec.read')->name('datatables');
             Route::get('/export', [IncomingLetterController::class, 'export'])->middleware('permission:corsec.export')->name('export');
             Route::post('/delete-multiple', [IncomingLetterController::class, 'deleteMultiple'])->middleware('permission:corsec.delete')->name('delete_multiple');
+            Route::get('/lookup-user', [IncomingLetterController::class, 'lookupUserByNik'])->middleware('permission:corsec.update')->name('lookup-user');
             // CREATE
             Route::get('/create', [IncomingLetterController::class, 'create'])->middleware('permission:corsec.create')->name('create');
             Route::post('/', [IncomingLetterController::class, 'store'])->middleware('permission:corsec.create')->name('store');
@@ -44,6 +46,22 @@ Route::middleware(['auth'])->group(function () {
             Route::delete('/{incomingLetter}', [IncomingLetterController::class, 'destroy'])->middleware('permission:corsec.delete')->name('destroy');
         });
         Route::get('/outgoing', [LetterController::class, 'outgoing'])->name('outgoing.index');
+    });
+
+    Route::prefix('letter/outgoing')->name('letter.outgoing.')->group(function () {
+        Route::get('/', [OutgoingLetterController::class, 'index'])->middleware('permission:corsec.read')->name('index');
+        Route::get('/datatables', [OutgoingLetterController::class, 'datatables'])->middleware('permission:corsec.read')->name('datatables');
+        Route::get('/create', [OutgoingLetterController::class, 'create'])->middleware('permission:corsec.create')->name('create');
+        Route::post('/', [OutgoingLetterController::class, 'store'])->middleware('permission:corsec.create')->name('store');
+        Route::get('/{outgoingLetter}', [OutgoingLetterController::class, 'show'])->middleware('permission:corsec.read')->name('show');
+        Route::get('/{outgoingLetter}/edit', [OutgoingLetterController::class, 'edit'])->middleware('permission:corsec.update')->name('edit');
+        Route::put('/{outgoingLetter}', [OutgoingLetterController::class, 'update'])->middleware('permission:corsec.update')->name('update');
+        Route::post('/{outgoingLetter}/submit', [OutgoingLetterController::class, 'submit'])->middleware('permission:corsec.update')->name('submit');
+        Route::post('/{outgoingLetter}/approval', [OutgoingLetterController::class, 'approvalAction'])->middleware('permission:corsec.authorize')->name('approval.action');
+        Route::post('/{outgoingLetter}/compliance-review', [OutgoingLetterController::class, 'complianceReview'])->middleware('permission:corsec.update')->name('compliance.review');
+        Route::post('/{outgoingLetter}/numbering', [OutgoingLetterController::class, 'numbering'])->middleware('permission:corsec.update')->name('numbering');
+        Route::post('/{outgoingLetter}/upload-final', [OutgoingLetterController::class, 'uploadFinal'])->middleware('permission:corsec.update')->name('upload_final');
+        Route::post('/{outgoingLetter}/verify', [OutgoingLetterController::class, 'verifyAction'])->middleware('permission:corsec.authorize')->name('verify.action');
     });
 
     // Meeting Routes

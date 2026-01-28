@@ -29,7 +29,7 @@
             <div class="card-body">
                 <form id="incoming-letter-form" method="POST"
                     action="{{ isset($incomingLetter) ? route('letter.incoming.update', $incomingLetter) : route('letter.incoming.store') }}"
-                    enctype="multipart/form-data">
+                    enctype="multipart/form-data" class="js-ajax-form" data-form-type="incoming">
                     @csrf
                     @if (isset($incomingLetter))
                         @method('PUT')
@@ -153,7 +153,7 @@
                                 );
                             @endphp
                             <div class="relative">
-                                <button type="button"
+                                <button type="button" data-field="circulation_directorate_ids"
                                     class="select w-full flex items-center justify-between text-left bg-white text-gray-800 @error('circulation_directorate_ids') border-danger bg-danger-light @enderror"
                                     style="text-align: left; justify-content: flex-start;"
                                     id="circulation-dropdown">
@@ -305,6 +305,7 @@
 @endsection
 
 @push('scripts')
+    <script src="{{ asset('js/corsec/incoming-validation.js') }}"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('incoming-letter-form');
@@ -415,112 +416,116 @@
             }
 
             if (form) {
-                form.addEventListener('submit', function(event) {
-                    const errors = [];
-                    const maxTextLength = 255;
-                    const maxFileSize = 10 * 1024 * 1024;
-                    const isEdit = {{ isset($incomingLetter) ? 'true' : 'false' }};
+                if (window.jQuery && window.CorsecIncomingValidation) {
+                    const $document = window.jQuery(document);
+                    const {
+                        clearValidation,
+                        showFieldError,
+                    } = window.CorsecIncomingValidation;
 
-                    const externalLetterNo = form.querySelector('input[name="external_letter_no"]');
-                    const subject = form.querySelector('input[name="subject"]');
-                    const sender = form.querySelector('select[name="sender_id"]');
-                    const senderOther = form.querySelector('input[name="sender_other"]');
-                    const letterType = form.querySelector('select[name="letter_type_id"]');
-                    const receivedDate = form.querySelector('input[name="received_date"]');
-                    const targetDate = form.querySelector('input[name="target_date"]');
-                    const priority = form.querySelector('select[name="priority"]');
-                    const targetDirectorate = form.querySelector('select[name="target_directorate_id"]');
-                    const filesInput = form.querySelector('input[name="files[]"]');
+                    function validateIncomingForm($form) {
+                        const errors = {};
+                        const isEdit = {{ isset($incomingLetter) ? 'true' : 'false' }};
+                        const requiredMessage = 'Field ini tidak boleh kosong.';
 
-                    if (externalLetterNo && externalLetterNo.value.length === 0) {
-                        errors.push('Nomor surat wajib diisi.');
-                    }
-
-                    if (subject && subject.value.trim().length === 0) {
-                        errors.push('Perihal wajib diisi.');
-                    }
-
-                    if (sender && sender.value.length === 0) {
-                        errors.push('Pengirim wajib diisi.');
-                    }
-                    if (sender && sender.value === 'other') {
-                        if (!senderOther || senderOther.value.trim().length === 0) {
-                            errors.push('Pengirim lainnya wajib diisi.');
+                        if (!$form.find('[name="external_letter_no"]').val()) {
+                            errors.external_letter_no = requiredMessage;
                         }
-                    }
-
-                    if (letterType && letterType.value.length === 0) {
-                        errors.push('Jenis surat wajib diisi.');
-                    }
-
-                    const letterDate = form.querySelector('input[name="letter_date"]');
-                    if (letterDate && letterDate.value && isNaN(Date.parse(letterDate.value))) {
-                        errors.push('Tanggal surat wajib diisi.');
-                    }
-
-                    const summary = form.querySelector('textarea[name="summary"]');
-                    if (summary && summary.value.trim().length === 0) {
-                        errors.push('Ringkasan isi surat wajib diisi.');
-                    }
-
-                    if (receivedDate && receivedDate.value && isNaN(Date.parse(receivedDate.value))) {
-                        errors.push('Tanggal diterima wajib diisi.');
-                    }
-
-                    if (targetDate && targetDate.value && isNaN(Date.parse(targetDate.value))) {
-                        errors.push('Target tanggal wajib diisi.');
-                    }
-
-                    if (priority && priority.value) {
-                        const allowed = ['low', 'normal', 'high', 'urgent'];
-                        if (!allowed.includes(priority.value) && priority.value.length > 0) {
-                            errors.push('Prioritas wajib dipilih.');
+                        if (!$form.find('[name="letter_date"]').val()) {
+                            errors.letter_date = requiredMessage;
                         }
-                    }
-
-                    if (targetDirectorate && targetDirectorate.value.length === 0) {
-                        errors.push('Leader tindak lanjut wajib dipilih.');
-                    }
-
-                    if (targetDirectorate && targetDirectorate.value) {
-                        const option = targetDirectorate.querySelector(
-                            `option[value="${targetDirectorate.value}"]`
-                        );
-                        if (!option && targetDirectorate.value.length > 0) {
-                            errors.push('Leader tindak lanjut wajib dipilih.');
+                        if (!$form.find('[name="subject"]').val()) {
+                            errors.subject = requiredMessage;
                         }
-                    }
+                        if (!$form.find('[name="summary"]').val()) {
+                            errors.summary = requiredMessage;
+                        }
+                        const senderValue = $form.find('[name="sender_id"]').val();
+                        if (!senderValue) {
+                            errors.sender_id = requiredMessage;
+                        }
+                        if (senderValue === 'other' && !$form.find('[name="sender_other"]').val()) {
+                            errors.sender_other = requiredMessage;
+                        }
+                        if (!$form.find('[name="letter_type_id"]').val()) {
+                            errors.letter_type_id = requiredMessage;
+                        }
+                        if (!$form.find('[name="target_directorate_id"]').val()) {
+                            errors.target_directorate_id = requiredMessage;
+                        }
+                        const circulationCount = $form.find(
+                            '[name="circulation_directorate_ids[]"]:checked'
+                        ).length;
+                        if (circulationCount === 0) {
+                            errors.circulation_directorate_ids = 'Silahkan pilih minimal 1.';
+                        }
 
-                    const circulationChecks = form.querySelectorAll(
-                        'input[name="circulation_directorate_ids[]"]:checked'
-                    );
-                    if (!circulationChecks || circulationChecks.length === 0) {
-                        errors.push('Sirkulasi wajib dipilih minimal 1 direktorat.');
-                    }
-
-                    if (filesInput && filesInput.files.length > 0) {
-                        const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png'];
-                        for (const file of filesInput.files) {
-                            if (file.size > maxFileSize) {
-                                errors.push(`File ${file.name} melebihi 10MB.`);
-                                break;
-                            }
-                            if (file.type && !allowedTypes.includes(file.type)) {
-                                errors.push(`Format file ${file.name} tidak valid.`);
-                                break;
+                        const targetValue = $form.find('[name="target_directorate_id"]').val();
+                        if (targetValue) {
+                            const selectedCirculationIds = $form.find(
+                                '[name="circulation_directorate_ids[]"]:checked'
+                            ).map(function() {
+                                return window.jQuery(this).val();
+                            }).get();
+                            if (selectedCirculationIds.length > 0 &&
+                                !selectedCirculationIds.includes(String(targetValue))) {
+                                errors.target_directorate_id =
+                                    'Leader tindak lanjut harus termasuk di daftar sirkulasi.';
                             }
                         }
+
+                        const filesInput = $form.find('[name="files[]"]')[0];
+                        if (!isEdit && filesInput && filesInput.files.length === 0) {
+                            errors.files = 'Harap upload file.';
+                        }
+
+                        return errors;
                     }
 
-                    if (!isEdit && filesInput && filesInput.files.length === 0) {
-                        errors.push('Upload surat masuk wajib diisi.');
-                    }
-
-                    if (errors.length > 0) {
+                    $document.on('submit', 'form.js-ajax-form', function(event) {
                         event.preventDefault();
-                        alert(errors[0]);
-                    }
-                });
+                        const $form = window.jQuery(this);
+                        clearValidation($form);
+
+                        const errors = validateIncomingForm($form);
+                        if (Object.keys(errors).length > 0) {
+                            Object.keys(errors).forEach((field) => {
+                                showFieldError($form, field, errors[field]);
+                            });
+                            return;
+                        }
+
+                        const formData = new FormData(this);
+                        window.jQuery.ajax({
+                            url: $form.attr('action'),
+                            method: $form.attr('method') || 'POST',
+                            data: formData,
+                            processData: false,
+                            contentType: false,
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-CSRF-TOKEN': $form.find('input[name="_token"]').val()
+                            },
+                            success: function() {
+                                if (window.toast && typeof window.toast.success === 'function') {
+                                    window.toast.success('Berhasil disimpan.');
+                                    return;
+                                }
+                                alert('Berhasil disimpan.');
+                            },
+                            error: function(xhr) {
+                                if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
+                                    const serverErrors = xhr.responseJSON.errors;
+                                    Object.keys(serverErrors).forEach((field) => {
+                                        showFieldError($form, field, serverErrors[field][0]);
+                                    });
+                                    return;
+                                }
+                                alert('Gagal memproses. Coba lagi ya.');
+                            }
+                        });
+                    });
+                }
             }
         });
     </script>
