@@ -4,6 +4,7 @@ namespace Modules\Corsec\Services;
 
 use Modules\Usermanagement\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Modules\Corsec\Models\IncomingLetter;
 use Modules\Corsec\Models\IncomingLetterRoute;
 use Modules\Corsec\Models\Approval;
@@ -78,10 +79,14 @@ class IncomingLetterWorkflowService
                     abort(403, 'Approval EO Corp Affair hanya untuk checker/approver dari direktorat Corporate Secretary.');
                 }
 
+                if ($this->actorAlreadyActed($incomingLetter, $actor, 'EO Corp Affair')) {
+                    abort(403, 'Approval EO Corp Affair sudah diproses.');
+                }
+                $label = $action === 'approve' ? 'EO Corp Affair Approved' : 'EO Corp Affair Returned';
                 if ($approval) {
                     $approval->update([
                         'status' => $action === 'approve' ? 'approved' : 'returned',
-                        'note' => $note,
+                        'note' => $this->buildApprovalNote($label, $note),
                         'acted_by' => $actor->id,
                         'acted_at' => now(),
                     ]);
@@ -107,16 +112,19 @@ class IncomingLetterWorkflowService
                     ->where('approvable_type', IncomingLetter::class)
                     ->where('approvable_id', $incomingLetter->id)
                     ->where('status', 'approved')
-                    ->where('note', 'Checker Approved')
+                    ->where('note', 'ilike', 'EO Direktorat Approved%')
                     ->exists();
 
                 if ($action === 'approve') {
                     if (!$checkerApproved && ($isChecker || $isAdmin)) {
+                        if ($this->actorAlreadyActed($incomingLetter, $actor, 'EO Direktorat Approved')) {
+                            abort(403, 'Approval EO Direktorat sudah diproses.');
+                        }
                         Approval::create([
                             'approvable_type' => IncomingLetter::class,
                             'approvable_id' => $incomingLetter->id,
                             'status' => 'approved',
-                            'note' => 'Checker Approved',
+                            'note' => $this->buildApprovalNote('EO Direktorat Approved', $note),
                             'acted_by' => $actor->id,
                             'acted_at' => now(),
                         ]);
@@ -124,10 +132,13 @@ class IncomingLetterWorkflowService
                     }
 
                     if ($checkerApproved && ($isApprover || $isAdmin)) {
+                        if ($this->actorAlreadyActed($incomingLetter, $actor, 'DD Direktorat Approved')) {
+                            abort(403, 'Approval DD Direktorat sudah diproses.');
+                        }
                         if ($approval) {
                             $approval->update([
                                 'status' => 'approved',
-                                'note' => 'Approver Approved',
+                                'note' => $this->buildApprovalNote('DD Direktorat Approved', $note),
                                 'acted_by' => $actor->id,
                                 'acted_at' => now(),
                             ]);
@@ -136,7 +147,7 @@ class IncomingLetterWorkflowService
                                 'approvable_type' => IncomingLetter::class,
                                 'approvable_id' => $incomingLetter->id,
                                 'status' => 'approved',
-                                'note' => 'Approver Approved',
+                                'note' => $this->buildApprovalNote('DD Direktorat Approved', $note),
                                 'acted_by' => $actor->id,
                                 'acted_at' => now(),
                             ]);
@@ -152,10 +163,16 @@ class IncomingLetterWorkflowService
                 }
 
                 if ($action !== 'approve') {
+                    $fallbackNote = 'EO+DD Direktorat - Returned';
+                    if ($isChecker && !$checkerApproved) {
+                        $fallbackNote = 'EO Direktorat Returned';
+                    } elseif ($isApprover) {
+                        $fallbackNote = 'DD Direktorat Returned';
+                    }
                     if ($approval) {
                         $approval->update([
                             'status' => 'returned',
-                            'note' => $note ?? 'EO+DD Direktorat - Returned',
+                            'note' => $this->buildApprovalNote($fallbackNote, $note),
                             'acted_by' => $actor->id,
                             'acted_at' => now(),
                         ]);
@@ -164,7 +181,7 @@ class IncomingLetterWorkflowService
                             'approvable_type' => IncomingLetter::class,
                             'approvable_id' => $incomingLetter->id,
                             'status' => 'returned',
-                            'note' => $note ?? 'EO+DD Direktorat - Returned',
+                            'note' => $this->buildApprovalNote($fallbackNote, $note),
                             'acted_by' => $actor->id,
                             'acted_at' => now(),
                         ]);
@@ -196,9 +213,10 @@ class IncomingLetterWorkflowService
         array $followupDetail,
         ?string $followupNote,
         array $evidenceFiles,
+        $socialMaterialFile,
         bool $submitForApproval
     ): void {
-        DB::transaction(function () use ($incomingLetter, $actor, $targetDate, $followupAction, $followupDetail, $followupNote, $evidenceFiles, $submitForApproval) {
+        DB::transaction(function () use ($incomingLetter, $actor, $targetDate, $followupAction, $followupDetail, $followupNote, $evidenceFiles, $socialMaterialFile, $submitForApproval) {
             // pastiin yang update itu direktorat yang sama
             if ($incomingLetter->target_directorate_id && $actor->directorate_id !== $incomingLetter->target_directorate_id) {
                 abort(403, 'Bukan direktorat tujuan surat ini.');
@@ -235,6 +253,28 @@ class IncomingLetterWorkflowService
                     'attachable_type' => IncomingLetter::class,
                     'attachable_id' => $incomingLetter->id,
                     'category' => 'evidence',
+                    'created_by' => $actor->id,
+                ]);
+            }
+
+            if ($socialMaterialFile) {
+                $path = $socialMaterialFile->store('corsec/incoming/social_material', 'public');
+
+                $att = Attachment::create([
+                    'disk' => 'public',
+                    'path' => $path,
+                    'original_name' => $socialMaterialFile->getClientOriginalName(),
+                    'file_name' => basename($path),
+                    'mime' => $socialMaterialFile->getClientMimeType(),
+                    'size' => $socialMaterialFile->getSize(),
+                    'created_by' => $actor->id,
+                ]);
+
+                Attachable::create([
+                    'attachment_id' => $att->id,
+                    'attachable_type' => IncomingLetter::class,
+                    'attachable_id' => $incomingLetter->id,
+                    'category' => 'social_material',
                     'created_by' => $actor->id,
                 ]);
             }
@@ -277,7 +317,7 @@ class IncomingLetterWorkflowService
                     'approvable_type' => IncomingLetter::class,
                     'approvable_id' => $incomingLetter->id,
                     'status' => 'approved',
-                    'note' => 'Verifikasi EO Corp Affair',
+                    'note' => $this->buildApprovalNote('Verifikasi EO Corp Affair', $note),
                     'acted_by' => $actor->id,
                     'acted_at' => now(),
                 ]);
@@ -317,5 +357,24 @@ class IncomingLetterWorkflowService
         $actor->loadMissing('directorate');
 
         return (string) ($actor->directorate?->code ?? '') === $directorateCode;
+    }
+
+    private function buildApprovalNote(string $label, ?string $note): string
+    {
+        $note = trim((string) $note);
+        return $note !== '' ? $label . ' - ' . $note : $label;
+    }
+
+    private function actorAlreadyActed(IncomingLetter $incomingLetter, User $actor, string $labelPrefix): bool
+    {
+        return Approval::query()
+            ->where('approvable_type', IncomingLetter::class)
+            ->where('approvable_id', $incomingLetter->id)
+            ->where('acted_by', $actor->id)
+            ->whereIn('status', ['approved', 'returned'])
+            ->get()
+            ->contains(function ($approval) use ($labelPrefix) {
+                return Str::startsWith((string) $approval->note, $labelPrefix);
+            });
     }
 }
