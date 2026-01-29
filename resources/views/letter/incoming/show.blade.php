@@ -15,6 +15,10 @@
         $isEoCorpAffairDirectorate =
             $user && $eoDirectorateCode !== '' && $user->directorate?->code === $eoDirectorateCode;
         $isEoCorpAffairActor = $isEoCorpAffairDirectorate && ($isChecker || $isApprover);
+        $positionName = \Illuminate\Support\Str::lower((string) ($user?->position?->name ?? ''));
+        $isExecutiveOfficer = $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'executive officer');
+        $isSekretariatDireksi = $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'sekretariat direksi');
+        $isEoCorpSecretaryChecker = $isChecker && $isEoCorpAffairDirectorate && $isExecutiveOfficer;
         $isTargetDirectorate =
             $user &&
             $incomingLetter->target_directorate_id &&
@@ -68,6 +72,8 @@
                 in_array($status, ['on_approval', 'waiting_verification'], true)) &&
             ($isAdmin || $isEoCorpAffairActor) &&
             !$userHasEoCorpAffairApproval;
+        $canAddMonitoring =
+            $isAdmin || $isTargetDirectorate || $isEoCorpSecretaryChecker || $isSekretariatDireksi;
         $statusSteps = [
             'draft' => 'Draft',
             'on_approval' => 'On Approval',
@@ -177,7 +183,7 @@
             </div>
         </div>
 
-        @if ($isAdmin || $isTargetDirectorate)
+        @if ($canAddMonitoring)
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Tambah Monitoring Direktorat</h3>

@@ -256,14 +256,14 @@
                     <div class="grid grid-cols-1 gap-5 mt-8">
                         <div class="flex flex-col">
                             <label class="form-label">
-                                {{ isset($incomingLetter) ? 'Tambah Lampiran (PDF/JPG/PNG)' : 'Upload Surat Masuk (PDF/JPG/PNG)' }}
+                                {{ isset($incomingLetter) ? 'Tambah Lampiran (PDF/JPG/PNG/XLS/XLSX)' : 'Upload Surat Masuk (PDF/JPG/PNG/XLS/XLSX)' }}
                                 @if (!isset($incomingLetter))
                                     <span class="text-danger">*</span>
                                 @endif
                             </label>
 
                             <input class="file-input @error('files.*') border-danger bg-danger-light @enderror"
-                                type="file" name="files[]" multiple accept=".pdf,.jpg,.jpeg,.png">
+                                type="file" name="files[]" multiple accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx">
                             @error('files.*')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
@@ -506,12 +506,20 @@
                                 'X-Requested-With': 'XMLHttpRequest',
                                 'X-CSRF-TOKEN': $form.find('input[name="_token"]').val()
                             },
-                            success: function() {
+                            success: function(response) {
+                                if (response && response.redirect_url) {
+                                    window.location.href = response.redirect_url;
+                                    return;
+                                }
                                 if (window.toast && typeof window.toast.success === 'function') {
                                     window.toast.success('Berhasil disimpan.');
+                                    setTimeout(function() {
+                                        window.location.reload();
+                                    }, 600);
                                     return;
                                 }
                                 alert('Berhasil disimpan.');
+                                window.location.reload();
                             },
                             error: function(xhr) {
                                 if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {

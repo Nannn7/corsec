@@ -129,7 +129,7 @@ class IncomingLetterController extends Controller
             'circulation_directorate_ids' => ['required', 'array'],
             'circulation_directorate_ids.*' => ['required', 'exists:corsec_directorates,id'],
             'files' => ['required', 'array'],
-            'files.*' => ['file', 'max:10240'], // 10MB
+            'files.*' => ['file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,xls,xlsx'], // 10MB
         ]);
 
         $user = auth()->user();
@@ -314,7 +314,7 @@ class IncomingLetterController extends Controller
             'target_date' => ['nullable', 'date'],
             'circulation_directorate_ids' => ['required', 'array'],
             'circulation_directorate_ids.*' => ['required', 'exists:corsec_directorates,id'],
-            'files.*' => ['nullable', 'file', 'max:10240'],
+            'files.*' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,xls,xlsx'],
         ]);
 
         $user = auth()->user();
@@ -890,8 +890,16 @@ class IncomingLetterController extends Controller
     {
         $user = Auth::user();
         $directorateId = $user?->directorate_id ?? $user?->directorateid;
-        if (!$user || (!$user->hasRole('administrator') && (int) $incomingLetter->target_directorate_id !== (int) $directorateId)) {
-            abort(403, 'Hanya leader direktorat yang dapat menambahkan monitoring.');
+        $isAdmin = $user?->hasRole('administrator');
+        $isTargetDirectorate = $user && (int) $incomingLetter->target_directorate_id === (int) $directorateId;
+        $positionName = $this->getUserPositionName($user);
+        $isExecutiveOfficer = $positionName && Str::contains(Str::lower($positionName), 'executive officer');
+        $isSekretariatDireksi = $positionName && Str::contains(Str::lower($positionName), 'sekretariat direksi');
+        $isEoCorpSecretaryChecker =
+            $user && $user->hasRole('checker') && $this->isCorpSecretaryDirectorate($user) && $isExecutiveOfficer;
+
+        if (!$user || (!$isAdmin && !$isTargetDirectorate && !$isEoCorpSecretaryChecker && !$isSekretariatDireksi)) {
+            abort(403, 'Anda tidak memiliki akses untuk menambahkan monitoring.');
         }
 
         $request->validate([
@@ -933,10 +941,16 @@ class IncomingLetterController extends Controller
             return false;
         }
 
-        $eoDirectorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
-        if ($eoDirectorateCode === '') {
-            $eoDirectorateCode = '';
+        return $this->isCorpSecretaryDirectorate($user);
+    }
+
+    private function isCorpSecretaryDirectorate(?User $user): bool
+    {
+        if (!$user) {
+            return false;
         }
+
+        $eoDirectorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
 
         $user->loadMissing('directorate');
         $directorateCode = $user->directorate?->code;
@@ -952,5 +966,32 @@ class IncomingLetterController extends Controller
         }
 
         return false;
+    }
+
+    private function getUserPositionName(?User $user): ?string
+    {
+        if (!$user) {
+            return null;
+        }
+
+        $user->loadMissing('position', 'roles');
+        if ($user->position) {
+            return $user->position->name;
+        }
+
+        $positionIds = $user->roles
+            ->pluck('position_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($positionIds->isEmpty()) {
+            return null;
+        }
+
+        return Position::query()
+            ->whereIn('id', $positionIds)
+            ->orderByDesc('level')
+            ->value('name');
     }
 }
