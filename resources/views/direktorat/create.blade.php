@@ -29,7 +29,8 @@
                         <div class="flex flex-col">
                             <label class="form-label">Kode Directorate <span class="text-danger">*</span></label>
                             <input class="input @error('code') border-danger bg-danger-light @enderror" type="text"
-                                name="code" value="{{ old('code', $directorate->code ?? '') }}" maxlength="50" required>
+                                name="code" value="{{ old('code', $directorate->code ?? ($nextCode ?? '')) }}"
+                                maxlength="50" required>
                             @error('code')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror

@@ -12,8 +12,11 @@
         $isChecker = $user?->hasRole('checker');
         $isApprover = $user?->hasRole('approver');
         $eoDirectorateCode = config('corsec.eo_corp_affair_directorate_code', '');
+        $directorateName = \Illuminate\Support\Str::lower((string) ($user?->directorate?->name ?? ''));
         $isEoCorpAffairDirectorate =
-            $user && $eoDirectorateCode !== '' && $user->directorate?->code === $eoDirectorateCode;
+            $user &&
+            (($eoDirectorateCode !== '' && $user->directorate?->code === $eoDirectorateCode) ||
+                ($directorateName !== '' && \Illuminate\Support\Str::contains($directorateName, 'corporate secretary')));
         $isEoCorpAffairActor = $isEoCorpAffairDirectorate && ($isChecker || $isApprover);
         $positionName = \Illuminate\Support\Str::lower((string) ($user?->position?->name ?? ''));
         $isExecutiveOfficer = $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'executive officer');
@@ -63,6 +66,14 @@
                         \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Corp Affair Returned');
                 })
                 ->count() > 0;
+        $userHasEoCorpAffairVerification =
+            $user &&
+            $approvals
+                ->where('acted_by', $user->id)
+                ->filter(function ($approval) {
+                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'Verifikasi EO Corp Affair');
+                })
+                ->count() > 0;
         $canCheckerDirApproval =
             $status === 'waiting_dir_approval' && !$checkerApproved && ($isAdmin || $isChecker) && !$userHasEoDirApproval;
         $canApproverApproval =
@@ -71,7 +82,9 @@
             ($incomingLetter->authorized_status === 'pending' ||
                 in_array($status, ['on_approval', 'waiting_verification'], true)) &&
             ($isAdmin || $isEoCorpAffairActor) &&
-            !$userHasEoCorpAffairApproval;
+            ($status === 'waiting_verification'
+                ? !$userHasEoCorpAffairVerification
+                : !$userHasEoCorpAffairApproval);
         $canAddMonitoring =
             $isAdmin || $isTargetDirectorate || $isEoCorpSecretaryChecker || $isSekretariatDireksi;
         $statusSteps = [

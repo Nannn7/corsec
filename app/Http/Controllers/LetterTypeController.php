@@ -50,7 +50,25 @@ class LetterTypeController extends Controller
         }
 
         Log::info('User accessed letter type create form', ['user_id' => $user->id]);
-        return view('corsec::letter-type.create');
+        $codes = LetterType::query()->pluck('code');
+        $numericCodes = $codes
+            ->filter(function ($code) {
+                return is_string($code) && preg_match('/^\\d+$/', $code);
+            })
+            ->values();
+        $maxNumber = $numericCodes
+            ->map(function ($code) {
+                return (int) $code;
+            })
+            ->max();
+        $padLength = $numericCodes
+            ->map(function ($code) {
+                return strlen($code);
+            })
+            ->max() ?? 3;
+        $nextCode = $maxNumber !== null ? str_pad((string) ($maxNumber + 1), $padLength, '0', STR_PAD_LEFT) : null;
+
+        return view('corsec::letter-type.create', compact('nextCode'));
     }
 
     public function store(LetterTypeRequest $request)

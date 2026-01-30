@@ -97,7 +97,7 @@ class IncomingLetterWorkflowService
                         'authorized_status' => 'authorized',
                         'authorized_at' => now(),
                         'authorized_by' => $actor->id,
-                        'status' => $incomingLetter->target_directorate_id ? IncomingLetter::STATUS_DISPATCHED : IncomingLetter::STATUS_DRAFT,
+                        'status' => IncomingLetter::STATUS_IN_PROGRESS,
                         'updated_by' => $actor->id,
                     ]);
                 } else {
