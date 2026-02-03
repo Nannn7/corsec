@@ -9,13 +9,13 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
-use Modules\Corsec\Exports\LetterTypeExport;
-use Modules\Corsec\Http\Requests\LetterTypeRequest;
+use Modules\Corsec\Exports\BankExport;
+use Modules\Corsec\Http\Requests\BankRequest;
 use Modules\Corsec\Models\ApprovalRequest;
-use Modules\Corsec\Models\LetterType;
+use Modules\Corsec\Models\Bank;
 use Modules\Corsec\Services\ApprovalRequestService;
 
-class LetterTypeController extends Controller
+class BankController extends Controller
 {
     protected $user;
     private readonly ApprovalRequestService $approvalService;
@@ -34,23 +34,24 @@ class LetterTypeController extends Controller
     public function index()
     {
         $user = Auth::user();
-        if (is_null($user) || !$user->can('letter-type.read')) {
-            abort(403, 'Sorry! You are not allowed to view letter type.');
+        if (is_null($user) || !$user->can('bank.read')) {
+            abort(403, 'Sorry! You are not allowed to view bank.');
         }
 
-        Log::info('User accessed letter type index', ['user_id' => $user->id]);
-        return view('corsec::letter-type.index');
+        Log::info('User accessed bank index', ['user_id' => $user->id]);
+        return view('corsec::bank.index');
     }
 
     public function create()
     {
         $user = Auth::user();
-        if (is_null($user) || !$user->can('letter-type.create')) {
-            abort(403, 'Sorry! You are not allowed to create letter type.');
+        if (is_null($user) || !$user->can('bank.create')) {
+            abort(403, 'Sorry! You are not allowed to create bank.');
         }
 
-        Log::info('User accessed letter type create form', ['user_id' => $user->id]);
-        $codes = LetterType::query()->pluck('code');
+        Log::info('User accessed bank create form', ['user_id' => $user->id]);
+
+        $codes = Bank::query()->pluck('code');
         $numericCodes = $codes
             ->filter(function ($code) {
                 return is_string($code) && preg_match('/^\\d+$/', $code);
@@ -68,20 +69,21 @@ class LetterTypeController extends Controller
             ->max() ?? 3;
         $nextCode = $maxNumber !== null ? str_pad((string) ($maxNumber + 1), $padLength, '0', STR_PAD_LEFT) : null;
 
-        return view('corsec::letter-type.create', compact('nextCode'));
+        return view('corsec::bank.create', compact('nextCode'));
     }
 
-    public function store(LetterTypeRequest $request)
+    public function store(BankRequest $request)
     {
         $user = Auth::user();
-        if (is_null($user) || !$user->can('letter-type.create')) {
-            abort(403, 'Sorry! You are not allowed to create letter type.');
+        if (is_null($user) || !$user->can('bank.create')) {
+            abort(403, 'Sorry! You are not allowed to create bank.');
         }
 
         try {
             $validated = $request->validated();
             $payload = [
                 'code' => $validated['code'],
+                'swift_code' => $validated['swift_code'] ?? null,
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
                 'status' => $request->boolean('status', true),
@@ -90,25 +92,25 @@ class LetterTypeController extends Controller
             ];
 
             $this->approvalService->createRequest(
-                LetterType::class,
+                Bank::class,
                 ApprovalRequest::ACTION_CREATE,
                 null,
                 $payload,
                 null,
-                'Pengajuan create letter type'
+                'Pengajuan create bank'
             );
 
-            Log::info('Letter type create submitted for approval', ['user_id' => $user->id]);
+            Log::info('Bank create submitted for approval', ['user_id' => $user->id]);
 
             return redirect()
-                ->route('letter-type.index')
-                ->with('success', 'Letter type submitted for approval.');
+                ->route('bank.index')
+                ->with('success', 'Bank submitted for approval.');
         } catch (Exception $e) {
-            Log::error('Failed to create letter type: ' . $e->getMessage(), ['user_id' => $user->id]);
+            Log::error('Failed to create bank: ' . $e->getMessage(), ['user_id' => $user->id]);
 
             return redirect()
-                ->route('letter-type.create')
-                ->with('error', 'Failed to create letter type: ' . $e->getMessage())
+                ->route('bank.create')
+                ->with('error', 'Failed to create bank: ' . $e->getMessage())
                 ->withInput();
         }
     }
@@ -121,67 +123,67 @@ class LetterTypeController extends Controller
     public function edit($id)
     {
         $user = Auth::user();
-        if (is_null($user) || !$user->can('letter-type.update')) {
-            abort(403, 'Sorry! You are not allowed to update letter type.');
+        if (is_null($user) || !$user->can('bank.update')) {
+            abort(403, 'Sorry! You are not allowed to update bank.');
         }
 
-        $letterType = LetterType::find($id);
-        if (!$letterType) {
-            Log::warning('Letter type not found for edit', ['letter_type_id' => $id, 'user_id' => $user->id]);
+        $bank = Bank::find($id);
+        if (!$bank) {
+            Log::warning('Bank not found for edit', ['bank_id' => $id, 'user_id' => $user->id]);
             return redirect()
-                ->route('letter-type.index')
-                ->with('error', 'Letter type not found.');
+                ->route('bank.index')
+                ->with('error', 'Bank not found.');
         }
 
-        Log::info('User accessed letter type edit form', ['letter_type_id' => $id, 'user_id' => $user->id]);
-        return view('corsec::letter-type.create', compact('letterType'));
+        Log::info('User accessed bank edit form', ['bank_id' => $id, 'user_id' => $user->id]);
+        return view('corsec::bank.create', compact('bank'));
     }
 
-    public function update(LetterTypeRequest $request, $id)
+    public function update(BankRequest $request, $id)
     {
         $user = Auth::user();
-        if (is_null($user) || !$user->can('letter-type.update')) {
-            abort(403, 'Sorry! You are not allowed to update letter type.');
+        if (is_null($user) || !$user->can('bank.update')) {
+            abort(403, 'Sorry! You are not allowed to update bank.');
         }
 
-        $letterType = LetterType::find($id);
-        if (!$letterType) {
-            Log::warning('Letter type not found for update', ['letter_type_id' => $id, 'user_id' => $user->id]);
+        $bank = Bank::find($id);
+        if (!$bank) {
+            Log::warning('Bank not found for update', ['bank_id' => $id, 'user_id' => $user->id]);
             return redirect()
-                ->route('letter-type.index')
-                ->with('error', 'Letter type not found.');
+                ->route('bank.index')
+                ->with('error', 'Bank not found.');
         }
 
         try {
             $validated = $request->validated();
             $payload = [
                 'code' => $validated['code'],
+                'swift_code' => $validated['swift_code'] ?? null,
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
-                'status' => $request->boolean('status', $letterType->status),
+                'status' => $request->boolean('status', $bank->status),
                 'updated_by' => $user->id,
             ];
 
             $this->approvalService->createRequest(
-                LetterType::class,
+                Bank::class,
                 ApprovalRequest::ACTION_UPDATE,
-                (string) $letterType->id,
+                (string) $bank->id,
                 $payload,
-                $letterType->only(array_keys($payload)),
-                'Pengajuan update letter type'
+                $bank->only(array_keys($payload)),
+                'Pengajuan update bank'
             );
 
-            Log::info('Letter type update submitted for approval', ['letter_type_id' => $letterType->id, 'user_id' => $user->id]);
+            Log::info('Bank update submitted for approval', ['bank_id' => $bank->id, 'user_id' => $user->id]);
 
             return redirect()
-                ->route('letter-type.index')
-                ->with('success', 'Letter type update submitted for approval.');
+                ->route('bank.index')
+                ->with('success', 'Bank update submitted for approval.');
         } catch (Exception $e) {
-            Log::error('Failed to update letter type: ' . $e->getMessage(), ['letter_type_id' => $id, 'user_id' => $user->id]);
-
+            Log::error('Failed to update bank: ' . $e->getMessage(), ['bank_id' => $id, 'user_id' => $user->id]);
             return redirect()
-                ->route('letter-type.edit', $id)
-                ->with('error', 'Failed to update letter type: ' . $e->getMessage())
+                ->route('bank.edit', $id)
+                ->with('error', 'Failed to update bank: ' . $e->getMessage())
                 ->withInput();
         }
     }
@@ -189,47 +191,44 @@ class LetterTypeController extends Controller
     public function destroy($id)
     {
         $user = Auth::user();
-        if (!$user || !$user->can('letter-type.delete')) {
+        if (!$user || !$user->can('bank.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete letter type.'
+                'message' => 'Sorry! You are not allowed to delete bank.'
             ], 403);
         }
 
         try {
-            $letterType = LetterType::find($id);
-            if (!$letterType) {
-                Log::warning('Letter type not found for delete', ['letter_type_id' => $id, 'user_id' => $user->id]);
+            $bank = Bank::find($id);
+            if (!$bank) {
+                Log::warning('Bank not found for delete', ['bank_id' => $id, 'user_id' => $user->id]);
                 return response()->json([
                     'success' => false,
-                    'message' => 'Letter type not found.'
+                    'message' => 'Bank not found.'
                 ], 404);
             }
 
-            DB::transaction(function () use ($letterType, $user) {
-                $letterType->update(['deleted_by' => $user->id]);
-                $letterType->delete();
+            DB::transaction(function () use ($bank, $user) {
+                $bank->update(['deleted_by' => $user->id]);
+                $bank->delete();
             });
 
-            Log::info('Letter type deleted successfully', [
-                'letter_type_id' => $id,
-                'user_id' => $user->id
-            ]);
+            Log::info('Bank deleted successfully', ['bank_id' => $id, 'user_id' => $user->id]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Letter type deleted successfully.'
+                'message' => 'Bank deleted successfully.'
             ]);
         } catch (Exception $e) {
-            Log::error('Failed to delete letter type: ' . $e->getMessage(), [
-                'letter_type_id' => $id,
+            Log::error('Failed to delete bank: ' . $e->getMessage(), [
+                'bank_id' => $id,
                 'user_id' => $user->id,
                 'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit delete request. Please try again later.'
+                'message' => 'Failed to delete bank.'
             ], 500);
         }
     }
@@ -237,56 +236,53 @@ class LetterTypeController extends Controller
     public function deleteMultiple(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->can('letter-type.delete')) {
+        if (!$user || !$user->can('bank.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete letter type.'
+                'message' => 'Sorry! You are not allowed to delete bank.'
             ], 403);
         }
 
-        try {
-            $ids = $request->input('ids', []);
-            if (empty($ids)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No letter type selected for deletion'
-                ], 400);
-            }
+        $ids = $request->input('ids', []);
+        if (!is_array($ids) || count($ids) === 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No bank selected for deletion'
+            ], 400);
+        }
 
-            $existingLetterType = LetterType::whereIn('id', $ids)->pluck('id')->toArray();
-            $missingIds = array_diff($ids, $existingLetterType);
+        try {
+            $existingBanks = Bank::whereIn('id', $ids)->pluck('id')->toArray();
+            $missingIds = array_diff($ids, $existingBanks);
 
             if (!empty($missingIds)) {
-                Log::warning('Some letter type not found for multiple delete', [
-                    'requested_ids' => $ids,
+                Log::warning('Some bank not found for multiple delete', [
                     'missing_ids' => $missingIds,
                     'user_id' => $user->id
                 ]);
-
                 return response()->json([
                     'success' => false,
-                    'message' => 'Some selected letter type were not found.',
-                    'missing_ids' => $missingIds,
-                    'existing_ids' => $existingLetterType
+                    'message' => 'Some selected bank were not found.',
+                    'missing_ids' => $missingIds
                 ], 404);
             }
 
             DB::transaction(function () use ($ids, $user) {
-                LetterType::whereIn('id', $ids)->update(['deleted_by' => $user->id]);
-                LetterType::whereIn('id', $ids)->delete();
+                Bank::whereIn('id', $ids)->update(['deleted_by' => $user->id]);
+                Bank::whereIn('id', $ids)->delete();
             });
 
-            Log::info('Multiple letter type deleted successfully', [
-                'requested_ids' => $ids,
+            Log::info('Multiple bank deleted successfully', [
                 'user_id' => $user->id,
+                'count' => count($ids)
             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Multiple letter type deleted successfully.'
+                'message' => 'Multiple bank deleted successfully.'
             ]);
         } catch (Exception $e) {
-            Log::error('Failed to delete multiple letter type: ' . $e->getMessage(), [
+            Log::error('Failed to delete multiple bank: ' . $e->getMessage(), [
                 'requested_ids' => $ids ?? [],
                 'user_id' => $user->id,
                 'trace' => $e->getTraceAsString()
@@ -303,26 +299,27 @@ class LetterTypeController extends Controller
     public function dataForDatatables(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->can('letter-type.read')) {
+        if (!$user || !$user->can('bank.read')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to view letter type.'
+                'message' => 'Sorry! You are not allowed to view bank.'
             ], 403);
         }
 
         try {
-            $query = LetterType::query();
+            $query = Bank::query();
 
             $search = trim((string) $request->get('search', ''));
             if ($search !== '') {
                 $query->where(function ($q) use ($search) {
                     $q->where('code', 'ilike', "%{$search}%")
+                        ->orWhere('swift_code', 'ilike', "%{$search}%")
                         ->orWhere('name', 'ilike', "%{$search}%")
                         ->orWhere('description', 'ilike', "%{$search}%");
                 });
             }
 
-            $totalRecords    = LetterType::count();
+            $totalRecords    = Bank::count();
             $filteredRecords = (clone $query)->count();
 
             $sortField = (string) $request->get('sortField', 'id');
@@ -331,6 +328,7 @@ class LetterTypeController extends Controller
             $allowedSort = [
                 'id',
                 'code',
+                'swift_code',
                 'name',
                 'description',
                 'status',
@@ -354,7 +352,7 @@ class LetterTypeController extends Controller
 
             $pageCount = (int) ceil($filteredRecords / $size);
 
-            Log::info('letter type datatables data retrieved', ['user_id' => $user->id, 'total_records' => $totalRecords]);
+            Log::info('bank datatables data retrieved', ['user_id' => $user->id, 'total_records' => $totalRecords]);
 
             return response()->json([
                 'draw'            => $request->get('draw'),
@@ -366,7 +364,7 @@ class LetterTypeController extends Controller
                 'data'            => $data,
             ]);
         } catch (Exception $e) {
-            Log::error('Failed to get letter type datatables data: ' . $e->getMessage(), ['user_id' => $user->id]);
+            Log::error('Failed to get bank datatables data: ' . $e->getMessage(), ['user_id' => $user->id]);
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to load data'
@@ -377,19 +375,19 @@ class LetterTypeController extends Controller
     public function export(Request $request)
     {
         $user = Auth::user();
-        if (is_null($user) || !$user->can('letter-type.export')) {
-            abort(403, 'Sorry! You are not allowed to export letter type.');
+        if (is_null($user) || !$user->can('bank.export')) {
+            abort(403, 'Sorry! You are not allowed to export bank.');
         }
 
         try {
             $search = trim((string) $request->get('search', ''));
-            Log::info('letter type export initiated', ['user_id' => $user->id, 'search' => $search]);
-            return Excel::download(new LetterTypeExport($search), 'letter_type.xlsx');
+            Log::info('bank export initiated', ['user_id' => $user->id, 'search' => $search]);
+            return Excel::download(new BankExport($search), 'bank.xlsx');
         } catch (Exception $e) {
-            Log::error('Failed to export letter type: ' . $e->getMessage(), ['user_id' => $user->id]);
+            Log::error('Failed to export bank: ' . $e->getMessage(), ['user_id' => $user->id]);
             return redirect()
-                ->route('letter-type.index')
-                ->with('error', 'Failed to export letter type.');
+                ->route('bank.index')
+                ->with('error', 'Failed to export bank.');
         }
     }
 }

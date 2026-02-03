@@ -89,7 +89,7 @@
                         <div class="flex flex-col md:col-span-2">
                             <label class="form-label">Ringkasan Isi Surat <span class="text-danger">*</span></label>
                             <textarea class="textarea w-full @error('summary') border-danger bg-danger-light @enderror" name="summary"
-                                rows="1" placeholder="Ringkasan isi surat..." required>{{ old('summary', $incomingLetter?->summary) }}</textarea>
+                                rows="3" placeholder="Ringkasan isi surat..." required>{{ old('summary', $incomingLetter?->summary) }}</textarea>
                             @error('summary')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
@@ -120,9 +120,43 @@
                             <label class="form-label">Pengirim Lainnya <span class="text-danger">*</span></label>
                             <input class="input @error('sender_other') border-danger bg-danger-light @enderror"
                                 type="text" name="sender_other" id="sender_other"
-                                value="{{ old('sender_other', $incomingLetter?->sender_other) }}"
-                                maxlength="150" placeholder="Tulis nama pengirim">
+                                value="{{ old('sender_other', $incomingLetter?->sender_other) }}" maxlength="150"
+                                placeholder="Tulis nama pengirim">
                             @error('sender_other')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+
+                        <div class="flex flex-col" id="counterparty-bank-wrapper" style="display: none;">
+                            <label class="form-label">Counterparty Bank <span class="text-danger">*</span></label>
+                            <select class="select @error('counterparty_bank_id') border-danger bg-danger-light @enderror"
+                                name="counterparty_bank_id" id="counterparty_bank_id">
+                                <option value="">- Pilih Bank -</option>
+                                @foreach ($banks as $bank)
+                                    <option value="{{ $bank->id }}"
+                                        {{ (string) old('counterparty_bank_id', $incomingLetter?->counterparty_bank_id) === (string) $bank->id ? 'selected' : '' }}>
+                                        {{ $bank->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            @error('counterparty_bank_id')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+
+                        <div class="flex flex-col" id="customer-branch-wrapper" style="display: none;">
+                            <label class="form-label">Cabang Nasabah/Debitur <span class="text-danger">*</span></label>
+                            <select class="select @error('customer_branch_id') border-danger bg-danger-light @enderror"
+                                name="customer_branch_id" id="customer_branch_id">
+                                <option value="">- Pilih Cabang -</option>
+                                @foreach ($branches as $branch)
+                                    <option value="{{ $branch->id }}"
+                                        {{ (string) old('customer_branch_id', $incomingLetter?->customer_branch_id) === (string) $branch->id ? 'selected' : '' }}>
+                                        {{ $branch->code }} - {{ $branch->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            @error('customer_branch_id')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
                         </div>
@@ -130,7 +164,7 @@
                         <div class="flex flex-col">
                             <label class="form-label">Action Surat <span class="text-danger">*</span></label>
                             <select class="select @error('letter_type_id') border-danger bg-danger-light @enderror"
-                                name="letter_type_id" required>
+                                name="letter_type_id" id="letter_type_id" required>
                                 <option value="">- Pilih Action Surat -</option>
                                 @foreach ($letterTypes as $letterType)
                                     <option value="{{ $letterType->id }}"
@@ -138,8 +172,23 @@
                                         {{ $letterType->name }}
                                     </option>
                                 @endforeach
+                                <option value="other"
+                                    {{ old('letter_type_id', $incomingLetter?->letter_type_id ?? ($incomingLetter?->letter_type_other ? 'other' : '')) === 'other' ? 'selected' : '' }}>
+                                    Other
+                                </option>
                             </select>
                             @error('letter_type_id')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+
+                        <div class="flex flex-col" id="letter-type-other-wrapper" style="display: none;">
+                            <label class="form-label">Action Surat Lainnya <span class="text-danger">*</span></label>
+                            <input class="input @error('letter_type_other') border-danger bg-danger-light @enderror"
+                                type="text" name="letter_type_other" id="letter_type_other"
+                                value="{{ old('letter_type_other', $incomingLetter?->letter_type_other) }}"
+                                maxlength="150" placeholder="Tulis action surat">
+                            @error('letter_type_other')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
                         </div>
@@ -155,15 +204,13 @@
                             <div class="relative">
                                 <button type="button" data-field="circulation_directorate_ids"
                                     class="select w-full flex items-center justify-between text-left bg-white text-gray-800 @error('circulation_directorate_ids') border-danger bg-danger-light @enderror"
-                                    style="text-align: left; justify-content: flex-start;"
-                                    id="circulation-dropdown">
-                                    <span id="circulation-selected-text"
-                                        class="block truncate text-left w-full"
+                                    style="text-align: left; justify-content: flex-start;" id="circulation-dropdown">
+                                    <span id="circulation-selected-text" class="block truncate text-left w-full"
                                         style="text-align: left;">Pilih sirkulasi...</span>
                                 </button>
                                 <div id="circulation-options"
                                     class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
-                                    style="background-color: #ffffff;">
+                                    style="background-color: #ffffff; max-height: 16rem; overflow-y: auto;">
                                     <div class="p-3 space-y-2 bg-white">
                                         @foreach ($directorates as $b)
                                             @php
@@ -256,14 +303,14 @@
                     <div class="grid grid-cols-1 gap-5 mt-8">
                         <div class="flex flex-col">
                             <label class="form-label">
-                                {{ isset($incomingLetter) ? 'Tambah Lampiran (PDF/JPG/PNG)' : 'Upload Surat Masuk (PDF/JPG/PNG)' }}
+                                {{ isset($incomingLetter) ? 'Tambah Lampiran (PDF/JPG/PNG/XLS/XLSX)' : 'Upload Surat Masuk (PDF/JPG/PNG/XLS/XLSX)' }}
                                 @if (!isset($incomingLetter))
                                     <span class="text-danger">*</span>
                                 @endif
                             </label>
 
                             <input class="file-input @error('files.*') border-danger bg-danger-light @enderror"
-                                type="file" name="files[]" multiple accept=".pdf,.jpg,.jpeg,.png">
+                                type="file" name="files[]" multiple accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx">
                             @error('files.*')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
@@ -318,8 +365,19 @@
             const senderSelect = document.getElementById('sender_id');
             const senderOtherWrapper = document.getElementById('sender-other-wrapper');
             const senderOtherInput = document.getElementById('sender_other');
-            const targetDirectorateSelect = form ? form.querySelector('select[name="target_directorate_id"]') : null;
-            const targetDirectorateOptions = targetDirectorateSelect ? Array.from(targetDirectorateSelect.options) : [];
+            const counterpartyBankWrapper = document.getElementById('counterparty-bank-wrapper');
+            const counterpartyBankSelect = document.getElementById('counterparty_bank_id');
+            const counterpartySenderId = @json($counterpartySenderId ? (string) $counterpartySenderId : null);
+            const customerBranchWrapper = document.getElementById('customer-branch-wrapper');
+            const customerBranchSelect = document.getElementById('customer_branch_id');
+            const customerSenderId = @json($customerSenderId ? (string) $customerSenderId : null);
+            const targetDirectorateSelect = form ? form.querySelector('select[name="target_directorate_id"]') :
+            null;
+            const targetDirectorateOptions = targetDirectorateSelect ? Array.from(targetDirectorateSelect.options) :
+                [];
+            const letterTypeSelect = document.getElementById('letter_type_id');
+            const letterTypeOtherWrapper = document.getElementById('letter-type-other-wrapper');
+            const letterTypeOtherInput = document.getElementById('letter_type_other');
 
             if (saveDraftButton) {
                 saveDraftButton.addEventListener('click', function() {
@@ -350,9 +408,54 @@
                 }
             }
 
+            function toggleCounterpartyBank() {
+                if (!senderSelect || !counterpartyBankWrapper || !counterpartyBankSelect) return;
+                if (counterpartySenderId && senderSelect.value === counterpartySenderId) {
+                    counterpartyBankWrapper.style.display = 'flex';
+                    counterpartyBankSelect.required = true;
+                } else {
+                    counterpartyBankWrapper.style.display = 'none';
+                    counterpartyBankSelect.required = false;
+                    counterpartyBankSelect.value = '';
+                }
+            }
+
+            function toggleCustomerBranch() {
+                if (!senderSelect || !customerBranchWrapper || !customerBranchSelect) return;
+                if (customerSenderId && senderSelect.value === customerSenderId) {
+                    customerBranchWrapper.style.display = 'flex';
+                    customerBranchSelect.required = true;
+                } else {
+                    customerBranchWrapper.style.display = 'none';
+                    customerBranchSelect.required = false;
+                    customerBranchSelect.value = '';
+                }
+            }
+
             if (senderSelect) {
                 senderSelect.addEventListener('change', toggleSenderOther);
+                senderSelect.addEventListener('change', toggleCounterpartyBank);
+                senderSelect.addEventListener('change', toggleCustomerBranch);
                 toggleSenderOther();
+                toggleCounterpartyBank();
+                toggleCustomerBranch();
+            }
+
+            function toggleLetterTypeOther() {
+                if (!letterTypeSelect || !letterTypeOtherWrapper || !letterTypeOtherInput) return;
+                if (letterTypeSelect.value === 'other') {
+                    letterTypeOtherWrapper.style.display = 'flex';
+                    letterTypeOtherInput.required = true;
+                } else {
+                    letterTypeOtherWrapper.style.display = 'none';
+                    letterTypeOtherInput.required = false;
+                    letterTypeOtherInput.value = '';
+                }
+            }
+
+            if (letterTypeSelect) {
+                letterTypeSelect.addEventListener('change', toggleLetterTypeOther);
+                toggleLetterTypeOther();
             }
 
             function updateCirculationLabel() {
@@ -366,7 +469,8 @@
             }
 
             function updateLeaderOptions() {
-                if (!targetDirectorateSelect || !circulationOptions || targetDirectorateOptions.length === 0) return;
+                if (!targetDirectorateSelect || !circulationOptions || targetDirectorateOptions.length === 0)
+            return;
 
                 const selectedValue = targetDirectorateSelect.value;
                 const checked = circulationOptions.querySelectorAll('input[type="checkbox"]:checked');
@@ -402,7 +506,8 @@
                 });
 
                 document.addEventListener('click', function(event) {
-                    if (!circulationDropdown.contains(event.target) && !circulationOptions.contains(event.target)) {
+                    if (!circulationDropdown.contains(event.target) && !circulationOptions.contains(event
+                            .target)) {
                         circulationOptions.classList.add('hidden');
                     }
                 });
@@ -422,6 +527,7 @@
                         clearValidation,
                         showFieldError,
                     } = window.CorsecIncomingValidation;
+                    const indexUrl = @json(route('letter.incoming.index'));
 
                     function validateIncomingForm($form) {
                         const errors = {};
@@ -447,8 +553,20 @@
                         if (senderValue === 'other' && !$form.find('[name="sender_other"]').val()) {
                             errors.sender_other = requiredMessage;
                         }
-                        if (!$form.find('[name="letter_type_id"]').val()) {
+                        if (counterpartySenderId && senderValue === counterpartySenderId &&
+                            !$form.find('[name="counterparty_bank_id"]').val()) {
+                            errors.counterparty_bank_id = requiredMessage;
+                        }
+                        if (customerSenderId && senderValue === customerSenderId &&
+                            !$form.find('[name="customer_branch_id"]').val()) {
+                            errors.customer_branch_id = requiredMessage;
+                        }
+                        const letterTypeValue = $form.find('[name="letter_type_id"]').val();
+                        if (!letterTypeValue) {
                             errors.letter_type_id = requiredMessage;
+                        }
+                        if (letterTypeValue === 'other' && !$form.find('[name="letter_type_other"]').val()) {
+                            errors.letter_type_other = requiredMessage;
                         }
                         if (!$form.find('[name="target_directorate_id"]').val()) {
                             errors.target_directorate_id = requiredMessage;
@@ -506,18 +624,37 @@
                                 'X-Requested-With': 'XMLHttpRequest',
                                 'X-CSRF-TOKEN': $form.find('input[name="_token"]').val()
                             },
-                            success: function() {
-                                if (window.toast && typeof window.toast.success === 'function') {
+                            success: function(response) {
+                                if (response && response.redirect_url) {
+                                    window.location.href = response.redirect_url;
+                                    return;
+                                }
+                                if (window.toast && typeof window.toast.success ===
+                                    'function') {
                                     window.toast.success('Berhasil disimpan.');
+                                    setTimeout(function() {
+                                        if (approvalInput && approvalInput.value === '1') {
+                                            window.location.href = indexUrl;
+                                            return;
+                                        }
+                                        window.location.reload();
+                                    }, 600);
                                     return;
                                 }
                                 alert('Berhasil disimpan.');
+                                if (approvalInput && approvalInput.value === '1') {
+                                    window.location.href = indexUrl;
+                                    return;
+                                }
+                                window.location.reload();
                             },
                             error: function(xhr) {
-                                if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
+                                if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON
+                                    .errors) {
                                     const serverErrors = xhr.responseJSON.errors;
                                     Object.keys(serverErrors).forEach((field) => {
-                                        showFieldError($form, field, serverErrors[field][0]);
+                                        showFieldError($form, field, serverErrors[field]
+                                            [0]);
                                     });
                                     return;
                                 }

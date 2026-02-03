@@ -12,9 +12,16 @@
         $isChecker = $user?->hasRole('checker');
         $isApprover = $user?->hasRole('approver');
         $eoDirectorateCode = config('corsec.eo_corp_affair_directorate_code', '');
+        $directorateName = \Illuminate\Support\Str::lower((string) ($user?->directorate?->name ?? ''));
         $isEoCorpAffairDirectorate =
-            $user && $eoDirectorateCode !== '' && $user->directorate?->code === $eoDirectorateCode;
+            $user &&
+            (($eoDirectorateCode !== '' && $user->directorate?->code === $eoDirectorateCode) ||
+                ($directorateName !== '' && \Illuminate\Support\Str::contains($directorateName, 'corporate secretary')));
         $isEoCorpAffairActor = $isEoCorpAffairDirectorate && ($isChecker || $isApprover);
+        $positionName = \Illuminate\Support\Str::lower((string) ($user?->position?->name ?? ''));
+        $isExecutiveOfficer = $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'executive officer');
+        $isSekretariatDireksi = $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'sekretariat direksi');
+        $isEoCorpSecretaryChecker = $isChecker && $isEoCorpAffairDirectorate && $isExecutiveOfficer;
         $isTargetDirectorate =
             $user &&
             $incomingLetter->target_directorate_id &&
@@ -59,6 +66,14 @@
                         \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Corp Affair Returned');
                 })
                 ->count() > 0;
+        $userHasEoCorpAffairVerification =
+            $user &&
+            $approvals
+                ->where('acted_by', $user->id)
+                ->filter(function ($approval) {
+                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'Verifikasi EO Corp Affair');
+                })
+                ->count() > 0;
         $canCheckerDirApproval =
             $status === 'waiting_dir_approval' && !$checkerApproved && ($isAdmin || $isChecker) && !$userHasEoDirApproval;
         $canApproverApproval =
@@ -67,7 +82,11 @@
             ($incomingLetter->authorized_status === 'pending' ||
                 in_array($status, ['on_approval', 'waiting_verification'], true)) &&
             ($isAdmin || $isEoCorpAffairActor) &&
-            !$userHasEoCorpAffairApproval;
+            ($status === 'waiting_verification'
+                ? !$userHasEoCorpAffairVerification
+                : !$userHasEoCorpAffairApproval);
+        $canAddMonitoring =
+            $isAdmin || $isTargetDirectorate || $isEoCorpSecretaryChecker || $isSekretariatDireksi;
         $statusSteps = [
             'draft' => 'Draft',
             'on_approval' => 'On Approval',
@@ -148,9 +167,25 @@
                                 {{ $incomingLetter->sender?->name ?? ($incomingLetter->sender_other ?? ($incomingLetter->getAttribute('sender') ?? '-')) }}
                             </span>
                         </div>
+                        @if ($incomingLetter->counterpartyBank)
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Counterparty Bank:</span>
+                                <span class="font-medium">{{ $incomingLetter->counterpartyBank->name }}</span>
+                            </div>
+                        @endif
+                        @if ($incomingLetter->customerBranch)
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Cabang Nasabah/Debitur:</span>
+                                <span class="font-medium">
+                                    {{ $incomingLetter->customerBranch->code }} - {{ $incomingLetter->customerBranch->name }}
+                                </span>
+                            </div>
+                        @endif
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600">Action Surat:</span>
-                            <span class="font-medium">{{ $incomingLetter->letterType?->name ?? '-' }}</span>
+                            <span class="font-medium">
+                                {{ $incomingLetter->letter_type_other ?? ($incomingLetter->letterType?->name ?? '-') }}
+                            </span>
                         </div>
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600">Sirkulasi:</span>
@@ -177,7 +212,7 @@
             </div>
         </div>
 
-        @if ($isAdmin || $isTargetDirectorate)
+        @if ($canAddMonitoring)
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Tambah Monitoring Direktorat</h3>
@@ -562,7 +597,7 @@
                                         </button>
                                         <div id="meeting-participants-options"
                                             class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
-                                            style="background-color: #ffffff;">
+                                            style="background-color: #ffffff; max-height: 16rem; overflow-y: auto;">
                                             <div class="p-3 space-y-2 bg-white">
                                                 @foreach ($directorates ?? [] as $directorate)
                                                     <label class="flex items-center gap-2">
@@ -626,7 +661,7 @@
                                         </button>
                                         <div id="social-participants-options"
                                             class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
-                                            style="background-color: #ffffff;">
+                                            style="background-color: #ffffff; max-height: 16rem; overflow-y: auto;">
                                             <div class="p-3 space-y-2 bg-white">
                                                 @foreach ($directorates ?? [] as $directorate)
                                                     <label class="flex items-center gap-2">
@@ -681,7 +716,7 @@
                                         </button>
                                         <div id="social-coordination-options"
                                             class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
-                                            style="background-color: #ffffff;">
+                                            style="background-color: #ffffff; max-height: 16rem; overflow-y: auto;">
                                             <div class="p-3 space-y-2 bg-white">
                                                 @foreach ($directorates ?? [] as $directorate)
                                                     <label class="flex items-center gap-2">

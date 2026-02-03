@@ -69,15 +69,15 @@
                         <div class="flex flex-col" id="recipient-other-wrapper" style="display: none;">
                             <label class="form-label">Penerima Lainnya <span class="text-danger">*</span></label>
                             <input class="input" type="text" name="recipient_other" id="recipient_other"
-                                value="{{ old('recipient_other', $outgoingLetter?->recipient_other) }}"
-                                maxlength="150" placeholder="Tulis nama penerima">
+                                value="{{ old('recipient_other', $outgoingLetter?->recipient_other) }}" maxlength="150"
+                                placeholder="Tulis nama penerima">
                         </div>
 
                         <div class="flex flex-col md:col-span-2">
                             <label class="form-label">Perihal <span class="text-danger">*</span></label>
                             <input class="input" type="text" name="subject"
-                                value="{{ old('subject', $outgoingLetter?->subject) }}"
-                                maxlength="255" placeholder="Perihal surat..." required>
+                                value="{{ old('subject', $outgoingLetter?->subject) }}" maxlength="255"
+                                placeholder="Perihal surat..." required>
                         </div>
 
                         <div class="flex flex-col md:col-span-2">
@@ -135,8 +135,12 @@
                             <label class="form-label">Sirkulasi Kepatuhan <span class="text-danger">*</span></label>
                             <select class="select" name="need_compliance_review" required>
                                 <option value="">- Pilih -</option>
-                                <option value="1" {{ old('need_compliance_review', $outgoingLetter?->need_compliance_review ? '1' : '0') === '1' ? 'selected' : '' }}>Y</option>
-                                <option value="0" {{ old('need_compliance_review', $outgoingLetter?->need_compliance_review ? '1' : '0') === '0' ? 'selected' : '' }}>N</option>
+                                <option value="1"
+                                    {{ (string) old('need_compliance_review', $outgoingLetter?->need_compliance_review) === '1' ? 'selected' : '' }}>
+                                    Ya</option>
+                                <option value="0"
+                                    {{ (string) old('need_compliance_review', $outgoingLetter?->need_compliance_review) === '0' ? 'selected' : '' }}>
+                                    Tidak</option>
                             </select>
                         </div>
 
@@ -329,10 +333,12 @@
                             window.location.reload();
                         },
                         error: function(xhr) {
-                            if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
+                            if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON
+                                .errors) {
                                 const serverErrors = xhr.responseJSON.errors;
                                 Object.keys(serverErrors).forEach((field) => {
-                                    showFieldError($form, field, serverErrors[field][0]);
+                                    showFieldError($form, field, serverErrors[field][
+                                    0]);
                                 });
                                 return;
                             }

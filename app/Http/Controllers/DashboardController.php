@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use Modules\Corsec\Models\IncomingLetter;
 use Modules\Corsec\Models\Meeting;
 use Modules\Corsec\Models\OutgoingLetter;
+use Modules\Corsec\Models\WorkProgram;
 
 class DashboardController extends Controller
 {
@@ -17,7 +18,11 @@ class DashboardController extends Controller
     {
         if (Auth::user()->hasRole(['maker', 'checker', 'approver', 'administrator'])) {
             $incomingOpen = IncomingLetter::query()
-                ->whereNotIn('status', ['verified'])
+                ->whereNotIn('status', [
+                    IncomingLetter::STATUS_VERIFIED,
+                    IncomingLetter::STATUS_REJECTED,
+                    IncomingLetter::STATUS_RETURNED,
+                ])
                 ->count();
 
             $outgoingOpen = OutgoingLetter::query()
@@ -34,7 +39,14 @@ class DashboardController extends Controller
                 })
                 ->count();
 
-            return view('corsec::dashboard', compact('incomingOpen', 'outgoingOpen', 'meetingOpen'));
+            $workplanOpen = WorkProgram::query()
+                ->where(function ($q) {
+                    $q->whereNull('status')
+                        ->orWhereNotIn('status', ['done', 'returned', 'rejected']);
+                })
+                ->count();
+
+            return view('corsec::dashboard', compact('incomingOpen', 'outgoingOpen', 'meetingOpen', 'workplanOpen'));
         }
 
         abort(403, 'Sorry! You are not allowed to view corsec app.');
