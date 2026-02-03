@@ -167,9 +167,25 @@
                                 {{ $incomingLetter->sender?->name ?? ($incomingLetter->sender_other ?? ($incomingLetter->getAttribute('sender') ?? '-')) }}
                             </span>
                         </div>
+                        @if ($incomingLetter->counterpartyBank)
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Counterparty Bank:</span>
+                                <span class="font-medium">{{ $incomingLetter->counterpartyBank->name }}</span>
+                            </div>
+                        @endif
+                        @if ($incomingLetter->customerBranch)
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Cabang Nasabah/Debitur:</span>
+                                <span class="font-medium">
+                                    {{ $incomingLetter->customerBranch->code }} - {{ $incomingLetter->customerBranch->name }}
+                                </span>
+                            </div>
+                        @endif
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600">Action Surat:</span>
-                            <span class="font-medium">{{ $incomingLetter->letterType?->name ?? '-' }}</span>
+                            <span class="font-medium">
+                                {{ $incomingLetter->letter_type_other ?? ($incomingLetter->letterType?->name ?? '-') }}
+                            </span>
                         </div>
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600">Sirkulasi:</span>
@@ -581,7 +597,7 @@
                                         </button>
                                         <div id="meeting-participants-options"
                                             class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
-                                            style="background-color: #ffffff;">
+                                            style="background-color: #ffffff; max-height: 16rem; overflow-y: auto;">
                                             <div class="p-3 space-y-2 bg-white">
                                                 @foreach ($directorates ?? [] as $directorate)
                                                     <label class="flex items-center gap-2">
@@ -645,7 +661,7 @@
                                         </button>
                                         <div id="social-participants-options"
                                             class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
-                                            style="background-color: #ffffff;">
+                                            style="background-color: #ffffff; max-height: 16rem; overflow-y: auto;">
                                             <div class="p-3 space-y-2 bg-white">
                                                 @foreach ($directorates ?? [] as $directorate)
                                                     <label class="flex items-center gap-2">
@@ -700,7 +716,7 @@
                                         </button>
                                         <div id="social-coordination-options"
                                             class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
-                                            style="background-color: #ffffff;">
+                                            style="background-color: #ffffff; max-height: 16rem; overflow-y: auto;">
                                             <div class="p-3 space-y-2 bg-white">
                                                 @foreach ($directorates ?? [] as $directorate)
                                                     <label class="flex items-center gap-2">

@@ -41,11 +41,25 @@ class ApprovalRequestService
     {
         DB::transaction(function () use ($approvalRequest, $actor) {
             $modelClass = $approvalRequest->model;
-            $payload = $this->filterFillable($modelClass, $approvalRequest->request_new ?? []);
+            $requestNew = $approvalRequest->request_new ?? [];
 
             if ($approvalRequest->action === ApprovalRequest::ACTION_CREATE) {
-                $modelClass::create($payload);
+                if (isset($requestNew['items']) && is_array($requestNew['items'])) {
+                    foreach ($requestNew['items'] as $item) {
+                        if (!is_array($item)) {
+                            continue;
+                        }
+                        $payload = $this->filterFillable($modelClass, $item);
+                        if (!empty($payload)) {
+                            $modelClass::create($payload);
+                        }
+                    }
+                } else {
+                    $payload = $this->filterFillable($modelClass, $requestNew);
+                    $modelClass::create($payload);
+                }
             } elseif ($approvalRequest->action === ApprovalRequest::ACTION_UPDATE) {
+                $payload = $this->filterFillable($modelClass, $requestNew);
                 $modelClass::query()
                     ->where('id', $approvalRequest->target_id)
                     ->update($payload);

@@ -244,6 +244,7 @@
 
         const apiUrl = element.getAttribute('data-api-url');
         const baseUrl = element.getAttribute('data-base-url');
+        const isAdmin = @json(auth()->user()?->hasRole('administrator'));
 
         const statusBadge = (status) => {
             const val = (status ?? '').toString().toLowerCase();
@@ -274,7 +275,7 @@
                         @can('corsec.delete')
                             const status = (data.status ?? '').toString().toLowerCase();
                             const deletableStatuses = ['draft', 'returned'];
-                            if (!deletableStatuses.includes(status)) return '';
+                            if (!isAdmin && !deletableStatuses.includes(status)) return '';
                             const checkbox = document.createElement('input');
                             checkbox.className = 'checkbox checkbox-sm';
                             checkbox.type = 'checkbox';
@@ -319,6 +320,7 @@
                 letter_type_id: {
                     title: 'Jenis Surat',
                     render: (item, data) => {
+                        if (data.letter_type_other) return data.letter_type_other;
                         return data.letter_type ? `${data.letter_type.name}` : '-';
                     },
                 },
@@ -366,7 +368,7 @@
                         const editableStatuses = ['draft', 'returned'];
                         const deletableStatuses = ['draft', 'returned'];
                         const canEditStatus = editableStatuses.includes(status);
-                        const canDeleteStatus = deletableStatuses.includes(status);
+                        const canDeleteStatus = isAdmin || deletableStatuses.includes(status);
                         let html = `<div class="flex flex-nowrap justify-center">`;
 
                         @can('corsec.read')

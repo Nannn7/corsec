@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Modules\Corsec\Models\Concerns\HasAuditUsers;
 use Modules\Corsec\Models\Concerns\HasAuthorizedUsers;
 use Modules\Corsec\Models\Concerns\HasUuidColumn;
+use Modules\Basicdata\Models\Branch;
 
 class IncomingLetter extends Model
 {
@@ -38,7 +39,10 @@ class IncomingLetter extends Model
         'sender',
         'sender_id',
         'sender_other',
+        'counterparty_bank_id',
+        'customer_branch_id',
         'letter_type_id',
+        'letter_type_other',
         'received_date',
         'target_directorate_id',
         'priority',
@@ -76,6 +80,16 @@ class IncomingLetter extends Model
     public function sender(): BelongsTo
     {
         return $this->belongsTo(Sender::class, 'sender_id');
+    }
+
+    public function counterpartyBank(): BelongsTo
+    {
+        return $this->belongsTo(Bank::class, 'counterparty_bank_id');
+    }
+
+    public function customerBranch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class, 'customer_branch_id');
     }
 
     public function letterType(): BelongsTo
