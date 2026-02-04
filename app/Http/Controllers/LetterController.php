@@ -4,7 +4,9 @@ namespace Modules\Corsec\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
+use Modules\Usermanagement\Models\User;
 
 class LetterController extends Controller
 {
@@ -38,6 +40,40 @@ class LetterController extends Controller
     public function outgoing()
     {
         $this->authorizeRead();
-        return view('corsec::letter.outgoing.index');
+        $canCreate = $this->canCreateOutgoing($this->user);
+        return view('corsec::letter.outgoing.index', compact('canCreate'));
+    }
+
+    private function canCreateOutgoing(?User $user): bool
+    {
+        if (!$user || !$user->can('corsec.create')) {
+            return false;
+        }
+
+        return !$this->isCorpSecretaryDirectorate($user);
+    }
+
+    private function isCorpSecretaryDirectorate(?User $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        $eoDirectorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+
+        $user->loadMissing('directorate');
+        $directorateCode = $user->directorate?->code;
+        $directorateName = $user->directorate?->name;
+
+        if ($directorateCode && $eoDirectorateCode !== '' && $directorateCode === $eoDirectorateCode) {
+            return true;
+        }
+
+        if ($directorateName) {
+            $normalized = Str::lower($directorateName);
+            return Str::contains($normalized, 'corporate secretary');
+        }
+
+        return false;
     }
 }
