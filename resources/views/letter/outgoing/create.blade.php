@@ -45,13 +45,18 @@
 
                         <div class="flex flex-col">
                             <label class="form-label">Tanggal Order <span class="text-danger">*</span></label>
-                            <input class="input" type="date" name="order_date" readonly
+                            <input class="input @error('order_date') border-danger bg-danger-light @enderror" type="date"
+                                name="order_date" readonly
                                 value="{{ old('order_date', $outgoingLetter?->order_date?->format('Y-m-d') ?? now()->format('Y-m-d')) }}">
+                            @error('order_date')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
                         </div>
 
                         <div class="flex flex-col">
                             <label class="form-label">Penerima <span class="text-danger">*</span></label>
-                            <select class="select" name="recipient_id" id="recipient_id" required>
+                            <select class="select @error('recipient_id') border-danger bg-danger-light @enderror"
+                                name="recipient_id" id="recipient_id" required>
                                 <option value="">- Pilih Penerima -</option>
                                 @foreach ($senders as $sender)
                                     <option value="{{ $sender->id }}"
@@ -64,30 +69,45 @@
                                     Other
                                 </option>
                             </select>
+                            @error('recipient_id')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
                         </div>
 
                         <div class="flex flex-col" id="recipient-other-wrapper" style="display: none;">
                             <label class="form-label">Penerima Lainnya <span class="text-danger">*</span></label>
-                            <input class="input" type="text" name="recipient_other" id="recipient_other"
+                            <input class="input @error('recipient_other') border-danger bg-danger-light @enderror"
+                                type="text" name="recipient_other" id="recipient_other"
                                 value="{{ old('recipient_other', $outgoingLetter?->recipient_other) }}" maxlength="150"
                                 placeholder="Tulis nama penerima">
+                            @error('recipient_other')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
                         </div>
 
                         <div class="flex flex-col md:col-span-2">
                             <label class="form-label">Perihal <span class="text-danger">*</span></label>
-                            <input class="input" type="text" name="subject"
-                                value="{{ old('subject', $outgoingLetter?->subject) }}" maxlength="255"
+                            <input class="input @error('subject') border-danger bg-danger-light @enderror" type="text"
+                                name="subject" value="{{ old('subject', $outgoingLetter?->subject) }}" maxlength="255"
                                 placeholder="Perihal surat..." required>
+                            @error('subject')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
                         </div>
 
                         <div class="flex flex-col md:col-span-2">
                             <label class="form-label">Ringkasan Isi Surat <span class="text-danger">*</span></label>
-                            <textarea class="textarea w-full" name="summary" rows="2" placeholder="Ringkasan isi surat..." required>{{ old('summary', $outgoingLetter?->summary) }}</textarea>
+                            <textarea class="textarea w-full @error('summary') border-danger bg-danger-light @enderror" name="summary"
+                                rows="3" placeholder="Ringkasan isi surat..." required>{{ old('summary', $outgoingLetter?->summary) }}</textarea>
+                            @error('summary')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
                         </div>
 
                         <div class="flex flex-col">
                             <label class="form-label">Jenis Perihal <span class="text-danger">*</span></label>
-                            <select class="select" name="perihal_type" id="perihal_type" required>
+                            <select class="select @error('perihal_type') border-danger bg-danger-light @enderror"
+                                name="perihal_type" id="perihal_type" required>
                                 <option value="">- Pilih -</option>
                                 <option value="tanggapan_surat_masuk"
                                     {{ old('perihal_type', $outgoingLetter?->perihal_type) === 'tanggapan_surat_masuk' ? 'selected' : '' }}>
@@ -102,11 +122,16 @@
                                     Insidentil
                                 </option>
                             </select>
+                            @error('perihal_type')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
                         </div>
 
                         <div class="flex flex-col perihal-field hidden" data-perihal="tanggapan_surat_masuk">
                             <label class="form-label">Surat Masuk</label>
-                            <select class="select" name="perihal_incoming_letter_id">
+                            <select
+                                class="select @error('perihal_incoming_letter_id') border-danger bg-danger-light @enderror"
+                                name="perihal_incoming_letter_id">
                                 <option value="">- Pilih Surat Masuk -</option>
                                 @foreach ($incomingLetters as $incomingLetter)
                                     <option value="{{ $incomingLetter->id }}"
@@ -115,25 +140,37 @@
                                     </option>
                                 @endforeach
                             </select>
+                            @error('perihal_incoming_letter_id')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
                         </div>
 
                         <div class="flex flex-col perihal-field hidden" data-perihal="rutinitas">
-                            <label class="form-label">Perihal (Free Text)</label>
-                            <input class="input" type="text" name="perihal_text"
+                            <label class="form-label">Keterangan Rutinitas</label>
+                            <input class="input @error('perihal_text') border-danger bg-danger-light @enderror"
+                                type="text" name="perihal_text"
                                 value="{{ old('perihal_text', $outgoingLetter?->perihal_text) }}"
                                 placeholder="Perihal rutinitas...">
+                            @error('perihal_text')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
                         </div>
 
                         <div class="flex flex-col perihal-field hidden" data-perihal="insidentil">
-                            <label class="form-label">Perihal (Free Text)</label>
-                            <input class="input" type="text" name="perihal_text"
+                            <label class="form-label">Keterangan Insidentil</label>
+                            <input class="input @error('perihal_text') border-danger bg-danger-light @enderror"
+                                type="text" name="perihal_text"
                                 value="{{ old('perihal_text', $outgoingLetter?->perihal_text) }}"
                                 placeholder="Perihal insidentil...">
+                            @error('perihal_text')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
                         </div>
 
                         <div class="flex flex-col">
                             <label class="form-label">Sirkulasi Kepatuhan <span class="text-danger">*</span></label>
-                            <select class="select" name="need_compliance_review" required>
+                            <select class="select @error('need_compliance_review') border-danger bg-danger-light @enderror"
+                                name="need_compliance_review" required>
                                 <option value="">- Pilih -</option>
                                 <option value="1"
                                     {{ (string) old('need_compliance_review', $outgoingLetter?->need_compliance_review) === '1' ? 'selected' : '' }}>
@@ -142,6 +179,9 @@
                                     {{ (string) old('need_compliance_review', $outgoingLetter?->need_compliance_review) === '0' ? 'selected' : '' }}>
                                     Tidak</option>
                             </select>
+                            @error('need_compliance_review')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
                         </div>
 
                         <div class="flex flex-col md:col-span-2">
@@ -151,16 +191,28 @@
                                     <span class="text-danger">*</span>
                                 @endif
                             </label>
-                            <input class="file-input" type="file" name="draft_file" accept=".pdf,.jpg,.jpeg,.png">
-                        </div>
-
-                        <div class="flex flex-col md:col-span-2">
-                            <label class="form-label">Catatan</label>
-                            <textarea class="textarea w-full" name="note" rows="2" placeholder="Catatan tambahan...">{{ old('note', $outgoingLetter?->note) }}</textarea>
+                            <input class="file-input @error('draft_file') border-danger bg-danger-light @enderror"
+                                type="file" name="draft_file" accept=".pdf,.jpg,.jpeg,.png">
+                            @error('draft_file')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
                         </div>
                     </div>
 
-                    <div class="flex justify-end mt-7 gap-2">
+                    <div class="border-t border-gray-200" style="margin: 24px 0;"></div>
+
+                    <div class="grid grid-cols-1 gap-5">
+                        <div class="flex flex-col">
+                            <label class="form-label">Catatan</label>
+                            <textarea class="textarea w-full @error('note') border-danger bg-danger-light @enderror" name="note"
+                                rows="3" placeholder="Catatan tambahan...">{{ old('note', $outgoingLetter?->note) }}</textarea>
+                            @error('note')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end mt-8 gap-2">
                         <a href="{{ route('letter.outgoing.index') }}" class="btn btn-light">
                             Cancel
                         </a>
@@ -259,14 +311,22 @@
                     clearValidation,
                     showFieldError,
                 } = window.CorsecIncomingValidation;
+                const indexUrl = @json(route('letter.outgoing.index'));
 
                 function validateOutgoingForm($form) {
                     const errors = {};
                     const isEdit = {{ isset($outgoingLetter) ? 'true' : 'false' }};
                     const requiredMessage = 'Field ini tidak boleh kosong.';
 
+                    if (!$form.find('[name="order_date"]').val()) {
+                        errors.order_date = requiredMessage;
+                    }
                     if (!$form.find('[name="recipient_id"]').val()) {
                         errors.recipient_id = requiredMessage;
+                    }
+                    const recipientValue = $form.find('[name="recipient_id"]').val();
+                    if (recipientValue === 'other' && !$form.find('[name="recipient_other"]').val()) {
+                        errors.recipient_other = requiredMessage;
                     }
                     if (!$form.find('[name="subject"]').val()) {
                         errors.subject = requiredMessage;
@@ -286,9 +346,13 @@
                         !$form.find('[name="perihal_incoming_letter_id"]').val()) {
                         errors.perihal_incoming_letter_id = requiredMessage;
                     }
-                    if ((perihalType === 'rutinitas' || perihalType === 'insidentil') &&
-                        !$form.find('[name="perihal_text"]').val()) {
-                        errors.perihal_text = requiredMessage;
+                    if (perihalType === 'rutinitas' || perihalType === 'insidentil') {
+                        const perihalText = $form.find(
+                            `.perihal-field[data-perihal="${perihalType}"] [name="perihal_text"]`
+                        ).val();
+                        if (!perihalText) {
+                            errors.perihal_text = requiredMessage;
+                        }
                     }
 
                     const filesInput = $form.find('[name="draft_file"]')[0];
@@ -323,13 +387,27 @@
                             'X-Requested-With': 'XMLHttpRequest',
                             'X-CSRF-TOKEN': $form.find('input[name="_token"]').val()
                         },
-                        success: function() {
+                        success: function(response) {
+                            if (response && response.redirect_url) {
+                                window.location.href = response.redirect_url;
+                                return;
+                            }
                             if (window.toast && typeof window.toast.success === 'function') {
                                 window.toast.success('Berhasil disimpan.');
-                                setTimeout(() => window.location.reload(), 800);
+                                setTimeout(function() {
+                                    if (approvalInput && approvalInput.value === '1') {
+                                        window.location.href = indexUrl;
+                                        return;
+                                    }
+                                    window.location.reload();
+                                }, 600);
                                 return;
                             }
                             alert('Berhasil disimpan.');
+                            if (approvalInput && approvalInput.value === '1') {
+                                window.location.href = indexUrl;
+                                return;
+                            }
                             window.location.reload();
                         },
                         error: function(xhr) {
@@ -338,7 +416,8 @@
                                 const serverErrors = xhr.responseJSON.errors;
                                 Object.keys(serverErrors).forEach((field) => {
                                     showFieldError($form, field, serverErrors[field][
-                                    0]);
+                                        0
+                                    ]);
                                 });
                                 return;
                             }

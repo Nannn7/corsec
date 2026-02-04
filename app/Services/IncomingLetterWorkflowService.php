@@ -5,12 +5,14 @@ namespace Modules\Corsec\Services;
 use Modules\Usermanagement\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Corsec\Models\Directorate;
 use Modules\Corsec\Models\IncomingLetter;
 use Modules\Corsec\Models\IncomingLetterRoute;
 use Modules\Corsec\Models\Approval;
 use Modules\Corsec\Models\Comment;
 use Modules\Corsec\Models\Attachment;
 use Modules\Corsec\Models\Attachable;
+use Modules\Corsec\Notifications\IncomingLetterDirectorateNotification;
 
 class IncomingLetterWorkflowService
 {
@@ -29,8 +31,52 @@ class IncomingLetterWorkflowService
                 'status' => 'pending',
                 'note' => 'Menunggu approval EO Corp Affair',
             ]);
+            $directorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+            if ($directorateCode !== '') {
+                $directorateId = Directorate::query()
+                    ->where('code', $directorateCode)
+                    ->value('id');
 
-            // TODO: notif ke checker (EO corp affair) -> nanti gue siapin kelas Notification kalau lo mau
+                if ($directorateId) {
+                    $checkerIds = User::query()
+                        ->where('directorate_id', $directorateId)
+                        ->whereHas('roles', function ($query) {
+                            $query->where('name', 'checker');
+                        })
+                        ->pluck('id');
+
+                    if ($checkerIds->isNotEmpty()) {
+                        $now = now();
+                        $data = json_encode([
+                            'title' => 'Approval EO Corp Affair',
+                            'message' => 'Surat masuk menunggu approval EO Corp Affair.',
+                            'incoming_letter_id' => $incomingLetter->id,
+                            'registration_no' => $incomingLetter->registration_no,
+                            'subject' => $incomingLetter->subject,
+                            'sender' => $incomingLetter->sender,
+                            'status' => $incomingLetter->status,
+                            'created_by' => [
+                                'id' => $actor->id,
+                                'name' => $actor->name,
+                            ],
+                        ]);
+
+                        $payload = $checkerIds->map(function ($checkerId) use ($data, $now) {
+                            return [
+                                'id' => (string) Str::uuid(),
+                                'type' => 'incoming_letter_eo_corp_affair',
+                                'notifiable_type' => User::class,
+                                'notifiable_id' => $checkerId,
+                                'data' => $data,
+                                'created_at' => $now,
+                                'updated_at' => $now,
+                            ];
+                        })->all();
+
+                        DB::table('notifications')->insert($payload);
+                    }
+                }
+            }
         });
     }
 
@@ -54,7 +100,41 @@ class IncomingLetterWorkflowService
                 'created_by' => $actor->id,
             ]);
 
-            // notif ke direktorat target -> TODO optional
+            $targetUserIds = User::query()
+                ->where('directorate_id', $toDirectorateId)
+                ->pluck('id');
+
+            if ($targetUserIds->isNotEmpty()) {
+                $now = now();
+                $data = json_encode([
+                    'title' => 'Surat masuk baru',
+                    'message' => 'Surat masuk perlu tindak lanjut direktorat.',
+                    'incoming_letter_id' => $incomingLetter->id,
+                    'registration_no' => $incomingLetter->registration_no,
+                    'subject' => $incomingLetter->subject,
+                    'sender' => $incomingLetter->sender,
+                    'status' => $incomingLetter->status,
+                    'target_directorate_id' => $toDirectorateId,
+                    'created_by' => [
+                        'id' => $actor->id,
+                        'name' => $actor->name,
+                    ],
+                ]);
+
+                $payload = $targetUserIds->map(function ($targetUserId) use ($data, $now) {
+                    return [
+                        'id' => (string) Str::uuid(),
+                        'type' => IncomingLetterDirectorateNotification::class,
+                        'notifiable_type' => User::class,
+                        'notifiable_id' => $targetUserId,
+                        'data' => $data,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                })->all();
+
+                DB::table('notifications')->insert($payload);
+            }
         });
     }
 
@@ -107,7 +187,21 @@ class IncomingLetterWorkflowService
                         'updated_by' => $actor->id,
                     ]);
                 }
+
+                $this->notifyIncomingDecision(
+                    $incomingLetter,
+                    $actor,
+                    [$incomingLetter->created_by],
+                    'Approval EO Corp Affair',
+                    $action === 'approve'
+                        ? 'Surat masuk disetujui EO Corp Affair.'
+                        : 'Surat masuk dikembalikan EO Corp Affair.'
+                );
             } elseif ($incomingLetter->status === IncomingLetter::STATUS_WAITING_DIR_APPROVAL) {
+                $decisionTargetId = $incomingLetter->followup_submitted_by
+                    ?? $incomingLetter->updated_by
+                    ?? $incomingLetter->created_by;
+
                 $checkerApproved = Approval::query()
                     ->where('approvable_type', IncomingLetter::class)
                     ->where('approvable_id', $incomingLetter->id)
@@ -128,6 +222,13 @@ class IncomingLetterWorkflowService
                             'acted_by' => $actor->id,
                             'acted_at' => now(),
                         ]);
+                        $this->notifyIncomingDecision(
+                            $incomingLetter,
+                            $actor,
+                            [$decisionTargetId],
+                            'Approval Direktorat',
+                            'Approval direktorat disetujui (EO Direktorat).'
+                        );
                         return;
                     }
 
@@ -157,6 +258,14 @@ class IncomingLetterWorkflowService
                             'status' => IncomingLetter::STATUS_WAITING_VERIFICATION,
                             'updated_by' => $actor->id,
                         ]);
+
+                        $this->notifyIncomingDecision(
+                            $incomingLetter,
+                            $actor,
+                            [$decisionTargetId],
+                            'Approval Direktorat',
+                            'Approval direktorat disetujui (DD Direktorat).'
+                        );
 
                         return;
                     }
@@ -191,6 +300,14 @@ class IncomingLetterWorkflowService
                         'status' => IncomingLetter::STATUS_RETURNED,
                         'updated_by' => $actor->id,
                     ]);
+
+                    $this->notifyIncomingDecision(
+                        $incomingLetter,
+                        $actor,
+                        [$decisionTargetId],
+                        'Approval Direktorat',
+                        'Approval direktorat dikembalikan.'
+                    );
                 }
             }
 
@@ -293,6 +410,33 @@ class IncomingLetterWorkflowService
                     'status' => 'pending',
                     'note' => 'Menunggu approval EO dan DD Direktorat',
                 ]);
+
+                $directorateId = $incomingLetter->target_directorate_id ?? $actor->directorate_id;
+                if ($directorateId) {
+                    $checkerIds = User::query()
+                        ->where('directorate_id', $directorateId)
+                        ->whereHas('roles', function ($query) {
+                            $query->where('name', 'checker');
+                        })
+                        ->pluck('id');
+
+                    if ($checkerIds->isNotEmpty()) {
+                        $this->notifyUsers($checkerIds, 'incoming_letter_dir_approval', [
+                            'title' => 'Approval Direktorat',
+                            'message' => 'Surat masuk menunggu approval direktorat.',
+                            'incoming_letter_id' => $incomingLetter->id,
+                            'registration_no' => $incomingLetter->registration_no,
+                            'subject' => $incomingLetter->subject,
+                            'sender' => $incomingLetter->sender,
+                            'status' => $incomingLetter->status,
+                            'target_directorate_id' => $directorateId,
+                            'created_by' => [
+                                'id' => $actor->id,
+                                'name' => $actor->name,
+                            ],
+                        ]);
+                    }
+                }
             }
         });
     }
@@ -321,6 +465,16 @@ class IncomingLetterWorkflowService
                     'acted_by' => $actor->id,
                     'acted_at' => now(),
                 ]);
+
+                $this->markIncomingNotificationsAsRead($incomingLetter->id);
+
+                $this->notifyIncomingDecision(
+                    $incomingLetter,
+                    $actor,
+                    [$incomingLetter->created_by],
+                    'Verifikasi EO Corp Affair',
+                    'Surat masuk telah diverifikasi.'
+                );
             }
 
             if (in_array($action, ['return', 'reject'], true)) {
@@ -337,6 +491,14 @@ class IncomingLetterWorkflowService
                         'created_by' => $actor->id,
                     ]);
                 }
+
+                $this->notifyIncomingDecision(
+                    $incomingLetter,
+                    $actor,
+                    [$incomingLetter->created_by],
+                    'Verifikasi EO Corp Affair',
+                    'Verifikasi surat masuk dikembalikan.'
+                );
             }
         });
     }
@@ -376,5 +538,64 @@ class IncomingLetterWorkflowService
             ->contains(function ($approval) use ($labelPrefix) {
                 return Str::startsWith((string) $approval->note, $labelPrefix);
             });
+    }
+
+    private function markIncomingNotificationsAsRead(int|string $incomingLetterId): void
+    {
+        DB::table('notifications')
+            ->whereNull('read_at')
+            ->where('data->incoming_letter_id', (string) $incomingLetterId)
+            ->update([
+                'read_at' => now(),
+                'updated_at' => now(),
+            ]);
+    }
+
+    private function notifyIncomingDecision(
+        IncomingLetter $incomingLetter,
+        User $actor,
+        array $userIds,
+        string $title,
+        string $message
+    ): void {
+        $this->notifyUsers($userIds, 'incoming_letter_action', [
+            'title' => $title,
+            'message' => $message,
+            'incoming_letter_id' => $incomingLetter->id,
+            'registration_no' => $incomingLetter->registration_no,
+            'subject' => $incomingLetter->subject,
+            'sender' => $incomingLetter->sender,
+            'status' => $incomingLetter->status,
+            'target_directorate_id' => $incomingLetter->target_directorate_id,
+            'created_by' => [
+                'id' => $actor->id,
+                'name' => $actor->name,
+            ],
+        ]);
+    }
+
+    private function notifyUsers(iterable $userIds, string $type, array $data): void
+    {
+        $ids = collect($userIds)->filter()->unique()->values();
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        $now = now();
+        $payloadData = json_encode($data);
+
+        $payload = $ids->map(function ($userId) use ($type, $payloadData, $now) {
+            return [
+                'id' => (string) Str::uuid(),
+                'type' => $type,
+                'notifiable_type' => User::class,
+                'notifiable_id' => $userId,
+                'data' => $payloadData,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        })->all();
+
+        DB::table('notifications')->insert($payload);
     }
 }

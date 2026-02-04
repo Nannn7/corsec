@@ -32,18 +32,68 @@
                     return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Kepatuhan Approved');
                 })
                 ->count() > 0;
+        $corpSecretaryCode = config('corsec.eo_corp_affair_directorate_code', '');
+        $corpDirectorateName = \Illuminate\Support\Str::lower((string) ($user?->directorate?->name ?? ''));
+        $isCorpSecretaryDirectorate =
+            $user &&
+            (($corpSecretaryCode !== '' && $user->directorate?->code === $corpSecretaryCode) ||
+                ($corpDirectorateName !== '' &&
+                    \Illuminate\Support\Str::contains($corpDirectorateName, 'corporate secretary')));
+        $corpRoleNames = $user?->roles?->pluck('name')->map(function ($name) {
+            return \Illuminate\Support\Str::lower((string) $name);
+        }) ?? collect();
+        $corpPositionName = \Illuminate\Support\Str::lower((string) ($user?->position?->name ?? ''));
+        $isCorpSecretaryStaffPosition =
+            $corpPositionName !== '' && \Illuminate\Support\Str::contains($corpPositionName, 'staff');
+        $isCorpSecretaryMaker =
+            $isCorpSecretaryDirectorate &&
+            $corpRoleNames->contains(function ($name) {
+                return \Illuminate\Support\Str::contains($name, 'maker');
+            });
+        $isCorpSecretaryApprover =
+            $isCorpSecretaryDirectorate &&
+            $corpRoleNames->contains(function ($name) {
+                return \Illuminate\Support\Str::contains($name, 'approver');
+            });
+        $isCorpSecretaryChecker =
+            $isCorpSecretaryDirectorate &&
+            $corpRoleNames->contains(function ($name) {
+                return \Illuminate\Support\Str::contains($name, 'checker');
+            });
+        $isCorpSecretaryMakerStaff = $isCorpSecretaryMaker && $isCorpSecretaryStaffPosition;
+        $complianceDirectorateCode = config('corsec.compliance_directorate_code', '');
+        $directorateName = \Illuminate\Support\Str::lower((string) ($user?->directorate?->name ?? ''));
+        $isComplianceDirectorate =
+            $user &&
+            (($complianceDirectorateCode !== '' && $user->directorate?->code === $complianceDirectorateCode) ||
+                ($directorateName !== '' &&
+                    (\Illuminate\Support\Str::contains($directorateName, 'compliance') ||
+                        \Illuminate\Support\Str::contains($directorateName, 'kepatuhan'))));
+        $positionName = \Illuminate\Support\Str::lower((string) ($user?->position?->name ?? ''));
+        $isComplianceStaff = $isComplianceDirectorate && $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'staff');
         $canComplianceCheckerApproval =
-            $status === 'waiting_compliance_approval' && !$checkerComplianceApproved && ($isAdmin || $isChecker);
+            $status === 'waiting_compliance_approval' &&
+            !$checkerComplianceApproved &&
+            ($isAdmin || ($isComplianceDirectorate && $isChecker));
         $canComplianceApproverApproval =
-            $status === 'waiting_compliance_approval' && $checkerComplianceApproved && ($isAdmin || $isApprover);
+            $status === 'waiting_compliance_approval' &&
+            $checkerComplianceApproved &&
+            ($isAdmin || ($isComplianceDirectorate && $isApprover));
 
-        $canComplianceReview =
-            $status === 'compliance_review' && ($isAdmin || $user?->can('corsec.update'));
-        $canNumbering = $status === 'numbering' && ($isAdmin || $user?->can('corsec.update'));
-        $canFinalUpload =
-            in_array($status, ['numbering', 'waiting_verification', 'final_uploaded'], true) &&
-            ($isAdmin || $user?->can('corsec.update'));
-        $canVerify = $status === 'waiting_verification' && ($isAdmin || $user?->can('corsec.authorize'));
+        $canComplianceReview = $status === 'compliance_review' && ($isAdmin || $isComplianceStaff);
+        $canNumbering = $status === 'numbering' && $isCorpSecretaryMakerStaff;
+        $canFinalUpload = $status === 'final_uploaded' && $isCorpSecretaryMakerStaff;
+
+        $corpSecretaryCheckerApproved =
+            $approvals
+                ->where('status', 'approved')
+                ->filter(function ($approval) {
+                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Corp Affair Approved');
+                })
+                ->count() > 0;
+        $canCorpSecretaryCheckerVerify = $status === 'waiting_verification' && !$corpSecretaryCheckerApproved && $isCorpSecretaryChecker;
+        $canCorpSecretaryApproverVerify = $status === 'waiting_verification' && $corpSecretaryCheckerApproved && $isCorpSecretaryApprover;
+        $canVerify = $canCorpSecretaryCheckerVerify || $canCorpSecretaryApproverVerify;
 
         $statusSteps = [
             'draft' => 'Draft',
@@ -193,8 +243,9 @@
                             <label class="form-label">Catatan</label>
                             <textarea class="textarea w-full" name="note" rows="3" placeholder="Catatan review..."></textarea>
                         </div>
-                        <div class="flex justify-end">
-                            <button class="btn btn-primary" type="submit">Submit Review</button>
+                        <div class="flex flex-wrap gap-2 justify-end">
+                            <button class="btn btn-danger" type="submit" name="action" value="reject">Reject</button>
+                            <button class="btn btn-primary" type="submit" name="action" value="submit">Submit Review</button>
                         </div>
                     </form>
                 </div>
@@ -328,6 +379,9 @@
                         <form method="POST" action="{{ route('letter.outgoing.verify.action', $outgoingLetter) }}"
                             class="grid gap-4 js-ajax-form" data-form-type="outgoing-verify">
                             @csrf
+                            <div class="text-sm text-gray-500">
+                                {{ $canCorpSecretaryCheckerVerify ? 'Approval EO Corporate Secretary' : 'Approval DD Corporate Secretary' }}
+                            </div>
                             <div class="flex flex-col">
                                 <label class="form-label">Catatan (opsional)</label>
                                 <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan..."></textarea>
@@ -376,7 +430,14 @@
                     const formType = $form.data('formType');
 
                     if (formType === 'outgoing-compliance') {
-                        errors = validateSimpleRequired($form, ['compliance_draft']);
+                        const submitter = document.activeElement;
+                        const isReject =
+                            submitter &&
+                            submitter.getAttribute('name') === 'action' &&
+                            submitter.value === 'reject';
+                        errors = isReject
+                            ? validateSimpleRequired($form, ['note'])
+                            : validateSimpleRequired($form, ['compliance_draft']);
                     }
                     if (formType === 'outgoing-numbering') {
                         errors = validateSimpleRequired($form, ['letter_no']);

@@ -4,6 +4,7 @@ namespace Modules\Corsec\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -15,6 +16,8 @@ use Modules\Corsec\Models\IncomingLetter;
 use Modules\Corsec\Models\OutgoingLetter;
 use Modules\Corsec\Models\Sender;
 use Modules\Corsec\Services\OutgoingLetterWorkflowService;
+use Modules\Usermanagement\Models\User;
+use Modules\Usermanagement\Models\Position;
 
 class OutgoingLetterController extends Controller
 {
@@ -27,7 +30,8 @@ class OutgoingLetterController extends Controller
     public function index()
     {
         $this->authorizeRead();
-        return view('corsec::letter.outgoing.index');
+        $canCreate = $this->canCreateOutgoing(Auth::user());
+        return view('corsec::letter.outgoing.index', compact('canCreate'));
     }
 
     public function datatables(Request $request)
@@ -301,13 +305,22 @@ class OutgoingLetterController extends Controller
             'note' => ['nullable', 'string'],
         ]);
 
+        $user = Auth::user();
         if ($outgoingLetter->status === OutgoingLetter::STATUS_WAITING_DIR_APPROVAL) {
-            $this->workflow->handleDirectorateApproval($outgoingLetter, Auth::user(), $request->string('action'), $request->note);
+            $this->workflow->handleDirectorateApproval($outgoingLetter, $user, $request->string('action'), $request->note);
             return back()->with('success', 'Approval direktorat diproses.');
         }
 
         if ($outgoingLetter->status === OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL) {
-            $this->workflow->handleComplianceApproval($outgoingLetter, Auth::user(), $request->string('action'), $request->note);
+            if (!$user) {
+                abort(403, 'User tidak ditemukan.');
+            }
+            $isAdmin = $user->hasRole('administrator');
+            $hasComplianceRole = $user->hasRole('checker') || $user->hasRole('approver');
+            if (!$isAdmin && (!$this->isComplianceDirectorate($user) || !$hasComplianceRole)) {
+                abort(403, 'Approval kepatuhan hanya untuk EO/DD direktorat Kepatuhan.');
+            }
+            $this->workflow->handleComplianceApproval($outgoingLetter, $user, $request->string('action'), $request->note);
             return back()->with('success', 'Approval kepatuhan diproses.');
         }
 
@@ -316,6 +329,26 @@ class OutgoingLetterController extends Controller
 
     public function complianceReview(Request $request, OutgoingLetter $outgoingLetter)
     {
+        $user = Auth::user();
+        if (!$user) {
+            abort(403, 'User tidak ditemukan.');
+        }
+        $isAdmin = $user->hasRole('administrator');
+        if (!$isAdmin && !$this->isComplianceStaff($user)) {
+            abort(403, 'Review kepatuhan hanya untuk staff direktorat Kepatuhan.');
+        }
+
+        $action = $request->string('action')->toString();
+        if ($action === 'reject') {
+            $request->validate([
+                'note' => ['required', 'string'],
+            ]);
+
+            $this->workflow->rejectComplianceReview($outgoingLetter, $user, $request->note);
+
+            return back()->with('success', 'Review kepatuhan dikembalikan.');
+        }
+
         $request->validate([
             'compliance_draft' => ['required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
             'note' => ['nullable', 'string'],
@@ -333,24 +366,46 @@ class OutgoingLetterController extends Controller
             'created_by' => Auth::id(),
         ]);
 
-        $this->workflow->submitComplianceReview($outgoingLetter, Auth::user(), $attachment, $request->note);
+        $this->workflow->submitComplianceReview($outgoingLetter, $user, $attachment, $request->note);
 
         return back()->with('success', 'Review kepatuhan dikirim.');
     }
 
     public function numbering(Request $request, OutgoingLetter $outgoingLetter)
     {
+        $user = Auth::user();
+        if (!$user) {
+            abort(403, 'User tidak ditemukan.');
+        }
+        if ($outgoingLetter->status !== OutgoingLetter::STATUS_NUMBERING) {
+            abort(403, 'Input nomor surat hanya untuk status numbering.');
+        }
+        if (!$this->isCorpSecretaryMakerStaff($user)) {
+            abort(403, 'Input nomor surat hanya untuk staff role maker direktorat Corporate Secretary.');
+        }
+
         $request->validate([
             'letter_no' => ['required', 'string', 'max:100'],
             'note' => ['nullable', 'string'],
         ]);
 
-        $this->workflow->setNumberAndSend($outgoingLetter, Auth::user(), $request->letter_no, $request->note);
+        $this->workflow->setNumberAndSend($outgoingLetter, $user, $request->letter_no, $request->note);
         return back()->with('success', 'Nomor surat tersimpan.');
     }
 
     public function uploadFinal(Request $request, OutgoingLetter $outgoingLetter)
     {
+        $user = Auth::user();
+        if (!$user) {
+            abort(403, 'User tidak ditemukan.');
+        }
+        if ($outgoingLetter->status !== OutgoingLetter::STATUS_FINAL_UPLOADED) {
+            abort(403, 'Upload final surat hanya untuk status final uploaded.');
+        }
+        if (!$this->isCorpSecretaryMakerStaff($user)) {
+            abort(403, 'Upload final surat hanya untuk staff role maker direktorat Corporate Secretary.');
+        }
+
         $request->validate([
             'final_file' => ['required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
         ]);
@@ -367,7 +422,7 @@ class OutgoingLetterController extends Controller
             'created_by' => Auth::id(),
         ]);
 
-        $this->workflow->uploadFinal($outgoingLetter, Auth::user(), $attachment);
+        $this->workflow->uploadFinal($outgoingLetter, $user, $attachment);
         return back()->with('success', 'Final surat diupload.');
     }
 
@@ -378,7 +433,16 @@ class OutgoingLetterController extends Controller
             'note' => ['nullable', 'string'],
         ]);
 
-        $this->workflow->verifyAction($outgoingLetter, Auth::user(), $request->string('action'), $request->note);
+        if ($outgoingLetter->status !== OutgoingLetter::STATUS_WAITING_VERIFICATION) {
+            abort(403, 'Approval Corporate Secretary hanya untuk status waiting verification.');
+        }
+
+        $user = Auth::user();
+        if (!$user) {
+            abort(403, 'User tidak ditemukan.');
+        }
+
+        $this->workflow->verifyAction($outgoingLetter, $user, $request->string('action'), $request->note);
         return back()->with('success', 'Verifikasi diproses.');
     }
 
@@ -396,6 +460,9 @@ class OutgoingLetterController extends Controller
         if (!$user || !$user->can('corsec.create')) {
             abort(403, 'Sorry! You are not allowed to create outgoing letters.');
         }
+        if ($this->isCorpSecretaryDirectorate($user)) {
+            abort(403, 'Direktorat Corporate Secretary tidak diperbolehkan membuat surat keluar.');
+        }
     }
 
     private function authorizeUpdate(): void
@@ -404,5 +471,113 @@ class OutgoingLetterController extends Controller
         if (!$user || !$user->can('corsec.update')) {
             abort(403, 'Sorry! You are not allowed to update outgoing letters.');
         }
+    }
+
+    private function canCreateOutgoing(?User $user): bool
+    {
+        if (!$user || !$user->can('corsec.create')) {
+            return false;
+        }
+
+        return !$this->isCorpSecretaryDirectorate($user);
+    }
+
+    private function isCorpSecretaryDirectorate(?User $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        $eoDirectorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+
+        $user->loadMissing('directorate');
+        $directorateCode = $user->directorate?->code;
+        $directorateName = $user->directorate?->name;
+
+        if ($directorateCode && $eoDirectorateCode !== '' && $directorateCode === $eoDirectorateCode) {
+            return true;
+        }
+
+        if ($directorateName) {
+            $normalized = Str::lower($directorateName);
+            return Str::contains($normalized, 'corporate secretary');
+        }
+
+        return false;
+    }
+
+    private function isCorpSecretaryMakerStaff(User $user): bool
+    {
+        if (!$this->isCorpSecretaryDirectorate($user)) {
+            return false;
+        }
+
+        if (!$user->hasRole('maker')) {
+            return false;
+        }
+
+        $positionName = $this->getUserPositionName($user);
+        if (!$positionName) {
+            return false;
+        }
+
+        return Str::contains(Str::lower($positionName), 'staff');
+    }
+
+    private function isComplianceDirectorate(User $user): bool
+    {
+        $complianceCode = (string) config('corsec.compliance_directorate_code', '');
+        $user->loadMissing('directorate');
+
+        $directorateCode = $user->directorate?->code;
+        $directorateName = $user->directorate?->name;
+
+        if ($directorateCode && $complianceCode !== '' && $directorateCode === $complianceCode) {
+            return true;
+        }
+
+        if ($directorateName) {
+            $normalized = Str::lower($directorateName);
+            return Str::contains($normalized, 'compliance') || Str::contains($normalized, 'kepatuhan');
+        }
+
+        return false;
+    }
+
+    private function isComplianceStaff(User $user): bool
+    {
+        if (!$this->isComplianceDirectorate($user)) {
+            return false;
+        }
+
+        $positionName = $this->getUserPositionName($user);
+        if (!$positionName) {
+            return false;
+        }
+
+        return Str::contains(Str::lower($positionName), 'staff');
+    }
+
+    private function getUserPositionName(User $user): ?string
+    {
+        $user->loadMissing('position', 'roles');
+        if ($user->position) {
+            return $user->position->name;
+        }
+
+        $positionIds = $user->roles
+            ->pluck('position_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($positionIds->isEmpty()) {
+            return null;
+        }
+
+        return Position::query()
+            ->whereIn('id', $positionIds)
+            ->orderByDesc('level')
+            ->value('name');
     }
 }
