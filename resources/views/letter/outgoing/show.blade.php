@@ -50,11 +50,6 @@
             $corpRoleNames->contains(function ($name) {
                 return \Illuminate\Support\Str::contains($name, 'maker');
             });
-        $isCorpSecretaryApprover =
-            $isCorpSecretaryDirectorate &&
-            $corpRoleNames->contains(function ($name) {
-                return \Illuminate\Support\Str::contains($name, 'approver');
-            });
         $isCorpSecretaryChecker =
             $isCorpSecretaryDirectorate &&
             $corpRoleNames->contains(function ($name) {
@@ -92,8 +87,7 @@
                 })
                 ->count() > 0;
         $canCorpSecretaryCheckerVerify = $status === 'waiting_verification' && !$corpSecretaryCheckerApproved && $isCorpSecretaryChecker;
-        $canCorpSecretaryApproverVerify = $status === 'waiting_verification' && $corpSecretaryCheckerApproved && $isCorpSecretaryApprover;
-        $canVerify = $canCorpSecretaryCheckerVerify || $canCorpSecretaryApproverVerify;
+        $canVerify = $canCorpSecretaryCheckerVerify;
 
         $statusSteps = [
             'draft' => 'Draft',
@@ -380,7 +374,7 @@
                             class="grid gap-4 js-ajax-form" data-form-type="outgoing-verify">
                             @csrf
                             <div class="text-sm text-gray-500">
-                                {{ $canCorpSecretaryCheckerVerify ? 'Approval EO Corporate Secretary' : 'Approval DD Corporate Secretary' }}
+                                Approval EO Corporate Secretary
                             </div>
                             <div class="flex flex-col">
                                 <label class="form-label">Catatan (opsional)</label>
