@@ -5,6 +5,7 @@ namespace Modules\Corsec\Models;
 use Modules\Usermanagement\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Modules\Corsec\Models\Concerns\HasAuthorizedUsers;
 
 class DecisionUpdate extends Model
@@ -37,5 +38,20 @@ class DecisionUpdate extends Model
     public function updater(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    public function comments(): MorphMany
+    {
+        return $this->morphMany(Comment::class, 'commentable');
+    }
+
+    public function attachables(): MorphMany
+    {
+        return $this->morphMany(Attachable::class, 'attachable');
+    }
+
+    public function approvals(): MorphMany
+    {
+        return $this->morphMany(Approval::class, 'approvable');
     }
 }

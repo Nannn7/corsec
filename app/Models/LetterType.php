@@ -36,6 +36,11 @@ class LetterType extends Model
         'deleted_at' => 'datetime',
     ];
 
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
     public function incomingLetters()
     {
         return $this->hasMany(IncomingLetter::class, 'letter_type_id');

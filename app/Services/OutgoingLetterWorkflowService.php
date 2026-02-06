@@ -381,6 +381,9 @@ class OutgoingLetterWorkflowService
         DB::transaction(function () use ($letter, $actor, $letterNo, $note) {
             $letter->update([
                 'letter_no' => $letterNo,
+                'number_requested_at' => now(),
+                'number_requested_by' => $actor->id,
+                'number_request_note' => $note,
                 'status' => OutgoingLetter::STATUS_WAITING_VERIFICATION,
                 'updated_by' => $actor->id,
             ]);

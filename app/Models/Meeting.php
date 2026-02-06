@@ -39,6 +39,11 @@ class Meeting extends Model
         'deleted_at' => 'datetime',
     ];
 
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
     public function agendas(): HasMany
     {
         return $this->hasMany(MeetingAgenda::class, 'meeting_id')->orderBy('order_no');
@@ -57,6 +62,11 @@ class Meeting extends Model
     public function decisions(): HasMany
     {
         return $this->hasMany(MeetingDecision::class, 'meeting_id');
+    }
+
+    public function participants(): HasMany
+    {
+        return $this->hasMany(MeetingParticipant::class, 'meeting_id');
     }
 
     public function comments(): MorphMany

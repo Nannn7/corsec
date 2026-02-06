@@ -19,7 +19,7 @@
 
             <div class="card-body">
                 <form method="POST"
-                    action="{{ isset($letterType) ? route('letter-type.update', $letterType->id) : route('letter-type.store') }}">
+                    action="{{ isset($letterType) ? route('letter-type.update', $letterType) : route('letter-type.store') }}">
                     @csrf
                     @if (isset($letterType))
                         @method('PUT')

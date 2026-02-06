@@ -36,6 +36,11 @@ class Sender extends Model
         'deleted_at' => 'datetime',
     ];
 
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
     public function incomingLetters()
     {
         return $this->hasMany(IncomingLetter::class, 'sender_id');

@@ -113,43 +113,27 @@ class SenderController extends Controller
         }
     }
 
-    public function show($id)
+    public function show(Sender $sender)
     {
         return view('corsec::show');
     }
 
-    public function edit($id)
+    public function edit(Sender $sender)
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('sender.update')) {
             abort(403, 'Sorry! You are not allowed to update sender.');
         }
 
-        $sender = Sender::find($id);
-        if (!$sender) {
-            Log::warning('Sender not found for edit', ['sender_id' => $id, 'user_id' => $user->id]);
-            return redirect()
-                ->route('sender.index')
-                ->with('error', 'Sender not found.');
-        }
-
-        Log::info('User accessed sender edit form', ['sender_id' => $id, 'user_id' => $user->id]);
+        Log::info('User accessed sender edit form', ['sender_id' => $sender->id, 'user_id' => $user->id]);
         return view('corsec::sender.create', compact('sender'));
     }
 
-    public function update(SenderRequest $request, $id)
+    public function update(SenderRequest $request, Sender $sender)
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('sender.update')) {
             abort(403, 'Sorry! You are not allowed to update sender.');
-        }
-
-        $sender = Sender::find($id);
-        if (!$sender) {
-            Log::warning('Sender not found for update', ['sender_id' => $id, 'user_id' => $user->id]);
-            return redirect()
-                ->route('sender.index')
-                ->with('error', 'Sender not found.');
         }
 
         try {
@@ -177,16 +161,16 @@ class SenderController extends Controller
                 ->route('sender.index')
                 ->with('success', 'Sender update submitted for approval.');
         } catch (Exception $e) {
-            Log::error('Failed to update sender: ' . $e->getMessage(), ['sender_id' => $id, 'user_id' => $user->id]);
+            Log::error('Failed to update sender: ' . $e->getMessage(), ['sender_id' => $sender->id, 'user_id' => $user->id]);
 
             return redirect()
-                ->route('sender.edit', $id)
+                ->route('sender.edit', $sender)
                 ->with('error', 'Failed to update sender: ' . $e->getMessage())
                 ->withInput();
         }
     }
 
-    public function destroy($id)
+    public function destroy(Sender $sender)
     {
         $user = Auth::user();
         if (!$user || !$user->can('sender.delete')) {
@@ -197,22 +181,13 @@ class SenderController extends Controller
         }
 
         try {
-            $sender = Sender::find($id);
-            if (!$sender) {
-                Log::warning('Sender not found for delete', ['sender_id' => $id, 'user_id' => $user->id]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Sender not found.'
-                ], 404);
-            }
-
             DB::transaction(function () use ($sender, $user) {
                 $sender->update(['deleted_by' => $user->id]);
                 $sender->delete();
             });
 
             Log::info('Sender deleted successfully', [
-                'sender_id' => $id,
+                'sender_id' => $sender->id,
                 'user_id' => $user->id
             ]);
 

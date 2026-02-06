@@ -35,6 +35,11 @@ class Directorate extends Model
         'deleted_at' => 'datetime',
     ];
 
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
     protected static function booted(): void
     {
         static::creating(function ($model) {
@@ -63,11 +68,6 @@ class Directorate extends Model
         );
     }
 
-    public function incomingLetterRoutes()
-    {
-        return $this->hasMany(IncomingLetterRoute::class, 'to_directorate_id');
-    }
-
     public function outgoingLetters()
     {
         return $this->hasMany(OutgoingLetter::class, 'requester_directorate_id');
@@ -81,6 +81,11 @@ class Directorate extends Model
     public function meetingDecisions()
     {
         return $this->hasMany(MeetingDecision::class, 'owner_directorate_id');
+    }
+
+    public function meetingParticipants()
+    {
+        return $this->hasMany(MeetingParticipant::class, 'directorate_id');
     }
 
     public function workPrograms()

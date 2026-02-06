@@ -18,7 +18,7 @@
             </div>
 
             <div class="card-body">
-                <form method="POST" action="{{ isset($bank) ? route('bank.update', $bank->id) : route('bank.store') }}">
+                <form method="POST" action="{{ isset($bank) ? route('bank.update', $bank) : route('bank.store') }}">
                     @csrf
                     @if (isset($bank))
                         @method('PUT')

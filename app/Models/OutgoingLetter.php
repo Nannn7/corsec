@@ -6,11 +6,11 @@ use Modules\Corsec\Models\Directorate;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Modules\Corsec\Models\Concerns\HasAuditUsers;
 use Modules\Corsec\Models\Concerns\HasAuthorizedUsers;
 use Modules\Corsec\Models\Concerns\HasUuidColumn;
+use Modules\Usermanagement\Models\User;
 
 class OutgoingLetter extends Model
 {
@@ -34,8 +34,10 @@ class OutgoingLetter extends Model
         'draft_attachment_id',
         'compliance_attachment_id',
         'final_attachment_id',
-        'letter_number_id',
         'letter_no',
+        'number_requested_at',
+        'number_requested_by',
+        'number_request_note',
         'need_compliance_review',
         'status',
         'authorized_at',
@@ -49,9 +51,15 @@ class OutgoingLetter extends Model
     protected $casts = [
         'need_compliance_review' => 'boolean',
         'order_date' => 'date',
+        'number_requested_at' => 'datetime',
         'authorized_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
+
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
 
     public const STATUS_DRAFT = 'draft';
     public const STATUS_WAITING_DIR_APPROVAL = 'waiting_dir_approval';
@@ -93,14 +101,9 @@ class OutgoingLetter extends Model
         return $this->belongsTo(Attachment::class, 'final_attachment_id');
     }
 
-    public function letterNumber(): BelongsTo
+    public function numberRequestedBy(): BelongsTo
     {
-        return $this->belongsTo(LetterNumber::class, 'letter_number_id');
-    }
-
-    public function numberRequests(): HasMany
-    {
-        return $this->hasMany(OutgoingLetterNumberRequest::class, 'outgoing_letter_id');
+        return $this->belongsTo(User::class, 'number_requested_by');
     }
 
     public function comments(): MorphMany

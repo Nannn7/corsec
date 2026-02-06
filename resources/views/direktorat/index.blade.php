@@ -82,7 +82,7 @@
 
 @push('scripts')
     <script type="text/javascript">
-        function deleteData(data) {
+        function deleteData(rowKey) {
             Swal.fire({
                 title: 'Apakah anda yakin?',
                 text: "Anda tidak dapat mengembalikan ini!",
@@ -100,7 +100,7 @@
                         }
                     });
 
-                    $.ajax(`directorate/${data}`, {
+                    $.ajax(`directorate/${rowKey}`, {
                         type: 'DELETE'
                     }).then((response) => {
                         swal.fire('Deleted!', response.message, 'success').then(() => {
@@ -200,16 +200,17 @@
                 actions: {
                     title: 'Action',
                     render: (item, data) => {
+                        const rowKey = data.uuid ?? data.id;
                         let html = `<div class="flex flex-nowrap justify-center">`;
 
                         @can('directorate.update')
-                            html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="directorate/${data.id}/edit">
+                            html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="directorate/${rowKey}/edit">
                                 <i class="ki-outline ki-notepad-edit"></i>
                             </a>`;
                         @endcan
 
                         @can('directorate.delete')
-                            html += `<a onclick="deleteData(${data.id})" class="delete btn btn-sm btn-icon btn-clear btn-danger">
+                            html += `<a onclick="deleteData('${rowKey}')" class="delete btn btn-sm btn-icon btn-clear btn-danger">
                                 <i class="ki-outline ki-trash"></i>
                             </a>`;
                         @endcan

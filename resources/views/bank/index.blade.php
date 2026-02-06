@@ -86,7 +86,7 @@
 
 @push('scripts')
     <script type="text/javascript">
-        function deleteData(data) {
+        function deleteData(rowKey) {
             Swal.fire({
                 title: 'Apakah anda yakin?',
                 text: "Anda tidak dapat mengembalikan ini!",
@@ -104,7 +104,7 @@
                         }
                     });
 
-                    $.ajax(`bank/${data}`, {
+                    $.ajax(`bank/${rowKey}`, {
                         type: 'DELETE'
                     }).then((response) => {
                         swal.fire('Deleted!', response.message, 'success').then(() => {
@@ -222,16 +222,17 @@
                 actions: {
                     title: 'Action',
                     render: (item, data) => {
+                        const rowKey = data.uuid ?? data.id;
                         let html = `<div class="flex flex-nowrap justify-center">`;
 
                         @if (auth()->user()?->hasRole('administrator') || auth()->user()?->can('bank.update'))
-                            html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="bank/${data.id}/edit">
+                            html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="bank/${rowKey}/edit">
                                 <i class="ki-outline ki-notepad-edit"></i>
                             </a>`;
                         @endif
 
                         @can('bank.delete')
-                            html += `<a onclick="deleteData('${data.id}')" class="btn btn-sm btn-icon btn-clear btn-danger">
+                            html += `<a onclick="deleteData('${rowKey}')" class="btn btn-sm btn-icon btn-clear btn-danger">
                                 <i class="ki-outline ki-trash"></i>
                             </a>`;
                         @endcan

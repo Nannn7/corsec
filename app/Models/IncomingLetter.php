@@ -6,12 +6,12 @@ use Modules\Corsec\Models\Directorate;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Modules\Corsec\Models\Concerns\HasAuditUsers;
 use Modules\Corsec\Models\Concerns\HasAuthorizedUsers;
 use Modules\Corsec\Models\Concerns\HasUuidColumn;
 use Modules\Basicdata\Models\Branch;
+use Modules\Usermanagement\Models\User;
 
 class IncomingLetter extends Model
 {
@@ -45,6 +45,12 @@ class IncomingLetter extends Model
         'letter_type_other',
         'received_date',
         'target_directorate_id',
+        'last_routed_from_directorate_id',
+        'last_routed_to_directorate_id',
+        'last_routed_from_user_id',
+        'last_routed_to_user_id',
+        'last_routed_at',
+        'last_route_note',
         'priority',
         'target_date',
         'followup_action',
@@ -68,13 +74,39 @@ class IncomingLetter extends Model
         'target_date' => 'date',
         'followup_detail' => 'array',
         'followup_submitted_at' => 'datetime',
+        'last_routed_at' => 'datetime',
         'authorized_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
 
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
     public function targetDirectorate()
     {
         return $this->belongsTo(Directorate::class, 'target_directorate_id');
+    }
+
+    public function lastRoutedFromDirectorate(): BelongsTo
+    {
+        return $this->belongsTo(Directorate::class, 'last_routed_from_directorate_id');
+    }
+
+    public function lastRoutedToDirectorate(): BelongsTo
+    {
+        return $this->belongsTo(Directorate::class, 'last_routed_to_directorate_id');
+    }
+
+    public function lastRoutedFromUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'last_routed_from_user_id');
+    }
+
+    public function lastRoutedToUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'last_routed_to_user_id');
     }
 
     public function sender(): BelongsTo
@@ -95,11 +127,6 @@ class IncomingLetter extends Model
     public function letterType(): BelongsTo
     {
         return $this->belongsTo(LetterType::class, 'letter_type_id');
-    }
-
-    public function routes(): HasMany
-    {
-        return $this->hasMany(IncomingLetterRoute::class, 'incoming_letter_id');
     }
 
     public function circulationDirectorates()

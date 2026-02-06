@@ -127,7 +127,7 @@ class DirectorateController extends Controller
     /**
      * Show the specified resource.
      */
-    public function show($id)
+    public function show(Directorate $directorate)
     {
         return view('corsec::show');
     }
@@ -135,41 +135,25 @@ class DirectorateController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit($id)
+    public function edit(Directorate $directorate)
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('directorate.update')) {
             abort(403, 'Sorry! You are not allowed to update directorate.');
         }
 
-        $directorate = Directorate::find($id);
-        if (!$directorate) {
-            Log::warning('Directorate not found for edit', ['directorate_id' => $id, 'user_id' => $user->id]);
-            return redirect()
-                ->route('directorate.index')
-                ->with('error', 'Directorate not found.');
-        }
-
-        Log::info('User accessed directorate edit form', ['directorate_id' => $id, 'user_id' => $user->id]);
+        Log::info('User accessed directorate edit form', ['directorate_id' => $directorate->id, 'user_id' => $user->id]);
         return view('corsec::direktorat.create', compact('directorate'));
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(DirectorateRequest $request, $id)
+    public function update(DirectorateRequest $request, Directorate $directorate)
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('directorate.update')) {
             abort(403, 'Sorry! You are not allowed to update directorate.');
-        }
-
-        $directorate = Directorate::find($id);
-        if (!$directorate) {
-            Log::warning('Directorate not found for update', ['directorate_id' => $id, 'user_id' => $user->id]);
-            return redirect()
-                ->route('directorate.index')
-                ->with('error', 'Directorate not found.');
         }
 
         try {
@@ -197,10 +181,10 @@ class DirectorateController extends Controller
                 ->route('directorate.index')
                 ->with('success', 'Directorate update submitted for approval.');
         } catch (Exception $e) {
-            Log::error('Failed to update directorate: ' . $e->getMessage(), ['directorate_id' => $id, 'user_id' => $user->id]);
+            Log::error('Failed to update directorate: ' . $e->getMessage(), ['directorate_id' => $directorate->id, 'user_id' => $user->id]);
 
             return redirect()
-                ->route('directorate.edit', $id)
+                ->route('directorate.edit', $directorate)
                 ->with('error', 'Failed to update directorate: ' . $e->getMessage())
                 ->withInput();
         }
@@ -209,7 +193,7 @@ class DirectorateController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy($id)
+    public function destroy(Directorate $directorate)
     {
         $user = Auth::user();
         if (!$user || !$user->can('directorate.delete')) {
@@ -220,22 +204,13 @@ class DirectorateController extends Controller
         }
 
         try {
-            $directorate = Directorate::find($id);
-            if (!$directorate) {
-                Log::warning('Directorate not found for delete', ['directorate_id' => $id, 'user_id' => $user->id]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Directorate not found.'
-                ], 404);
-            }
-
             DB::transaction(function () use ($directorate, $user) {
                 $directorate->update(['deleted_by' => $user->id]);
                 $directorate->delete();
             });
 
             Log::info('Directorate deleted successfully', [
-                'directorate_id' => $id,
+                'directorate_id' => $directorate->id,
                 'user_id' => $user->id
             ]);
 

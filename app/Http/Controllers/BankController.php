@@ -115,43 +115,27 @@ class BankController extends Controller
         }
     }
 
-    public function show($id)
+    public function show(Bank $bank)
     {
         return view('corsec::show');
     }
 
-    public function edit($id)
+    public function edit(Bank $bank)
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('bank.update')) {
             abort(403, 'Sorry! You are not allowed to update bank.');
         }
 
-        $bank = Bank::find($id);
-        if (!$bank) {
-            Log::warning('Bank not found for edit', ['bank_id' => $id, 'user_id' => $user->id]);
-            return redirect()
-                ->route('bank.index')
-                ->with('error', 'Bank not found.');
-        }
-
-        Log::info('User accessed bank edit form', ['bank_id' => $id, 'user_id' => $user->id]);
+        Log::info('User accessed bank edit form', ['bank_id' => $bank->id, 'user_id' => $user->id]);
         return view('corsec::bank.create', compact('bank'));
     }
 
-    public function update(BankRequest $request, $id)
+    public function update(BankRequest $request, Bank $bank)
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('bank.update')) {
             abort(403, 'Sorry! You are not allowed to update bank.');
-        }
-
-        $bank = Bank::find($id);
-        if (!$bank) {
-            Log::warning('Bank not found for update', ['bank_id' => $id, 'user_id' => $user->id]);
-            return redirect()
-                ->route('bank.index')
-                ->with('error', 'Bank not found.');
         }
 
         try {
@@ -180,15 +164,15 @@ class BankController extends Controller
                 ->route('bank.index')
                 ->with('success', 'Bank update submitted for approval.');
         } catch (Exception $e) {
-            Log::error('Failed to update bank: ' . $e->getMessage(), ['bank_id' => $id, 'user_id' => $user->id]);
+            Log::error('Failed to update bank: ' . $e->getMessage(), ['bank_id' => $bank->id, 'user_id' => $user->id]);
             return redirect()
-                ->route('bank.edit', $id)
+                ->route('bank.edit', $bank)
                 ->with('error', 'Failed to update bank: ' . $e->getMessage())
                 ->withInput();
         }
     }
 
-    public function destroy($id)
+    public function destroy(Bank $bank)
     {
         $user = Auth::user();
         if (!$user || !$user->can('bank.delete')) {
@@ -199,21 +183,12 @@ class BankController extends Controller
         }
 
         try {
-            $bank = Bank::find($id);
-            if (!$bank) {
-                Log::warning('Bank not found for delete', ['bank_id' => $id, 'user_id' => $user->id]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Bank not found.'
-                ], 404);
-            }
-
             DB::transaction(function () use ($bank, $user) {
                 $bank->update(['deleted_by' => $user->id]);
                 $bank->delete();
             });
 
-            Log::info('Bank deleted successfully', ['bank_id' => $id, 'user_id' => $user->id]);
+            Log::info('Bank deleted successfully', ['bank_id' => $bank->id, 'user_id' => $user->id]);
 
             return response()->json([
                 'success' => true,

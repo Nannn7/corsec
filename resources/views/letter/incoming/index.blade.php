@@ -155,7 +155,7 @@
 
 @push('scripts')
     <script type="text/javascript">
-        function deleteData(id) {
+        function deleteData(rowKey) {
             const element = document.querySelector('#incoming-letter-table');
             const baseUrl = element.getAttribute('data-base-url');
 
@@ -176,7 +176,7 @@
                         }
                     });
 
-                    $.ajax(`${baseUrl}/${id}`, {
+                    $.ajax(`${baseUrl}/${rowKey}`, {
                             type: 'DELETE'
                         })
                         .then((response) => {
@@ -369,23 +369,24 @@
                         const deletableStatuses = ['draft', 'returned'];
                         const canEditStatus = editableStatuses.includes(status);
                         const canDeleteStatus = isAdmin || deletableStatuses.includes(status);
+                        const rowKey = data.uuid ?? data.id;
                         let html = `<div class="flex flex-nowrap justify-center">`;
 
                         @can('corsec.read')
-                            html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${data.id}">
+                            html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}">
                                 <i class="ki-outline ki-eye"></i>
                             </a>`;
                         @endcan
 
                         @if (auth()->user()?->hasRole('administrator') || auth()->user()?->can('corsec.create'))
                             if (canEditStatus) {
-                                html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${data.id}/edit">
+                                html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}/edit">
                                     <i class="ki-outline ki-notepad-edit"></i>
                                 </a>`;
                             }
 
                             if (canDeleteStatus) {
-                                html += `<a onclick="deleteData('${data.id}')" class="btn btn-sm btn-icon btn-clear btn-danger">
+                                html += `<a onclick="deleteData('${rowKey}')" class="btn btn-sm btn-icon btn-clear btn-danger">
                                     <i class="ki-outline ki-trash"></i>
                                 </a>`;
                             }

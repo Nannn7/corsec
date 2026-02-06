@@ -7,7 +7,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Corsec\Models\Directorate;
 use Modules\Corsec\Models\IncomingLetter;
-use Modules\Corsec\Models\IncomingLetterRoute;
 use Modules\Corsec\Models\Approval;
 use Modules\Corsec\Models\Comment;
 use Modules\Corsec\Models\Attachment;
@@ -87,17 +86,12 @@ class IncomingLetterWorkflowService
                 'target_directorate_id' => $toDirectorateId,
                 'status' => IncomingLetter::STATUS_DISPATCHED,
                 'updated_by' => $actor->id,
-            ]);
-
-            IncomingLetterRoute::create([
-                'incoming_letter_id' => $incomingLetter->id,
-                'from_directorate_id' => $actor->directorate_id,
-                'to_directorate_id' => $toDirectorateId,
-                'from_user_id' => $actor->id,
-                'to_user_id' => null,
-                'note' => $note,
-                'sent_at' => now(),
-                'created_by' => $actor->id,
+                'last_routed_from_directorate_id' => $actor->directorate_id,
+                'last_routed_to_directorate_id' => $toDirectorateId,
+                'last_routed_from_user_id' => $actor->id,
+                'last_routed_to_user_id' => null,
+                'last_route_note' => $note,
+                'last_routed_at' => now(),
             ]);
 
             $targetUserIds = User::query()
