@@ -17,7 +17,6 @@ use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Corsec\Exports\IncomingLetterExport;
 use Modules\Corsec\Models\IncomingLetter;
-use Modules\Corsec\Models\IncomingLetterRoute;
 use Modules\Corsec\Models\Attachment;
 use Modules\Corsec\Models\Attachable;
 use Modules\Corsec\Models\Approval;
@@ -286,10 +285,10 @@ class IncomingLetterController extends Controller
             'counterpartyBank',
             'customerBranch',
             'circulationDirectorates',
-            'routes.fromDirectorate',
-            'routes.toDirectorate',
-            'routes.fromUser',
-            'routes.toUser',
+            'lastRoutedFromDirectorate',
+            'lastRoutedToDirectorate',
+            'lastRoutedFromUser',
+            'lastRoutedToUser',
             'attachables.attachment',
             'comments.createdBy',
         ]);

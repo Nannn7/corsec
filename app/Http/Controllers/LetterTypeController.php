@@ -113,43 +113,27 @@ class LetterTypeController extends Controller
         }
     }
 
-    public function show($id)
+    public function show(LetterType $letterType)
     {
         return view('corsec::show');
     }
 
-    public function edit($id)
+    public function edit(LetterType $letterType)
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('letter-type.update')) {
             abort(403, 'Sorry! You are not allowed to update letter type.');
         }
 
-        $letterType = LetterType::find($id);
-        if (!$letterType) {
-            Log::warning('Letter type not found for edit', ['letter_type_id' => $id, 'user_id' => $user->id]);
-            return redirect()
-                ->route('letter-type.index')
-                ->with('error', 'Letter type not found.');
-        }
-
-        Log::info('User accessed letter type edit form', ['letter_type_id' => $id, 'user_id' => $user->id]);
+        Log::info('User accessed letter type edit form', ['letter_type_id' => $letterType->id, 'user_id' => $user->id]);
         return view('corsec::letter-type.create', compact('letterType'));
     }
 
-    public function update(LetterTypeRequest $request, $id)
+    public function update(LetterTypeRequest $request, LetterType $letterType)
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('letter-type.update')) {
             abort(403, 'Sorry! You are not allowed to update letter type.');
-        }
-
-        $letterType = LetterType::find($id);
-        if (!$letterType) {
-            Log::warning('Letter type not found for update', ['letter_type_id' => $id, 'user_id' => $user->id]);
-            return redirect()
-                ->route('letter-type.index')
-                ->with('error', 'Letter type not found.');
         }
 
         try {
@@ -177,16 +161,16 @@ class LetterTypeController extends Controller
                 ->route('letter-type.index')
                 ->with('success', 'Letter type update submitted for approval.');
         } catch (Exception $e) {
-            Log::error('Failed to update letter type: ' . $e->getMessage(), ['letter_type_id' => $id, 'user_id' => $user->id]);
+            Log::error('Failed to update letter type: ' . $e->getMessage(), ['letter_type_id' => $letterType->id, 'user_id' => $user->id]);
 
             return redirect()
-                ->route('letter-type.edit', $id)
+                ->route('letter-type.edit', $letterType)
                 ->with('error', 'Failed to update letter type: ' . $e->getMessage())
                 ->withInput();
         }
     }
 
-    public function destroy($id)
+    public function destroy(LetterType $letterType)
     {
         $user = Auth::user();
         if (!$user || !$user->can('letter-type.delete')) {
@@ -197,22 +181,13 @@ class LetterTypeController extends Controller
         }
 
         try {
-            $letterType = LetterType::find($id);
-            if (!$letterType) {
-                Log::warning('Letter type not found for delete', ['letter_type_id' => $id, 'user_id' => $user->id]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Letter type not found.'
-                ], 404);
-            }
-
             DB::transaction(function () use ($letterType, $user) {
                 $letterType->update(['deleted_by' => $user->id]);
                 $letterType->delete();
             });
 
             Log::info('Letter type deleted successfully', [
-                'letter_type_id' => $id,
+                'letter_type_id' => $letterType->id,
                 'user_id' => $user->id
             ]);
 

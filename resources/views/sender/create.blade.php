@@ -18,7 +18,7 @@
             </div>
 
             <div class="card-body">
-                <form method="POST" action="{{ isset($sender) ? route('sender.update', $sender->id) : route('sender.store') }}">
+                <form method="POST" action="{{ isset($sender) ? route('sender.update', $sender) : route('sender.store') }}">
                     @csrf
                     @if (isset($sender))
                         @method('PUT')

@@ -5,6 +5,7 @@ namespace Modules\Corsec\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Modules\Corsec\Models\Meeting;
 
 class MeetingController extends Controller
 {
@@ -51,7 +52,7 @@ class MeetingController extends Controller
     /**
      * Show the specified resource.
      */
-    public function show($id)
+    public function show(Meeting $meeting)
     {
         return view('corsec::show');
     }
@@ -59,7 +60,7 @@ class MeetingController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit($id)
+    public function edit(Meeting $meeting)
     {
         return view('corsec::edit');
     }
@@ -67,10 +68,10 @@ class MeetingController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, $id) {}
+    public function update(Request $request, Meeting $meeting) {}
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy($id) {}
+    public function destroy(Meeting $meeting) {}
 }

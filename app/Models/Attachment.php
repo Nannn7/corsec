@@ -32,6 +32,11 @@ class Attachment extends Model
         'deleted_at' => 'datetime',
     ];
 
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
     public function attachables(): HasMany
     {
         return $this->hasMany(Attachable::class, 'attachment_id');

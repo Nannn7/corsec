@@ -134,17 +134,18 @@
                         const status = (data.status ?? '').toString().toLowerCase();
                         const editableStatuses = ['draft', 'returned'];
                         const canEditStatus = editableStatuses.includes(status);
+                        const rowKey = data.uuid ?? data.id;
                         let html = `<div class="flex flex-nowrap justify-center">`;
 
                         @can('corsec.read')
-                            html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${data.id}">
+                            html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}">
                                 <i class="ki-outline ki-eye"></i>
                             </a>`;
                         @endcan
 
                         @if (auth()->user()?->hasRole('administrator') || auth()->user()?->can('corsec.update'))
                             if (canEditStatus) {
-                                html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${data.id}/edit">
+                                html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}/edit">
                                     <i class="ki-outline ki-notepad-edit"></i>
                                 </a>`;
                             }

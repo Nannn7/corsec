@@ -37,6 +37,11 @@ class Bank extends Model
         'deleted_at' => 'datetime',
     ];
 
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
     public function incomingLetters()
     {
         return $this->hasMany(IncomingLetter::class, 'counterparty_bank_id');

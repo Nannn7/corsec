@@ -39,6 +39,11 @@ class WorkProgram extends Model
         'deleted_at' => 'datetime',
     ];
 
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
     public function directorate()
     {
         return $this->belongsTo(Directorate::class, 'directorate_id');

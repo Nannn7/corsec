@@ -70,10 +70,10 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/', [MeetingController::class, 'index'])->name('index');
         Route::get('/create', [MeetingController::class, 'create'])->name('create');
         Route::post('/store', [MeetingController::class, 'store'])->name('store');
-        Route::get('/{id}', [MeetingController::class, 'show'])->name('show');
-        Route::get('/{id}/edit', [MeetingController::class, 'edit'])->name('edit');
-        Route::put('/{id}', [MeetingController::class, 'update'])->name('update');
-        Route::delete('/{id}', [MeetingController::class, 'destroy'])->name('destroy');
+        Route::get('/{meeting}', [MeetingController::class, 'show'])->name('show');
+        Route::get('/{meeting}/edit', [MeetingController::class, 'edit'])->name('edit');
+        Route::put('/{meeting}', [MeetingController::class, 'update'])->name('update');
+        Route::delete('/{meeting}', [MeetingController::class, 'destroy'])->name('destroy');
     });
 
     // Workplan Routes

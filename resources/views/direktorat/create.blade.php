@@ -19,7 +19,7 @@
 
             <div class="card-body">
                 <form method="POST"
-                    action="{{ isset($directorate) ? route('directorate.update', $directorate->id) : route('directorate.store') }}">
+                    action="{{ isset($directorate) ? route('directorate.update', $directorate) : route('directorate.store') }}">
                     @csrf
                     @if (isset($directorate))
                         @method('PUT')

@@ -381,6 +381,9 @@ class OutgoingLetterWorkflowService
         DB::transaction(function () use ($letter, $actor, $letterNo, $note) {
             $letter->update([
                 'letter_no' => $letterNo,
+                'number_requested_at' => now(),
+                'number_requested_by' => $actor->id,
+                'number_request_note' => $note,
                 'status' => OutgoingLetter::STATUS_WAITING_VERIFICATION,
                 'updated_by' => $actor->id,
             ]);
@@ -389,7 +392,7 @@ class OutgoingLetterWorkflowService
                 'approvable_type' => OutgoingLetter::class,
                 'approvable_id' => $letter->id,
                 'status' => 'pending',
-                'note' => 'Menunggu approval EO dan DD Corporate Secretary',
+                'note' => 'Menunggu approval EO Corporate Secretary',
             ]);
 
             if ($note) {
@@ -407,7 +410,7 @@ class OutgoingLetterWorkflowService
             if ($checkerIds->isNotEmpty()) {
                 $this->notifyUsers($checkerIds, 'outgoing_letter_corpsec_approval', [
                     'title' => 'Approval Corporate Secretary',
-                    'message' => 'Surat keluar menunggu approval EO dan DD Corporate Secretary.',
+                    'message' => 'Surat keluar menunggu approval EO Corporate Secretary.',
                     'outgoing_letter_id' => $letter->id,
                     'registration_no' => $letter->registration_no,
                     'subject' => $letter->subject,
@@ -433,10 +436,9 @@ class OutgoingLetterWorkflowService
             }
 
             $isChecker = $actor->hasRole('checker');
-            $isApprover = $actor->hasRole('approver');
 
-            if (!$isChecker && !$isApprover) {
-                abort(403, 'Approval hanya untuk role checker atau approver dari Corporate Secretary.');
+            if (!$isChecker) {
+                abort(403, 'Approval hanya untuk role checker dari Corporate Secretary.');
             }
 
             $checkerApproved = Approval::query()
@@ -449,8 +451,19 @@ class OutgoingLetterWorkflowService
             $approval = $this->latestPendingApproval($letter);
 
             if (in_array($action, ['verify', 'approve'], true)) {
-                if (!$checkerApproved && $isChecker) {
-                    $this->preventDuplicateAct($letter, $actor, 'EO Corp Affair');
+                if ($checkerApproved) {
+                    abort(403, 'Approval sudah diproses.');
+                }
+
+                $this->preventDuplicateAct($letter, $actor, 'EO Corp Affair');
+                if ($approval) {
+                    $approval->update([
+                        'status' => 'approved',
+                        'note' => $this->buildApprovalNote('EO Corp Affair Approved', $note),
+                        'acted_by' => $actor->id,
+                        'acted_at' => now(),
+                    ]);
+                } else {
                     Approval::create([
                         'approvable_type' => OutgoingLetter::class,
                         'approvable_id' => $letter->id,
@@ -459,74 +472,39 @@ class OutgoingLetterWorkflowService
                         'acted_by' => $actor->id,
                         'acted_at' => now(),
                     ]);
-
-                    $this->notifyOutgoingDecision(
-                        $letter,
-                        $actor,
-                        'Approval EO Corporate Secretary disetujui.'
-                    );
-                    return;
                 }
 
-                if ($checkerApproved && $isApprover) {
-                    $this->preventDuplicateAct($letter, $actor, 'DD Corp Affair');
-                    if ($approval) {
-                        $approval->update([
-                            'status' => 'approved',
-                            'note' => $this->buildApprovalNote('DD Corp Affair Approved', $note),
-                            'acted_by' => $actor->id,
-                            'acted_at' => now(),
-                        ]);
-                    } else {
-                        Approval::create([
-                            'approvable_type' => OutgoingLetter::class,
-                            'approvable_id' => $letter->id,
-                            'status' => 'approved',
-                            'note' => $this->buildApprovalNote('DD Corp Affair Approved', $note),
-                            'acted_by' => $actor->id,
-                            'acted_at' => now(),
-                        ]);
-                    }
+                $letter->update([
+                    'status' => OutgoingLetter::STATUS_FINAL_UPLOADED,
+                    'updated_by' => $actor->id,
+                ]);
 
-                    $letter->update([
-                        'status' => OutgoingLetter::STATUS_FINAL_UPLOADED,
-                        'updated_by' => $actor->id,
+                $this->notifyOutgoingDecision(
+                    $letter,
+                    $actor,
+                    'Approval EO Corporate Secretary disetujui.'
+                );
+
+                $staffIds = $this->getCorpSecretaryMakerStaffIds();
+                if ($staffIds->isNotEmpty()) {
+                    $this->notifyUsers($staffIds, 'outgoing_letter_final_upload', [
+                        'title' => 'Upload Final Surat',
+                        'message' => 'Surat keluar menunggu upload final.',
+                        'outgoing_letter_id' => $letter->id,
+                        'registration_no' => $letter->registration_no,
+                        'subject' => $letter->subject,
+                        'status' => $letter->status,
+                        'created_by' => [
+                            'id' => $actor->id,
+                            'name' => $actor->name,
+                        ],
                     ]);
-
-                    $this->notifyOutgoingDecision(
-                        $letter,
-                        $actor,
-                        'Approval DD Corporate Secretary disetujui.'
-                    );
-
-                    $staffIds = $this->getCorpSecretaryMakerStaffIds();
-                    if ($staffIds->isNotEmpty()) {
-                        $this->notifyUsers($staffIds, 'outgoing_letter_final_upload', [
-                            'title' => 'Upload Final Surat',
-                            'message' => 'Surat keluar menunggu upload final.',
-                            'outgoing_letter_id' => $letter->id,
-                            'registration_no' => $letter->registration_no,
-                            'subject' => $letter->subject,
-                            'status' => $letter->status,
-                            'created_by' => [
-                                'id' => $actor->id,
-                                'name' => $actor->name,
-                            ],
-                        ]);
-                    }
-                    return;
                 }
-
-                abort(403, 'Tahapan approval tidak sesuai.');
+                return;
             }
 
             if (in_array($action, ['return', 'reject'], true)) {
-                $fallbackLabel = 'EO+DD Corp Affair Returned';
-                if ($isChecker && !$checkerApproved) {
-                    $fallbackLabel = 'EO Corp Affair Returned';
-                } elseif ($isApprover) {
-                    $fallbackLabel = 'DD Corp Affair Returned';
-                }
+                $fallbackLabel = 'EO Corp Affair Returned';
 
                 if ($approval) {
                     $approval->update([
