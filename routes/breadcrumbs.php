@@ -52,6 +52,21 @@ Breadcrumbs::for('workplan.index', function (BreadcrumbTrail $trail) {
     $trail->push('Workplan', route('workplan.index'));
 });
 
+Breadcrumbs::for('workplan.create', function (BreadcrumbTrail $trail) {
+    $trail->parent('workplan.index');
+    $trail->push('Input Workplan', route('workplan.create'));
+});
+
+Breadcrumbs::for('workplan.show', function (BreadcrumbTrail $trail, $workplan) {
+    $trail->parent('workplan.index');
+    $trail->push('Detail Workplan', route('workplan.show', $workplan));
+});
+
+Breadcrumbs::for('workplan.edit', function (BreadcrumbTrail $trail, $workplan) {
+    $trail->parent('workplan.show', $workplan);
+    $trail->push('Edit Workplan', route('workplan.edit', $workplan));
+});
+
 // Approver
 Breadcrumbs::for('approval.index', function (BreadcrumbTrail $trail) {
     $trail->parent('dashboard');

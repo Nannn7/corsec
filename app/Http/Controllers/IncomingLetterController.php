@@ -15,7 +15,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
-use Modules\Corsec\Exports\IncomingLetterExport;
+use Modules\Corsec\Exports\LetterExport;
 use Modules\Corsec\Models\IncomingLetter;
 use Modules\Corsec\Models\Attachment;
 use Modules\Corsec\Models\Attachable;
@@ -657,7 +657,7 @@ class IncomingLetterController extends Controller
         $search = trim((string) $request->get('search', ''));
 
         return Excel::download(
-            new IncomingLetterExport($search, $user),
+            new LetterExport('incoming', $search, $user),
             'incoming_letters_' . now()->format('Ymd_His') . '.xlsx'
         );
     }
@@ -672,15 +672,23 @@ class IncomingLetterController extends Controller
             ], 403);
         }
 
+        $isAdmin = $user->hasRole('administrator');
+        $deletableStatuses = [IncomingLetter::STATUS_DRAFT, IncomingLetter::STATUS_RETURNED];
+
         try {
-            // optional: scope akses delete
-            if (!$user->hasRole('administrator')) {
-                // minimal: hanya creator yg bisa delete
-                if ((int)$incomingLetter->created_by !== (int)$user->id) {
+            if (!$isAdmin) {
+                if ((int) $incomingLetter->created_by !== (int) $user->id) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Tidak punya akses untuk menghapus surat ini.'
                     ], 403);
+                }
+
+                if (!in_array((string) $incomingLetter->status, $deletableStatuses, true)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Surat masuk hanya bisa dihapus pada status Draft atau Returned.'
+                    ], 422);
                 }
             }
 
@@ -725,9 +733,27 @@ class IncomingLetterController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($ids, $user) {
-                IncomingLetter::whereIn('id', $ids)->update(['deleted_by' => $user->id]);
-                IncomingLetter::whereIn('id', $ids)->delete();
+            $ids = array_values(array_unique(array_map('intval', $ids)));
+            $isAdmin = $user->hasRole('administrator');
+            $deletableStatuses = [IncomingLetter::STATUS_DRAFT, IncomingLetter::STATUS_RETURNED];
+
+            $query = IncomingLetter::query()->whereIn('id', $ids);
+            if (!$isAdmin) {
+                $query->where('created_by', $user->id)
+                    ->whereIn('status', $deletableStatuses);
+            }
+
+            $allowedIds = $query->pluck('id')->all();
+            if (count($allowedIds) !== count($ids)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Sebagian data tidak bisa dihapus. Pastikan data milik Anda dengan status Draft/Returned.'
+                ], 403);
+            }
+
+            DB::transaction(function () use ($allowedIds, $user) {
+                IncomingLetter::whereIn('id', $allowedIds)->update(['deleted_by' => $user->id]);
+                IncomingLetter::whereIn('id', $allowedIds)->delete(); // soft delete
             });
 
             return response()->json([

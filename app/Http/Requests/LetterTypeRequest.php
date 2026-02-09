@@ -4,15 +4,17 @@ namespace Modules\Corsec\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Modules\Corsec\Models\LetterType;
 
 class LetterTypeRequest extends FormRequest
 {
     public function rules(): array
     {
-        $id = (int) $this->route('letter_type');
+        $routeLetterType = $this->route('letter_type');
+        $id = $routeLetterType instanceof LetterType ? $routeLetterType->id : (is_numeric($routeLetterType) ? (int) $routeLetterType : null);
 
         $uniqueCode = Rule::unique('corsec_letter_types', 'code');
-        if ($this->isMethod('put') || $this->isMethod('patch')) {
+        if (($this->isMethod('put') || $this->isMethod('patch')) && $id) {
             $uniqueCode = $uniqueCode->ignore($id);
         }
 

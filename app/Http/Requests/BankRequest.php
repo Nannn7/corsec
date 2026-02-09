@@ -4,15 +4,17 @@ namespace Modules\Corsec\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Modules\Corsec\Models\Bank;
 
 class BankRequest extends FormRequest
 {
     public function rules(): array
     {
-        $id = (int) $this->route('bank');
+        $routeBank = $this->route('bank');
+        $id = $routeBank instanceof Bank ? $routeBank->id : (is_numeric($routeBank) ? (int) $routeBank : null);
 
         $uniqueCode = Rule::unique('corsec_banks', 'code');
-        if ($this->isMethod('put') || $this->isMethod('patch')) {
+        if (($this->isMethod('put') || $this->isMethod('patch')) && $id) {
             $uniqueCode = $uniqueCode->ignore($id);
         }
 
