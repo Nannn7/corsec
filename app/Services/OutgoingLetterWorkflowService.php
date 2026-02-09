@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Corsec\Models\Approval;
 use Modules\Corsec\Models\Attachment;
+use Modules\Corsec\Models\Comment;
 use Modules\Corsec\Models\Directorate;
 use Modules\Corsec\Models\OutgoingLetter;
 use Modules\Usermanagement\Models\User;
@@ -17,6 +18,9 @@ class OutgoingLetterWorkflowService
         DB::transaction(function () use ($letter, $actor) {
             $letter->update([
                 'status' => OutgoingLetter::STATUS_WAITING_DIR_APPROVAL,
+                'authorized_status' => 'pending',
+                'authorized_at' => null,
+                'authorized_by' => null,
                 'updated_by' => $actor->id,
             ]);
 
@@ -175,6 +179,9 @@ class OutgoingLetterWorkflowService
 
                 $letter->update([
                     'status' => OutgoingLetter::STATUS_RETURNED,
+                    'authorized_status' => 'returned',
+                    'authorized_at' => null,
+                    'authorized_by' => null,
                     'updated_by' => $actor->id,
                 ]);
 
@@ -183,6 +190,8 @@ class OutgoingLetterWorkflowService
                     $actor,
                     'Approval surat keluar dikembalikan.'
                 );
+
+                $this->addOutgoingComment($letter, $actor, 'RETURN DIREKTORAT', $note);
             }
         });
     }
@@ -240,6 +249,9 @@ class OutgoingLetterWorkflowService
 
             $letter->update([
                 'status' => OutgoingLetter::STATUS_RETURNED,
+                'authorized_status' => 'returned',
+                'authorized_at' => null,
+                'authorized_by' => null,
                 'updated_by' => $actor->id,
             ]);
 
@@ -257,6 +269,8 @@ class OutgoingLetterWorkflowService
                 $actor,
                 'Review kepatuhan dikembalikan.'
             );
+
+            $this->addOutgoingComment($letter, $actor, 'RETURN REVIEW KEPATUHAN', $note);
         });
     }
 
@@ -364,6 +378,9 @@ class OutgoingLetterWorkflowService
 
                 $letter->update([
                     'status' => OutgoingLetter::STATUS_RETURNED,
+                    'authorized_status' => 'returned',
+                    'authorized_at' => null,
+                    'authorized_by' => null,
                     'updated_by' => $actor->id,
                 ]);
 
@@ -372,6 +389,8 @@ class OutgoingLetterWorkflowService
                     $actor,
                     'Approval kepatuhan dikembalikan.'
                 );
+
+                $this->addOutgoingComment($letter, $actor, 'RETURN APPROVAL KEPATUHAN', $note);
             }
         });
     }
@@ -385,6 +404,7 @@ class OutgoingLetterWorkflowService
                 'number_requested_by' => $actor->id,
                 'number_request_note' => $note,
                 'status' => OutgoingLetter::STATUS_WAITING_VERIFICATION,
+                'authorized_status' => 'pending',
                 'updated_by' => $actor->id,
             ]);
 
@@ -476,6 +496,9 @@ class OutgoingLetterWorkflowService
 
                 $letter->update([
                     'status' => OutgoingLetter::STATUS_FINAL_UPLOADED,
+                    'authorized_status' => 'authorized',
+                    'authorized_at' => now(),
+                    'authorized_by' => $actor->id,
                     'updated_by' => $actor->id,
                 ]);
 
@@ -526,6 +549,9 @@ class OutgoingLetterWorkflowService
 
                 $letter->update([
                     'status' => OutgoingLetter::STATUS_RETURNED,
+                    'authorized_status' => 'returned',
+                    'authorized_at' => null,
+                    'authorized_by' => null,
                     'updated_by' => $actor->id,
                 ]);
 
@@ -534,6 +560,8 @@ class OutgoingLetterWorkflowService
                     $actor,
                     'Approval Corporate Secretary dikembalikan.'
                 );
+
+                $this->addOutgoingComment($letter, $actor, 'RETURN VERIFIKASI CORSEC', $note);
             }
         });
     }
@@ -644,6 +672,21 @@ class OutgoingLetterWorkflowService
         })->all();
 
         DB::table('notifications')->insert($payload);
+    }
+
+    private function addOutgoingComment(OutgoingLetter $letter, User $actor, string $label, ?string $note): void
+    {
+        $note = trim((string) $note);
+        if ($note === '') {
+            return;
+        }
+
+        Comment::create([
+            'commentable_type' => OutgoingLetter::class,
+            'commentable_id' => $letter->id,
+            'body' => '[' . $label . '] ' . $note,
+            'created_by' => $actor->id,
+        ]);
     }
 
     private function isComplianceDirectorate(User $user): bool

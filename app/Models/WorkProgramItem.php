@@ -3,13 +3,18 @@
 namespace Modules\Corsec\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Modules\Usermanagement\Models\User;
 
 class WorkProgramItem extends Model
 {
     protected $table = 'corsec_work_program_items';
+
+    public const STATUS_PROCESS_ON_TARGET = 'process_on_target';
+    public const STATUS_DONE_ON_TARGET = 'done_on_target';
+    public const STATUS_DONE_OVER_TARGET = 'done_over_target';
+    public const STATUS_UNDONE = 'undone';
 
     protected $fillable = [
         'work_program_id',
@@ -28,7 +33,7 @@ class WorkProgramItem extends Model
         'completed_at' => 'datetime',
     ];
 
-    public function program(): BelongsTo
+    public function program(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(WorkProgram::class, 'work_program_id');
     }
@@ -46,5 +51,10 @@ class WorkProgramItem extends Model
     public function attachables(): MorphMany
     {
         return $this->morphMany(Attachable::class, 'attachable');
+    }
+
+    public function creator(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }

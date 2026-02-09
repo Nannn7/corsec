@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use Modules\Corsec\Models\IncomingLetter;
 use Modules\Corsec\Models\Meeting;
 use Modules\Corsec\Models\OutgoingLetter;
-use Modules\Corsec\Models\WorkProgram;
+use Modules\Corsec\Models\WorkProgramItem;
 
 class DashboardController extends Controller
 {
@@ -39,11 +39,14 @@ class DashboardController extends Controller
                 })
                 ->count();
 
-            $workplanOpen = WorkProgram::query()
-                ->where(function ($q) {
-                    $q->whereNull('status')
-                        ->orWhereNotIn('status', ['done', 'returned', 'rejected']);
+            $workplanOpen = WorkProgramItem::query()
+                ->whereHas('program', function ($q) {
+                    $q->whereNull('deleted_at');
                 })
+                ->whereNotIn('status', [
+                    WorkProgramItem::STATUS_DONE_ON_TARGET,
+                    WorkProgramItem::STATUS_DONE_OVER_TARGET,
+                ])
                 ->count();
 
             return view('corsec::dashboard', compact('incomingOpen', 'outgoingOpen', 'meetingOpen', 'workplanOpen'));

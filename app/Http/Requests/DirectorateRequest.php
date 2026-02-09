@@ -4,6 +4,7 @@ namespace Modules\Corsec\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Modules\Corsec\Models\Directorate;
 
 class DirectorateRequest extends FormRequest
 {
@@ -12,10 +13,11 @@ class DirectorateRequest extends FormRequest
      */
     public function rules(): array
     {
-        $id = (int) $this->route('directorate');
+        $routeDirectorate = $this->route('directorate');
+        $id = $routeDirectorate instanceof Directorate ? $routeDirectorate->id : (is_numeric($routeDirectorate) ? (int) $routeDirectorate : null);
 
         $uniqueCode = Rule::unique('corsec_directorates', 'code');
-        if ($this->isMethod('put') || $this->isMethod('patch')) {
+        if (($this->isMethod('put') || $this->isMethod('patch')) && $id) {
             $uniqueCode = $uniqueCode->ignore($id);
         }
 

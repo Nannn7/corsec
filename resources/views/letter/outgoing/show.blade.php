@@ -331,6 +331,46 @@
             </div>
         @endif
 
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Riwayat Catatan</h3>
+            </div>
+            <div class="card-body">
+                @php
+                    $comments = $outgoingLetter->comments
+                        ->sortByDesc('created_at')
+                        ->values();
+                @endphp
+
+                @if ($comments->count() > 0)
+                    <div class="overflow-x-auto">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th class="min-w-[220px]">Catatan</th>
+                                    <th class="min-w-[180px]">Oleh</th>
+                                    <th class="min-w-[160px]">Waktu</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($comments as $comment)
+                                    <tr>
+                                        <td>{{ $comment->body ?? '-' }}</td>
+                                        <td>{{ $comment->createdBy?->name ?? '-' }}</td>
+                                        <td>
+                                            {{ $comment->created_at ? $comment->created_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s') : '-' }}
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @else
+                    <div class="text-gray-500 text-sm">Belum ada catatan untuk surat ini.</div>
+                @endif
+            </div>
+        </div>
+
         @can('corsec.authorize')
             <div class="card">
                 <div class="card-header">

@@ -52,6 +52,8 @@ Route::middleware(['auth'])->group(function () {
     Route::prefix('letter/outgoing')->name('letter.outgoing.')->group(function () {
         Route::get('/', [OutgoingLetterController::class, 'index'])->middleware('permission:corsec.read')->name('index');
         Route::get('/datatables', [OutgoingLetterController::class, 'datatables'])->middleware('permission:corsec.read')->name('datatables');
+        Route::get('/export', [OutgoingLetterController::class, 'export'])->middleware('permission:corsec.export')->name('export');
+        Route::post('/delete-multiple', [OutgoingLetterController::class, 'deleteMultiple'])->middleware('permission:corsec.delete')->name('delete_multiple');
         Route::get('/create', [OutgoingLetterController::class, 'create'])->middleware('permission:corsec.create')->name('create');
         Route::post('/', [OutgoingLetterController::class, 'store'])->middleware('permission:corsec.create')->name('store');
         Route::get('/{outgoingLetter}', [OutgoingLetterController::class, 'show'])->middleware('permission:corsec.read')->name('show');
@@ -63,6 +65,7 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/{outgoingLetter}/numbering', [OutgoingLetterController::class, 'numbering'])->middleware('permission:corsec.update')->name('numbering');
         Route::post('/{outgoingLetter}/upload-final', [OutgoingLetterController::class, 'uploadFinal'])->middleware('permission:corsec.update')->name('upload_final');
         Route::post('/{outgoingLetter}/verify', [OutgoingLetterController::class, 'verifyAction'])->middleware('permission:corsec.authorize')->name('verify.action');
+        Route::delete('/{outgoingLetter}', [OutgoingLetterController::class, 'destroy'])->middleware('permission:corsec.delete')->name('destroy');
     });
 
     // Meeting Routes
@@ -78,7 +81,18 @@ Route::middleware(['auth'])->group(function () {
 
     // Workplan Routes
     Route::prefix('workplan')->name('workplan.')->group(function () {
-        Route::get('/', [WorkplanController::class, 'index'])->name('index');
+        Route::get('/', [WorkplanController::class, 'index'])->middleware('permission:corsec.read')->name('index');
+        Route::get('/datatables', [WorkplanController::class, 'datatables'])->middleware('permission:corsec.read')->name('datatables');
+        Route::get('/export', [WorkplanController::class, 'export'])->middleware('permission:corsec.export')->name('export');
+        Route::get('/create', [WorkplanController::class, 'create'])->middleware('permission:corsec.create')->name('create');
+        Route::post('/', [WorkplanController::class, 'store'])->middleware('permission:corsec.create')->name('store');
+        Route::post('/{workplan}/submit', [WorkplanController::class, 'submit'])->middleware('permission:corsec.update')->name('submit');
+        Route::post('/{workplan}/approval', [WorkplanController::class, 'approvalAction'])->middleware('permission:corsec.authorize')->name('approval.action');
+        Route::post('/{workplan}/items/{item}/progress', [WorkplanController::class, 'submitProgress'])->middleware('permission:corsec.update')->name('items.progress');
+        Route::get('/{workplan}', [WorkplanController::class, 'show'])->middleware('permission:corsec.read')->name('show');
+        Route::get('/{workplan}/edit', [WorkplanController::class, 'edit'])->middleware('permission:corsec.update')->name('edit');
+        Route::put('/{workplan}', [WorkplanController::class, 'update'])->middleware('permission:corsec.update')->name('update');
+        Route::delete('/{workplan}', [WorkplanController::class, 'destroy'])->middleware('permission:corsec.delete')->name('destroy');
     });
 
     // Approver Routes

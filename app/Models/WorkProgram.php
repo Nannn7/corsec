@@ -2,21 +2,26 @@
 
 namespace Modules\Corsec\Models;
 
-use Modules\Corsec\Models\Directorate;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Modules\Corsec\Models\Concerns\HasAuditUsers;
 use Modules\Corsec\Models\Concerns\HasAuthorizedUsers;
 use Modules\Corsec\Models\Concerns\HasUuidColumn;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class WorkProgram extends Model
 {
     use SoftDeletes, HasUuidColumn, HasAuditUsers, HasAuthorizedUsers;
 
     protected $table = 'corsec_work_programs';
+
+    public const STATUS_DRAFT = 'draft';
+    public const STATUS_WAITING_DIR_APPROVAL = 'waiting_dir_approval';
+    public const STATUS_ACTIVE = 'active';
+    public const STATUS_DONE = 'done';
+    public const STATUS_RETURNED = 'returned';
+    public const STATUS_REJECTED = 'rejected';
 
     protected $fillable = [
         'uuid',
@@ -44,7 +49,7 @@ class WorkProgram extends Model
         return 'uuid';
     }
 
-    public function directorate()
+    public function directorate(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Directorate::class, 'directorate_id');
     }

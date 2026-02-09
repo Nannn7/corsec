@@ -4,15 +4,17 @@ namespace Modules\Corsec\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Modules\Corsec\Models\Sender;
 
 class SenderRequest extends FormRequest
 {
     public function rules(): array
     {
-        $id = (int) $this->route('sender');
+        $routeSender = $this->route('sender');
+        $id = $routeSender instanceof Sender ? $routeSender->id : (is_numeric($routeSender) ? (int) $routeSender : null);
 
         $uniqueCode = Rule::unique('corsec_senders', 'code');
-        if ($this->isMethod('put') || $this->isMethod('patch')) {
+        if (($this->isMethod('put') || $this->isMethod('patch')) && $id) {
             $uniqueCode = $uniqueCode->ignore($id);
         }
 

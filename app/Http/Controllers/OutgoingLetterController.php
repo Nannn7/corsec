@@ -3,13 +3,17 @@
 namespace Modules\Corsec\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Maatwebsite\Excel\Facades\Excel;
+use Modules\Corsec\Exports\LetterExport;
 use Modules\Corsec\Models\Approval;
 use Modules\Corsec\Models\Attachment;
 use Modules\Corsec\Models\IncomingLetter;
@@ -39,7 +43,7 @@ class OutgoingLetterController extends Controller
         $this->authorizeRead();
 
         $query = OutgoingLetter::query()
-            ->with(['requesterDirectorate', 'recipient'])
+            ->with(['requesterDirectorate', 'recipient', 'perihalIncomingLetter', 'authorizedBy'])
             ->latest();
 
         if ($request->filled('status')) {
@@ -50,8 +54,22 @@ class OutgoingLetterController extends Controller
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->where('subject', 'ilike', "%{$search}%")
+                    ->orWhere('summary', 'ilike', "%{$search}%")
                     ->orWhere('registration_no', 'ilike', "%{$search}%")
-                    ->orWhere('letter_no', 'ilike', "%{$search}%");
+                    ->orWhere('letter_no', 'ilike', "%{$search}%")
+                    ->orWhere('perihal_text', 'ilike', "%{$search}%")
+                    ->orWhere('recipient_other', 'ilike', "%{$search}%")
+                    ->orWhereHas('recipient', function ($recipientQuery) use ($search) {
+                        $recipientQuery->where('name', 'ilike', "%{$search}%");
+                    })
+                    ->orWhereHas('requesterDirectorate', function ($directorateQuery) use ($search) {
+                        $directorateQuery->where('name', 'ilike', "%{$search}%")
+                            ->orWhere('code', 'ilike', "%{$search}%");
+                    })
+                    ->orWhereHas('perihalIncomingLetter', function ($incomingQuery) use ($search) {
+                        $incomingQuery->where('registration_no', 'ilike', "%{$search}%")
+                            ->orWhere('subject', 'ilike', "%{$search}%");
+                    });
             });
         }
 
@@ -60,7 +78,7 @@ class OutgoingLetterController extends Controller
 
         $sortField = (string) $request->get('sortField', 'created_at');
         $sortOrder = (string) $request->get('sortOrder', 'desc');
-        $allowedSort = ['created_at', 'registration_no', 'order_date', 'status'];
+        $allowedSort = ['created_at', 'registration_no', 'order_date', 'status', 'letter_no', 'subject', 'authorized_at'];
         if (!in_array($sortField, $allowedSort, true)) {
             $sortField = 'created_at';
         }
@@ -85,6 +103,132 @@ class OutgoingLetterController extends Controller
             'totalCount' => $totalRecords,
             'data' => $data,
         ]);
+    }
+
+    public function export(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->can('corsec.export')) {
+            abort(403, 'Sorry! You are not allowed to export outgoing letters.');
+        }
+
+        $search = trim((string) $request->get('search', ''));
+        $status = trim((string) $request->get('status', ''));
+
+        return Excel::download(
+            new LetterExport('outgoing', $search, $user, $status),
+            'outgoing_letters_' . now()->format('Ymd_His') . '.xlsx'
+        );
+    }
+
+    public function destroy(OutgoingLetter $outgoingLetter)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->can('corsec.delete')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sorry! You are not allowed to delete outgoing letters.'
+            ], 403);
+        }
+
+        $isAdmin = $user->hasRole('administrator');
+        $deletableStatuses = [OutgoingLetter::STATUS_DRAFT, OutgoingLetter::STATUS_RETURNED];
+
+        if (!$isAdmin) {
+            if ((int) $outgoingLetter->created_by !== (int) $user->id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tidak punya akses untuk menghapus surat ini.'
+                ], 403);
+            }
+
+            if (!in_array((string) $outgoingLetter->status, $deletableStatuses, true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Surat keluar hanya bisa dihapus pada status Draft atau Returned.'
+                ], 422);
+            }
+        }
+
+        try {
+            DB::transaction(function () use ($outgoingLetter, $user) {
+                $outgoingLetter->update(['deleted_by' => $user->id]);
+                $outgoingLetter->delete(); // soft delete
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Surat keluar berhasil dihapus.'
+            ]);
+        } catch (Exception $e) {
+            Log::error('OutgoingLetter delete error: ' . $e->getMessage(), [
+                'outgoing_letter_id' => $outgoingLetter->id,
+                'user_id' => $user?->id
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus surat keluar.'
+            ], 500);
+        }
+    }
+
+    public function deleteMultiple(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->can('corsec.delete')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sorry! You are not allowed to delete outgoing letters.'
+            ], 403);
+        }
+
+        $ids = $request->input('ids', []);
+        if (!is_array($ids) || count($ids) === 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pilih minimal satu baris untuk dihapus.'
+            ], 400);
+        }
+
+        try {
+            $ids = array_values(array_unique(array_map('intval', $ids)));
+            $isAdmin = $user->hasRole('administrator');
+            $deletableStatuses = [OutgoingLetter::STATUS_DRAFT, OutgoingLetter::STATUS_RETURNED];
+
+            $query = OutgoingLetter::query()->whereIn('id', $ids);
+            if (!$isAdmin) {
+                $query->where('created_by', $user->id)
+                    ->whereIn('status', $deletableStatuses);
+            }
+
+            $allowedIds = $query->pluck('id')->all();
+            if (count($allowedIds) !== count($ids)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Sebagian data tidak bisa dihapus. Pastikan data milik Anda dengan status Draft/Returned.'
+                ], 403);
+            }
+
+            DB::transaction(function () use ($allowedIds, $user) {
+                OutgoingLetter::whereIn('id', $allowedIds)->update(['deleted_by' => $user->id]);
+                OutgoingLetter::whereIn('id', $allowedIds)->delete(); // soft delete
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Surat keluar terpilih berhasil dihapus.'
+            ]);
+        } catch (Exception $e) {
+            Log::error('OutgoingLetter delete multiple error: ' . $e->getMessage(), [
+                'user_id' => $user?->id
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus surat keluar terpilih.'
+            ], 500);
+        }
     }
 
     public function create()
@@ -191,6 +335,10 @@ class OutgoingLetterController extends Controller
     public function show(OutgoingLetter $outgoingLetter)
     {
         $this->authorizeRead();
+
+        $outgoingLetter->load([
+            'comments.createdBy',
+        ]);
 
         $approvals = Approval::query()
             ->where('approvable_type', OutgoingLetter::class)
