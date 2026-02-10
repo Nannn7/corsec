@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -27,7 +26,7 @@ use Modules\Corsec\Models\Sender;
 use Modules\Corsec\Models\LetterType;
 use Modules\Corsec\Models\Bank;
 use Modules\Basicdata\Models\Branch;
-use Modules\Corsec\Notifications\IncomingLetterDirectorateNotification;
+use Modules\Corsec\Notifications\CorsecFlowNotification;
 use Modules\Usermanagement\Models\User;
 use Modules\Usermanagement\Models\Position;
 
@@ -257,13 +256,7 @@ class IncomingLetterController extends Controller
         }
 
         if (!empty($circulationDirectorateIds)) {
-            $users = User::query()
-                ->whereIn('directorate_id', $circulationDirectorateIds)
-                ->get();
-
-            if ($users->isNotEmpty()) {
-                Notification::send($users, new IncomingLetterDirectorateNotification($letter, $user));
-            }
+            $this->notifyIncomingDirectorates($circulationDirectorateIds, $letter, $user);
         }
 
         return redirect()
@@ -1065,15 +1058,36 @@ class IncomingLetterController extends Controller
             ]);
         }
 
-        $users = User::query()
-            ->whereIn('directorate_id', $newIds)
-            ->get();
-
-        if ($users->isNotEmpty()) {
-            Notification::send($users, new IncomingLetterDirectorateNotification($incomingLetter, $user));
-        }
+        $this->notifyIncomingDirectorates($newIds, $incomingLetter, $user);
 
         return back()->with('success', 'Direktorat monitoring berhasil ditambahkan.');
+    }
+
+    private function notifyIncomingDirectorates(iterable $directorateIds, IncomingLetter $incomingLetter, User $actor): void
+    {
+        $ids = collect($directorateIds)->filter()->unique()->values();
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        $targetUserIds = User::query()
+            ->whereIn('directorate_id', $ids)
+            ->pluck('id');
+
+        CorsecFlowNotification::insertForUsers($targetUserIds, 'incoming_letter_dir_circulation', [
+            'title' => 'Surat masuk baru',
+            'message' => 'Surat masuk perlu tindak lanjut direktorat.',
+            'incoming_letter_id' => $incomingLetter->id,
+            'registration_no' => $incomingLetter->registration_no,
+            'subject' => $incomingLetter->subject,
+            'sender' => $incomingLetter->sender,
+            'status' => $incomingLetter->status,
+            'target_directorate_id' => $incomingLetter->target_directorate_id,
+            'created_by' => [
+                'id' => $actor->id,
+                'name' => $actor->name,
+            ],
+        ]);
     }
 
     private function isEoCorpAffairActor(?User $user): bool

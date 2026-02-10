@@ -6,7 +6,40 @@
 
 @section('content')
     <div class="grid gap-5 lg:gap-7.5">
-        <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
+        {{-- <div class="card">
+            <div class="card-body flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                <div class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">Ringkasan Program Kerja Direktorat</h2>
+                    <div class="flex flex-wrap gap-2 text-xs">
+                        <span class="badge badge-light">Tanggal: {{ $pageInfo['today']->format('d/m/Y') }}</span>
+                        <span class="badge badge-light">Direktorat: {{ $pageInfo['directorate_name'] }}</span>
+                    </div>
+                </div>
+                <div class="grid gap-3 sm:grid-cols-2 lg:min-w-[360px]">
+                    <div class="rounded-lg border border-gray-200 px-4 py-3">
+                        <div class="text-xs font-medium text-gray-500">Completion Rate</div>
+                        <div class="mt-1 text-2xl font-semibold text-primary">{{ $summary['completion_rate'] ?? 0 }}%</div>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 px-4 py-3">
+                        <div class="text-xs font-medium text-gray-500">Done On Target Ratio</div>
+                        <div class="mt-1 text-2xl font-semibold text-success">{{ $summary['on_target_rate'] ?? 0 }}%</div>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 px-4 py-3 sm:col-span-2">
+                        <div class="flex items-center justify-between text-xs text-gray-500">
+                            <span>Progress Penyelesaian Item</span>
+                            <span>{{ ($summary['done_on_target'] ?? 0) + ($summary['done_over_target'] ?? 0) }} /
+                                {{ $summary['total_items'] ?? 0 }}</span>
+                        </div>
+                        <div class="mt-2 h-2 rounded-full bg-gray-200">
+                            <div class="h-2 rounded-full bg-primary"
+                                style="width: {{ $summary['completion_rate'] ?? 0 }}%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div> --}}
+
+        <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             <div class="card">
                 <div class="card-body">
                     <div class="text-2xl font-semibold text-gray-800">{{ $summary['total_programs'] ?? 0 }}</div>
@@ -21,26 +54,52 @@
             </div>
             <div class="card">
                 <div class="card-body">
+                    <div class="text-2xl font-semibold text-sky-600">{{ $summary['process_on_target'] ?? 0 }}</div>
+                    <div class="text-sm text-gray-500">PK - Process On Target</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body">
                     <div class="text-2xl font-semibold text-green-600">{{ $summary['done_on_target'] ?? 0 }}</div>
-                    <div class="text-sm text-gray-500">Done On Target</div>
+                    <div class="text-sm text-gray-500">PK - Done On Target</div>
                 </div>
             </div>
             <div class="card">
                 <div class="card-body">
                     <div class="text-2xl font-semibold text-orange-500">{{ $summary['done_over_target'] ?? 0 }}</div>
-                    <div class="text-sm text-gray-500">Done Over Target</div>
+                    <div class="text-sm text-gray-500">PK - Done Over Target</div>
                 </div>
             </div>
-            <div class="card">
+            {{-- <div class="card">
                 <div class="card-body">
                     <div class="text-2xl font-semibold text-red-500">{{ $summary['pending_items'] ?? 0 }}</div>
                     <div class="text-sm text-gray-500">Pending Item</div>
                 </div>
+            </div> --}}
+            <div class="card">
+                <div class="card-body">
+                    <div class="text-2xl font-semibold text-red-600">{{ $summary['undone'] ?? 0 }}</div>
+                    <div class="text-sm text-gray-500">PK - Undone</div>
+                </div>
             </div>
+            {{-- <div class="card">
+                <div class="card-body">
+                    <div class="text-2xl font-semibold text-amber-600">{{ $summary['waiting_dir_approval_programs'] ?? 0 }}
+                    </div>
+                    <div class="text-sm text-gray-500">Waiting Dir Approval</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body">
+                    <div class="text-2xl font-semibold text-primary">{{ $summary['pending_approvals'] ?? 0 }}</div>
+                    <div class="text-sm text-gray-500">Pending Approval Queue</div>
+                </div>
+            </div> --}}
         </div>
 
-        <div class="min-w-full card card-grid" data-datatable="false" data-datatable-page-size="10" data-datatable-state-save="true"
-            id="workplan-table" data-api-url="{{ route('workplan.datatables') }}" data-base-url="{{ url('workplan') }}">
+        <div class="min-w-full card card-grid" data-datatable="false" data-datatable-page-size="10"
+            data-datatable-state-save="true" id="workplan-table" data-api-url="{{ route('workplan.datatables') }}"
+            data-base-url="{{ url('workplan') }}">
             <div class="flex-wrap py-5 card-header">
                 <h3 class="card-title">Work Plan / Program Kerja</h3>
                 <div class="flex flex-wrap gap-2 lg:gap-5">
@@ -266,6 +325,8 @@
             dataTable.search(searchValue, true);
             updateExportUrl();
         });
+
+        updateExportUrl();
 
         window.dataTable = dataTable;
     </script>

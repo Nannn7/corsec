@@ -136,9 +136,7 @@
                 "attributes": [],
                 "permission": "",
                 "roles": [
-                    "administrator",
-                    "checker",
-                    "approver"
+                    "administrator"
                 ]
             }
         ]

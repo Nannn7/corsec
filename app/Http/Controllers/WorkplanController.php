@@ -37,23 +37,54 @@ class WorkplanController extends Controller
         $this->authorizeRead();
 
         $user = Auth::user();
+        $user->loadMissing('directorate');
         $directorates = Directorate::query()->orderBy('name')->get(['id', 'name', 'code']);
 
         $programSummaryQuery = $this->scopedProgramsQuery($user);
         $itemSummaryQuery = $this->scopedItemsQuery($user);
+        $programIds = (clone $programSummaryQuery)->pluck('id');
+        $doneOnTarget = (clone $itemSummaryQuery)->where('status', WorkProgramItem::STATUS_DONE_ON_TARGET)->count();
+        $doneOverTarget = (clone $itemSummaryQuery)->where('status', WorkProgramItem::STATUS_DONE_OVER_TARGET)->count();
+        $totalItems = (clone $itemSummaryQuery)->count();
+        $doneItems = $doneOnTarget + $doneOverTarget;
 
         $summary = [
             'total_programs' => (clone $programSummaryQuery)->count(),
-            'total_items' => (clone $itemSummaryQuery)->count(),
-            'done_on_target' => (clone $itemSummaryQuery)->where('status', WorkProgramItem::STATUS_DONE_ON_TARGET)->count(),
-            'done_over_target' => (clone $itemSummaryQuery)->where('status', WorkProgramItem::STATUS_DONE_OVER_TARGET)->count(),
+            'total_items' => $totalItems,
+            'process_on_target' => (clone $itemSummaryQuery)->where('status', WorkProgramItem::STATUS_PROCESS_ON_TARGET)->count(),
+            'done_on_target' => $doneOnTarget,
+            'done_over_target' => $doneOverTarget,
             'undone' => (clone $itemSummaryQuery)->where('status', WorkProgramItem::STATUS_UNDONE)->count(),
             'pending_items' => (clone $itemSummaryQuery)
                 ->whereNotIn('status', [WorkProgramItem::STATUS_DONE_ON_TARGET, WorkProgramItem::STATUS_DONE_OVER_TARGET])
                 ->count(),
+            'draft_programs' => (clone $programSummaryQuery)->where('status', WorkProgram::STATUS_DRAFT)->count(),
+            'waiting_dir_approval_programs' => (clone $programSummaryQuery)->where('status', WorkProgram::STATUS_WAITING_DIR_APPROVAL)->count(),
+            'active_programs' => (clone $programSummaryQuery)->where('status', WorkProgram::STATUS_ACTIVE)->count(),
+            'returned_programs' => (clone $programSummaryQuery)->where('status', WorkProgram::STATUS_RETURNED)->count(),
+            'done_programs' => (clone $programSummaryQuery)->where('status', WorkProgram::STATUS_DONE)->count(),
+            'pending_approvals' => $programIds->isEmpty()
+                ? 0
+                : Approval::query()
+                    ->where('approvable_type', WorkProgram::class)
+                    ->whereIn('approvable_id', $programIds)
+                    ->where('status', WorkProgramUpdate::STATUS_PENDING)
+                    ->count(),
+            'completion_rate' => $totalItems > 0
+                ? (int) round(($doneItems / $totalItems) * 100)
+                : 0,
+            'on_target_rate' => $doneItems > 0
+                ? (int) round(($doneOnTarget / $doneItems) * 100)
+                : 0,
         ];
 
-        return view('corsec::workplan.index', compact('directorates', 'summary'));
+        $pageInfo = [
+            'today' => now(),
+            'directorate_name' => $user->directorate?->name ?? '-',
+            'is_admin' => $user->hasRole('administrator'),
+        ];
+
+        return view('corsec::workplan.index', compact('directorates', 'summary', 'pageInfo'));
     }
 
     public function datatables(Request $request)
@@ -85,6 +116,28 @@ class WorkplanController extends Controller
             }
             if ($request->filled('year')) {
                 $query->where('year', (int) $request->input('year'));
+            }
+
+            $filtersParam = $request->get('filters', []);
+            $filters = is_array($filtersParam)
+                ? $filtersParam
+                : json_decode((string) $filtersParam, true);
+            if (is_array($filters)) {
+                foreach ($filters as $filter) {
+                    $column = (string) ($filter['column'] ?? '');
+                    $value = $filter['value'] ?? null;
+                    if ($column === '' || $value === null || $value === '') {
+                        continue;
+                    }
+
+                    if (in_array($column, ['directorate_id', 'directorate'], true)) {
+                        $query->where('directorate_id', (int) $value);
+                    } elseif ($column === 'status') {
+                        $query->where('status', (string) $value);
+                    } elseif ($column === 'year') {
+                        $query->where('year', (int) $value);
+                    }
+                }
             }
 
             $totalRecords = $this->scopedProgramsQuery($user)->count();

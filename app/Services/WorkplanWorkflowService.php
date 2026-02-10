@@ -12,6 +12,7 @@ use Modules\Corsec\Models\Comment;
 use Modules\Corsec\Models\WorkProgram;
 use Modules\Corsec\Models\WorkProgramItem;
 use Modules\Corsec\Models\WorkProgramUpdate;
+use Modules\Corsec\Notifications\CorsecFlowNotification;
 use Modules\Usermanagement\Models\User;
 
 class WorkplanWorkflowService
@@ -453,26 +454,6 @@ class WorkplanWorkflowService
 
     private function notifyUsers(iterable $userIds, string $type, array $data): void
     {
-        $ids = collect($userIds)->filter()->unique()->values();
-        if ($ids->isEmpty()) {
-            return;
-        }
-
-        $now = now();
-        $jsonData = json_encode($data);
-
-        $payload = $ids->map(function ($userId) use ($type, $jsonData, $now) {
-            return [
-                'id' => (string) Str::uuid(),
-                'type' => $type,
-                'notifiable_type' => User::class,
-                'notifiable_id' => $userId,
-                'data' => $jsonData,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ];
-        })->all();
-
-        DB::table('notifications')->insert($payload);
+        CorsecFlowNotification::insertForUsers($userIds, $type, $data);
     }
 }
