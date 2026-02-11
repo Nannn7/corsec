@@ -167,12 +167,6 @@
                                 {{ $incomingLetter->sender?->name ?? ($incomingLetter->sender_other ?? ($incomingLetter->getAttribute('sender') ?? '-')) }}
                             </span>
                         </div>
-                        @if ($incomingLetter->counterpartyBank)
-                            <div class="flex justify-between items-center">
-                                <span class="text-gray-600">Counterparty Bank:</span>
-                                <span class="font-medium">{{ $incomingLetter->counterpartyBank->name }}</span>
-                            </div>
-                        @endif
                         @if ($incomingLetter->customerBranch)
                             <div class="flex justify-between items-center">
                                 <span class="text-gray-600">Cabang Nasabah/Debitur:</span>

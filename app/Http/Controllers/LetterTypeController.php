@@ -6,6 +6,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
@@ -186,6 +187,8 @@ class LetterTypeController extends Controller
                 $letterType->delete();
             });
 
+            Cache::forget('corsec.letter_types.list');
+
             Log::info('Letter type deleted successfully', [
                 'letter_type_id' => $letterType->id,
                 'user_id' => $user->id
@@ -250,6 +253,8 @@ class LetterTypeController extends Controller
                 LetterType::whereIn('id', $ids)->update(['deleted_by' => $user->id]);
                 LetterType::whereIn('id', $ids)->delete();
             });
+
+            Cache::forget('corsec.letter_types.list');
 
             Log::info('Multiple letter type deleted successfully', [
                 'requested_ids' => $ids,

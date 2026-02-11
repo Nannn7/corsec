@@ -25,6 +25,11 @@ class WorkplanWorkflowService
                 abort(422, 'Masih ada approval Workplan yang belum diproses.');
             }
 
+            $skipCheckerApproval = $this->shouldSkipCheckerForSubmission($actor);
+            $waitingApprovalLabel = $skipCheckerApproval
+                ? 'Menunggu approval DD Direktorat'
+                : 'Menunggu approval EO dan DD Direktorat';
+
             $program->update([
                 'status' => WorkProgram::STATUS_WAITING_DIR_APPROVAL,
                 'authorized_status' => 'pending',
@@ -37,8 +42,13 @@ class WorkplanWorkflowService
                 'approvable_type' => WorkProgram::class,
                 'approvable_id' => $program->id,
                 'status' => WorkProgramUpdate::STATUS_PENDING,
-                'note' => $this->buildApprovalNote('Menunggu approval EO dan DD Direktorat', $note),
+                'note' => $this->buildApprovalNote($waitingApprovalLabel, $note),
             ]);
+
+            if ($skipCheckerApproval) {
+                $this->notifyDirectorateApprover($program, $actor, 'workplan_dd_approval', 'Workplan menunggu approval DD direktorat.');
+                return;
+            }
 
             $this->notifyDirectorateChecker($program, $actor, 'workplan_dir_approval', 'Workplan menunggu approval direktorat.');
         });
@@ -58,6 +68,11 @@ class WorkplanWorkflowService
             if (!$program) {
                 abort(404, 'Program kerja tidak ditemukan.');
             }
+
+            $skipCheckerApproval = $this->shouldSkipCheckerForSubmission($actor);
+            $waitingApprovalLabel = $skipCheckerApproval
+                ? 'Menunggu approval DD Direktorat (Update Program Kerja)'
+                : 'Menunggu approval EO dan DD Direktorat (Update Program Kerja)';
 
             if ($program->status === WorkProgram::STATUS_WAITING_DIR_APPROVAL) {
                 abort(422, 'Program kerja masih menunggu approval sebelumnya.');
@@ -97,8 +112,13 @@ class WorkplanWorkflowService
                 'approvable_type' => WorkProgram::class,
                 'approvable_id' => $program->id,
                 'status' => WorkProgramUpdate::STATUS_PENDING,
-                'note' => 'Menunggu approval EO dan DD Direktorat (Update Program Kerja)',
+                'note' => $waitingApprovalLabel,
             ]);
+
+            if ($skipCheckerApproval) {
+                $this->notifyDirectorateApprover($program, $actor, 'workplan_update_dd_approval', 'Update workplan menunggu approval DD direktorat.');
+                return;
+            }
 
             $this->notifyDirectorateChecker($program, $actor, 'workplan_update_dir_approval', 'Update workplan menunggu approval direktorat.');
         });
@@ -121,16 +141,20 @@ class WorkplanWorkflowService
             $isAdmin = $actor->hasRole('administrator');
             $isChecker = $actor->hasRole('checker');
             $isApprover = $actor->hasRole('approver');
+            $isApproverDeputyDirector = $isApprover && $this->isDeputyDirector($actor);
             $isSameDirectorate = (int) ($actor->directorate_id ?? 0) === (int) ($program->directorate_id ?? 0);
 
             if (!$isAdmin && !$isSameDirectorate) {
                 abort(403, 'Approval hanya untuk user pada direktorat pemilik program kerja.');
             }
 
-            $checkerApproved = $this->isCheckerApprovedInCurrentRound($program, $pendingApproval->created_at);
+            $requiresCheckerApproval = $this->requiresCheckerApproval($pendingApproval);
+            $checkerApproved = $requiresCheckerApproval
+                ? $this->isCheckerApprovedInCurrentRound($program, $pendingApproval->created_at)
+                : false;
 
             if ($action === 'approve') {
-                if (!$checkerApproved && ($isChecker || $isAdmin)) {
+                if ($requiresCheckerApproval && !$checkerApproved && ($isChecker || $isAdmin)) {
                     if ($this->actorAlreadyActedInRound($program, $actor, 'EO Direktorat', $pendingApproval->created_at)) {
                         abort(403, 'Approval EO Direktorat sudah diproses oleh user ini.');
                     }
@@ -149,7 +173,7 @@ class WorkplanWorkflowService
                     return;
                 }
 
-                if ($checkerApproved && ($isApprover || $isAdmin)) {
+                if ((!$requiresCheckerApproval || $checkerApproved) && ($isApproverDeputyDirector || $isAdmin)) {
                     if ($this->actorAlreadyActedInRound($program, $actor, 'DD Direktorat', $pendingApproval->created_at)) {
                         abort(403, 'Approval DD Direktorat sudah diproses oleh user ini.');
                     }
@@ -180,11 +204,16 @@ class WorkplanWorkflowService
                 abort(403, 'Tahap approval tidak sesuai role user.');
             }
 
-            $fallbackLabel = 'EO+DD Direktorat Returned';
-            if (!$checkerApproved && $isChecker) {
+            if ($requiresCheckerApproval && !$checkerApproved && !$isChecker && !$isAdmin) {
+                abort(403, 'Tahap approval tidak sesuai role user.');
+            }
+            if ((!$requiresCheckerApproval || $checkerApproved) && !$isAdmin && !$isApproverDeputyDirector) {
+                abort(403, 'Approval DD Direktorat hanya untuk approver dengan posisi Deputy Director.');
+            }
+
+            $fallbackLabel = 'DD Direktorat Returned';
+            if ($requiresCheckerApproval && !$checkerApproved) {
                 $fallbackLabel = 'EO Direktorat Returned';
-            } elseif ($checkerApproved && $isApprover) {
-                $fallbackLabel = 'DD Direktorat Returned';
             }
 
             $pendingApproval->update([
@@ -336,6 +365,33 @@ class WorkplanWorkflowService
             });
     }
 
+    private function shouldSkipCheckerForSubmission(User $actor): bool
+    {
+        return $this->isExecutiveOfficer($actor);
+    }
+
+    private function requiresCheckerApproval(Approval $pendingApproval): bool
+    {
+        $pendingNote = Str::lower((string) $pendingApproval->note);
+        return !Str::startsWith($pendingNote, 'menunggu approval dd direktorat');
+    }
+
+    private function isExecutiveOfficer(User $user): bool
+    {
+        $user->loadMissing('position');
+        $positionName = Str::lower(trim((string) ($user->position?->name ?? '')));
+
+        return $positionName !== '' && Str::contains($positionName, 'executive officer');
+    }
+
+    private function isDeputyDirector(User $user): bool
+    {
+        $user->loadMissing('position');
+        $positionName = Str::lower(trim((string) ($user->position?->name ?? '')));
+
+        return $positionName !== '' && Str::contains($positionName, 'deputy director');
+    }
+
     private function buildApprovalNote(string $label, ?string $note): string
     {
         $note = trim((string) $note);
@@ -413,6 +469,9 @@ class WorkplanWorkflowService
             ->where('directorate_id', $directorateId)
             ->whereHas('roles', function ($query) {
                 $query->where('name', 'approver');
+            })
+            ->whereHas('position', function ($query) {
+                $query->where('name', 'ilike', '%deputy director%');
             })
             ->pluck('id');
 

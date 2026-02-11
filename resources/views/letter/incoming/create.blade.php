@@ -127,23 +127,6 @@
                             @enderror
                         </div>
 
-                        <div class="flex flex-col" id="counterparty-bank-wrapper" style="display: none;">
-                            <label class="form-label">Counterparty Bank <span class="text-danger">*</span></label>
-                            <select class="select @error('counterparty_bank_id') border-danger bg-danger-light @enderror"
-                                name="counterparty_bank_id" id="counterparty_bank_id">
-                                <option value="">- Pilih Bank -</option>
-                                @foreach ($banks as $bank)
-                                    <option value="{{ $bank->id }}"
-                                        {{ (string) old('counterparty_bank_id', $incomingLetter?->counterparty_bank_id) === (string) $bank->id ? 'selected' : '' }}>
-                                        {{ $bank->name }}
-                                    </option>
-                                @endforeach
-                            </select>
-                            @error('counterparty_bank_id')
-                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
-                            @enderror
-                        </div>
-
                         <div class="flex flex-col" id="customer-branch-wrapper" style="display: none;">
                             <label class="form-label">Cabang Nasabah/Debitur <span class="text-danger">*</span></label>
                             <select class="select @error('customer_branch_id') border-danger bg-danger-light @enderror"
@@ -162,10 +145,10 @@
                         </div>
 
                         <div class="flex flex-col">
-                            <label class="form-label">Action Surat <span class="text-danger">*</span></label>
+                            <label class="form-label">Jenis Surat <span class="text-danger">*</span></label>
                             <select class="select @error('letter_type_id') border-danger bg-danger-light @enderror"
                                 name="letter_type_id" id="letter_type_id" required>
-                                <option value="">- Pilih Action Surat -</option>
+                                <option value="">- Pilih Jenis Surat -</option>
                                 @foreach ($letterTypes as $letterType)
                                     <option value="{{ $letterType->id }}"
                                         {{ (string) old('letter_type_id', $incomingLetter?->letter_type_id) === (string) $letterType->id ? 'selected' : '' }}>
@@ -258,9 +241,10 @@
                         </div>
 
                         <div class="flex flex-col">
-                            <label class="form-label">Target Date (SLA) <span class="text-danger">*</span></label>
+                            <label class="form-label">Due Date<span class="text-danger">*</span></label>
                             <input class="input @error('target_date') border-danger bg-danger-light @enderror"
                                 type="date" name="target_date"
+                                min="{{ now()->format('Y-m-d') }}"
                                 value="{{ old('target_date', $incomingLetter?->target_date?->format('Y-m-d')) }}">
                             @error('target_date')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
@@ -365,14 +349,11 @@
             const senderSelect = document.getElementById('sender_id');
             const senderOtherWrapper = document.getElementById('sender-other-wrapper');
             const senderOtherInput = document.getElementById('sender_other');
-            const counterpartyBankWrapper = document.getElementById('counterparty-bank-wrapper');
-            const counterpartyBankSelect = document.getElementById('counterparty_bank_id');
-            const counterpartySenderId = @json($counterpartySenderId ? (string) $counterpartySenderId : null);
             const customerBranchWrapper = document.getElementById('customer-branch-wrapper');
             const customerBranchSelect = document.getElementById('customer_branch_id');
             const customerSenderId = @json($customerSenderId ? (string) $customerSenderId : null);
             const targetDirectorateSelect = form ? form.querySelector('select[name="target_directorate_id"]') :
-            null;
+                null;
             const targetDirectorateOptions = targetDirectorateSelect ? Array.from(targetDirectorateSelect.options) :
                 [];
             const letterTypeSelect = document.getElementById('letter_type_id');
@@ -408,18 +389,6 @@
                 }
             }
 
-            function toggleCounterpartyBank() {
-                if (!senderSelect || !counterpartyBankWrapper || !counterpartyBankSelect) return;
-                if (counterpartySenderId && senderSelect.value === counterpartySenderId) {
-                    counterpartyBankWrapper.style.display = 'flex';
-                    counterpartyBankSelect.required = true;
-                } else {
-                    counterpartyBankWrapper.style.display = 'none';
-                    counterpartyBankSelect.required = false;
-                    counterpartyBankSelect.value = '';
-                }
-            }
-
             function toggleCustomerBranch() {
                 if (!senderSelect || !customerBranchWrapper || !customerBranchSelect) return;
                 if (customerSenderId && senderSelect.value === customerSenderId) {
@@ -434,10 +403,8 @@
 
             if (senderSelect) {
                 senderSelect.addEventListener('change', toggleSenderOther);
-                senderSelect.addEventListener('change', toggleCounterpartyBank);
                 senderSelect.addEventListener('change', toggleCustomerBranch);
                 toggleSenderOther();
-                toggleCounterpartyBank();
                 toggleCustomerBranch();
             }
 
@@ -470,7 +437,7 @@
 
             function updateLeaderOptions() {
                 if (!targetDirectorateSelect || !circulationOptions || targetDirectorateOptions.length === 0)
-            return;
+                    return;
 
                 const selectedValue = targetDirectorateSelect.value;
                 const checked = circulationOptions.querySelectorAll('input[type="checkbox"]:checked');
@@ -528,6 +495,12 @@
                         showFieldError,
                     } = window.CorsecIncomingValidation;
                     const indexUrl = @json(route('letter.incoming.index'));
+                    const now = new Date();
+                    const todayYmd = [
+                        now.getFullYear(),
+                        String(now.getMonth() + 1).padStart(2, '0'),
+                        String(now.getDate()).padStart(2, '0')
+                    ].join('-');
 
                     function validateIncomingForm($form) {
                         const errors = {};
@@ -553,10 +526,6 @@
                         if (senderValue === 'other' && !$form.find('[name="sender_other"]').val()) {
                             errors.sender_other = requiredMessage;
                         }
-                        if (counterpartySenderId && senderValue === counterpartySenderId &&
-                            !$form.find('[name="counterparty_bank_id"]').val()) {
-                            errors.counterparty_bank_id = requiredMessage;
-                        }
                         if (customerSenderId && senderValue === customerSenderId &&
                             !$form.find('[name="customer_branch_id"]').val()) {
                             errors.customer_branch_id = requiredMessage;
@@ -567,6 +536,10 @@
                         }
                         if (letterTypeValue === 'other' && !$form.find('[name="letter_type_other"]').val()) {
                             errors.letter_type_other = requiredMessage;
+                        }
+                        const targetDateValue = $form.find('[name="target_date"]').val();
+                        if (targetDateValue && targetDateValue < todayYmd) {
+                            errors.target_date = 'Due date tidak boleh kurang dari hari ini.';
                         }
                         if (!$form.find('[name="target_directorate_id"]').val()) {
                             errors.target_directorate_id = requiredMessage;
@@ -633,7 +606,8 @@
                                     'function') {
                                     window.toast.success('Berhasil disimpan.');
                                     setTimeout(function() {
-                                        if (approvalInput && approvalInput.value === '1') {
+                                        if (approvalInput && approvalInput.value ===
+                                            '1') {
                                             window.location.href = indexUrl;
                                             return;
                                         }

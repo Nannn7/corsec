@@ -4,7 +4,9 @@ namespace Modules\Corsec\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Modules\Corsec\Models\ApprovalRequest;
+use Modules\Corsec\Models\LetterType;
 use Modules\Usermanagement\Models\User;
 
 class ApprovalRequestService
@@ -67,6 +69,10 @@ class ApprovalRequestService
                 $modelClass::query()
                     ->where('id', $approvalRequest->target_id)
                     ->delete();
+            }
+
+            if ($modelClass === LetterType::class) {
+                Cache::forget('corsec.letter_types.list');
             }
 
             $approvalRequest->update([

@@ -114,17 +114,6 @@
                 "roles": [
                     "administrator"
                 ]
-            },
-            {
-                "title": "Bank",
-                "path": "bank",
-                "icon": "ki-filled ki-bank text-lg text-primary",
-                "classes": "",
-                "attributes": [],
-                "permission": "",
-                "roles": [
-                    "administrator"
-                ]
             }
         ],
         "otorisator": [

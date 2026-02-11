@@ -126,23 +126,6 @@ Breadcrumbs::for('letter-type.edit', function (BreadcrumbTrail $trail) {
     $trail->push('Edit Letter Type');
 });
 
-// Bank
-Breadcrumbs::for('corsec.bank', function (BreadcrumbTrail $trail) {
-    $trail->parent('dashboard');
-    $trail->push('Bank', route('bank.index'));
-});
-
-Breadcrumbs::for('bank.create', function (BreadcrumbTrail $trail) {
-    $trail->parent('corsec.bank');
-    $trail->push('Tambah Bank', route('bank.create'));
-});
-
-Breadcrumbs::for('bank.edit', function (BreadcrumbTrail $trail) {
-    $trail->parent('corsec.bank');
-    $trail->push('Edit Bank');
-});
-
-
 // Approval
 // Breadcrumbs::for('corsec.approval', function (BreadcrumbTrail $trail) {
 //     $trail->parent('dashboard');

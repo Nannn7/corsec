@@ -11,7 +11,6 @@ use Modules\Corsec\Http\Controllers\ApproverController;
 use Modules\Corsec\Http\Controllers\DirectorateController;
 use Modules\Corsec\Http\Controllers\SenderController;
 use Modules\Corsec\Http\Controllers\LetterTypeController;
-use Modules\Corsec\Http\Controllers\BankController;
 
 Route::middleware(['auth'])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
@@ -162,21 +161,4 @@ Route::middleware(['auth'])->group(function () {
         ],
     ]);
 
-    // Bank Routes
-    Route::prefix('bank')->name('bank.')->group(function () {
-        Route::get('datatables', [BankController::class, 'dataForDatatables'])->name('datatables');
-        Route::get('export', [BankController::class, 'export'])->name('export');
-        Route::post('delete-multiple', [BankController::class, 'deleteMultiple'])->name('deleteMultiple');
-    });
-    Route::resource('bank', BankController::class, [
-        'names' => [
-            'index'   => 'bank.index',
-            'show'    => 'bank.show',
-            'create'  => 'bank.create',
-            'store'   => 'bank.store',
-            'edit'    => 'bank.edit',
-            'update'  => 'bank.update',
-            'destroy' => 'bank.destroy',
-        ],
-    ]);
 });

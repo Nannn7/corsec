@@ -84,7 +84,7 @@
                                 @foreach ($directorates as $directorate)
                                     <option value="{{ $directorate->id }}"
                                         {{ (string) $selectedDirectorate === (string) $directorate->id ? 'selected' : '' }}>
-                                        {{ $directorate->name }} ({{ $directorate->code }})
+                                        {{ $directorate->name }}
                                     </option>
                                 @endforeach
                             </select>
@@ -210,8 +210,7 @@
                                     </label>
                                     <input
                                         class="file-input w-full @error('items.' . $i . '.file') border-danger bg-danger-light @enderror"
-                                        style="width: 100%;"
-                                        type="file" name="items[{{ $i }}][file]"
+                                        style="width: 100%;" type="file" name="items[{{ $i }}][file]"
                                         accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx"
                                         {{ !$isEdit ? 'required' : '' }}>
                                     @if ($existingAttachment)

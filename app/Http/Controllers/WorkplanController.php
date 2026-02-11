@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Corsec\Exports\WorkplanExport;
@@ -342,22 +343,28 @@ class WorkplanController extends Controller
             ->first();
 
         $checkerApproved = false;
+        $requiresCheckerApproval = true;
         if ($pendingApproval) {
-            $checkerApproved = Approval::query()
-                ->where('approvable_type', WorkProgram::class)
-                ->where('approvable_id', $workplan->id)
-                ->where('status', WorkProgramUpdate::STATUS_APPROVED)
-                ->where('created_at', '>=', $pendingApproval->created_at)
-                ->where('note', 'ilike', 'EO Direktorat Approved%')
-                ->exists();
+            $pendingNote = Str::lower((string) $pendingApproval->note);
+            $requiresCheckerApproval = !Str::startsWith($pendingNote, 'menunggu approval dd direktorat');
+
+            if ($requiresCheckerApproval) {
+                $checkerApproved = Approval::query()
+                    ->where('approvable_type', WorkProgram::class)
+                    ->where('approvable_id', $workplan->id)
+                    ->where('status', WorkProgramUpdate::STATUS_APPROVED)
+                    ->where('created_at', '>=', $pendingApproval->created_at)
+                    ->where('note', 'ilike', 'EO Direktorat Approved%')
+                    ->exists();
+            }
         }
 
         $canEdit = $this->canEditProgram($workplan, $user);
         $canDelete = $this->canDeleteProgram($workplan, $user);
         $canSubmit = $canEdit && in_array((string) $workplan->status, [WorkProgram::STATUS_DRAFT, WorkProgram::STATUS_RETURNED], true);
         $canSubmitUpdate = $this->canSubmitUpdate($workplan, $user);
-        $canCheckerApproval = $pendingApproval && !$checkerApproved && $this->canCheckerApprove($workplan, $user);
-        $canApproverApproval = $pendingApproval && $checkerApproved && $this->canApproverApprove($workplan, $user);
+        $canCheckerApproval = $pendingApproval && $requiresCheckerApproval && !$checkerApproved && $this->canCheckerApprove($workplan, $user);
+        $canApproverApproval = $pendingApproval && ((!$requiresCheckerApproval) || $checkerApproved) && $this->canApproverApprove($workplan, $user);
 
         $statusSteps = [
             WorkProgram::STATUS_DRAFT => 'Draft',
@@ -800,7 +807,16 @@ class WorkplanController extends Controller
         }
 
         return $user->hasRole('approver') &&
+            $this->isDeputyDirector($user) &&
             (int) ($program->directorate_id ?? 0) === (int) ($user->directorate_id ?? 0);
+    }
+
+    private function isDeputyDirector(User $user): bool
+    {
+        $user->loadMissing('position');
+        $positionName = Str::lower(trim((string) ($user->position?->name ?? '')));
+
+        return $positionName !== '' && Str::contains($positionName, 'deputy director');
     }
 
     private function resolveDirectorateIdForMutation(Request $request, User $user): int
