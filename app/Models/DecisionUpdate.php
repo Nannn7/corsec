@@ -12,13 +12,23 @@ class DecisionUpdate extends Model
 {
     use HasAuthorizedUsers;
 
+    public const TYPE_PROGRESS = 'progress';
+    public const TYPE_DONE = 'done';
+
+    public const STATUS_IN_PROGRESS = 'in_progress';
+    public const STATUS_DONE = 'done';
+
     protected $table = 'corsec_decision_updates';
 
     protected $fillable = [
         'meeting_decision_id',
         'progress_percent',
+        'update_type',
         'status',
         'note',
+        'happened_at',
+        'is_on_target',
+        'reason',
         'updated_by',
         'authorized_at',
         'authorized_status',
@@ -27,6 +37,8 @@ class DecisionUpdate extends Model
 
     protected $casts = [
         'progress_percent' => 'integer',
+        'happened_at' => 'date',
+        'is_on_target' => 'boolean',
         'authorized_at' => 'datetime',
     ];
 

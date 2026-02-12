@@ -16,11 +16,14 @@
         $isEoCorpAffairDirectorate =
             $user &&
             (($eoDirectorateCode !== '' && $user->directorate?->code === $eoDirectorateCode) ||
-                ($directorateName !== '' && \Illuminate\Support\Str::contains($directorateName, 'corporate secretary')));
+                ($directorateName !== '' &&
+                    \Illuminate\Support\Str::contains($directorateName, 'corporate secretary')));
         $isEoCorpAffairActor = $isEoCorpAffairDirectorate && ($isChecker || $isApprover);
         $positionName = \Illuminate\Support\Str::lower((string) ($user?->position?->name ?? ''));
-        $isExecutiveOfficer = $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'executive officer');
-        $isSekretariatDireksi = $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'sekretariat direksi');
+        $isExecutiveOfficer =
+            $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'executive officer');
+        $isSekretariatDireksi =
+            $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'sekretariat direksi');
         $isEoCorpSecretaryChecker = $isChecker && $isEoCorpAffairDirectorate && $isExecutiveOfficer;
         $isTargetDirectorate =
             $user &&
@@ -75,18 +78,21 @@
                 })
                 ->count() > 0;
         $canCheckerDirApproval =
-            $status === 'waiting_dir_approval' && !$checkerApproved && ($isAdmin || $isChecker) && !$userHasEoDirApproval;
+            $status === 'waiting_dir_approval' &&
+            !$checkerApproved &&
+            ($isAdmin || $isChecker) &&
+            !$userHasEoDirApproval;
         $canApproverApproval =
-            $status === 'waiting_dir_approval' && $checkerApproved && ($isAdmin || $isApprover) && !$userHasDdDirApproval;
+            $status === 'waiting_dir_approval' &&
+            $checkerApproved &&
+            ($isAdmin || $isApprover) &&
+            !$userHasDdDirApproval;
         $canCheckerApproval =
             ($incomingLetter->authorized_status === 'pending' ||
                 in_array($status, ['on_approval', 'waiting_verification'], true)) &&
             ($isAdmin || $isEoCorpAffairActor) &&
-            ($status === 'waiting_verification'
-                ? !$userHasEoCorpAffairVerification
-                : !$userHasEoCorpAffairApproval);
-        $canAddMonitoring =
-            $isAdmin || $isTargetDirectorate || $isEoCorpSecretaryChecker || $isSekretariatDireksi;
+            ($status === 'waiting_verification' ? !$userHasEoCorpAffairVerification : !$userHasEoCorpAffairApproval);
+        $canAddMonitoring = $isAdmin || $isTargetDirectorate || $isEoCorpSecretaryChecker || $isSekretariatDireksi;
         $statusSteps = [
             'draft' => 'Draft',
             'on_approval' => 'On Approval',
@@ -171,12 +177,13 @@
                             <div class="flex justify-between items-center">
                                 <span class="text-gray-600">Cabang Nasabah/Debitur:</span>
                                 <span class="font-medium">
-                                    {{ $incomingLetter->customerBranch->code }} - {{ $incomingLetter->customerBranch->name }}
+                                    {{ $incomingLetter->customerBranch->code }} -
+                                    {{ $incomingLetter->customerBranch->name }}
                                 </span>
                             </div>
                         @endif
                         <div class="flex justify-between items-center">
-                            <span class="text-gray-600">Action Surat:</span>
+                            <span class="text-gray-600">Jenis Surat:</span>
                             <span class="font-medium">
                                 {{ $incomingLetter->letter_type_other ?? ($incomingLetter->letterType?->name ?? '-') }}
                             </span>
@@ -192,7 +199,7 @@
                             <span class="font-medium">{{ $incomingLetter->targetDirectorate?->name ?? '-' }}</span>
                         </div>
                         <div class="flex justify-between items-center">
-                            <span class="text-gray-600">Target Date:</span>
+                            <span class="text-gray-600">Due Date:</span>
                             <span class="font-medium">
                                 {{ $incomingLetter->target_date ? $incomingLetter->target_date->format('Y-m-d') : '-' }}
                             </span>
@@ -799,7 +806,7 @@
                                 </div>
 
                                 <div class="flex flex-col">
-                                    <label class="form-label">Target Date (SLA)</label>
+                                    <label class="form-label">Due Date</label>
                                     <input class="input" type="date" name="target_date"
                                         value="{{ old('target_date', $incomingLetter->target_date?->format('Y-m-d')) }}">
                                 </div>
@@ -875,9 +882,13 @@
                                             foreach ($knownLabels as $known) {
                                                 if (\Illuminate\Support\Str::startsWith($noteText, $known)) {
                                                     $label = $known;
-                                                    $userNote = trim((string) \Illuminate\Support\Str::after($noteText, $known));
+                                                    $userNote = trim(
+                                                        (string) \Illuminate\Support\Str::after($noteText, $known),
+                                                    );
                                                     if (\Illuminate\Support\Str::startsWith($userNote, '-')) {
-                                                        $userNote = trim((string) \Illuminate\Support\Str::after($userNote, '-'));
+                                                        $userNote = trim(
+                                                            (string) \Illuminate\Support\Str::after($userNote, '-'),
+                                                        );
                                                     }
                                                     break;
                                                 }

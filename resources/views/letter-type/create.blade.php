@@ -1,7 +1,13 @@
 @extends('layouts.main')
 
+@php
+    $routePrefix = $routePrefix ?? 'letter-type';
+    $scopeLabel = $scopeLabel ?? 'In';
+    $breadcrumb = $breadcrumb ?? (isset($letterType) ? 'letter-type.edit' : 'letter-type.create');
+@endphp
+
 @section('breadcrumbs')
-    {{ Breadcrumbs::render(isset($letterType) ? 'letter-type.edit' : 'letter-type.create') }}
+    {{ Breadcrumbs::render($breadcrumb) }}
 @endsection
 
 @section('content')
@@ -10,17 +16,18 @@
             <div class="card-header">
                 <h3 class="card-title">
                     <i class="ki-filled ki-briefcase text-primary"></i>
-                    {{ isset($letterType) ? 'Edit Letter Type' : 'Tambah Letter Type' }}
+                    {{ isset($letterType) ? 'Edit Letter Type ' . $scopeLabel : 'Tambah Letter Type ' . $scopeLabel }}
                 </h3>
-                <a href="{{ route('letter-type.index') }}" class="btn btn-sm btn-info">
+                <a href="{{ route($routePrefix . '.index') }}" class="btn btn-sm btn-info">
                     <i class="ki-filled ki-exit-left"></i> Back
                 </a>
             </div>
 
             <div class="card-body">
                 <form method="POST"
-                    action="{{ isset($letterType) ? route('letter-type.update', $letterType) : route('letter-type.store') }}">
+                    action="{{ isset($letterType) ? route($routePrefix . '.update', $letterType) : route($routePrefix . '.store') }}">
                     @csrf
+                    <input type="hidden" name="scope" value="{{ $scope ?? 'in' }}">
                     @if (isset($letterType))
                         @method('PUT')
                     @endif
@@ -70,7 +77,7 @@
                     </div>
 
                     <div class="flex justify-end mt-7 gap-2">
-                        <a href="{{ route('letter-type.index') }}" class="btn btn-light">
+                        <a href="{{ route($routePrefix . '.index') }}" class="btn btn-light">
                             Cancel
                         </a>
                         @can(isset($letterType) ? 'letter-type.update' : 'letter-type.create')

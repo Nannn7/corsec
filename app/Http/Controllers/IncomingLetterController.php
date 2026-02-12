@@ -169,7 +169,14 @@ class IncomingLetterController extends Controller
             ]);
         } else {
             $request->validate([
-                'letter_type_id' => ['required', Rule::exists('corsec_letter_types', 'id')],
+                'letter_type_id' => [
+                    'required',
+                    Rule::exists('corsec_letter_types', 'id')->where(function ($query) {
+                        $query->where(function ($inner) {
+                            $inner->where('scope', LetterType::SCOPE_IN)->orWhereNull('scope');
+                        });
+                    }),
+                ],
             ]);
         }
 
@@ -372,7 +379,14 @@ class IncomingLetterController extends Controller
             ]);
         } else {
             $request->validate([
-                'letter_type_id' => ['required', Rule::exists('corsec_letter_types', 'id')],
+                'letter_type_id' => [
+                    'required',
+                    Rule::exists('corsec_letter_types', 'id')->where(function ($query) {
+                        $query->where(function ($inner) {
+                            $inner->where('scope', LetterType::SCOPE_IN)->orWhereNull('scope');
+                        });
+                    }),
+                ],
             ]);
         }
 
@@ -449,8 +463,11 @@ class IncomingLetterController extends Controller
 
     private function getCachedLetterTypes()
     {
-        return Cache::remember('corsec.letter_types.list', 300, function () {
-            return LetterType::query()->orderBy('name')->get(['id', 'name']);
+        return Cache::remember('corsec.letter_types.in.list', 300, function () {
+            return LetterType::query()
+                ->forScope(LetterType::SCOPE_IN)
+                ->orderBy('name')
+                ->get(['id', 'name']);
         });
     }
 

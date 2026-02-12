@@ -57,6 +57,7 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
             'No Registrasi',
             'Tanggal Order',
             'Perihal',
+            'Jenis Surat',
             'Ringkasan',
             'Penerima',
             'Jenis Perihal',
@@ -116,7 +117,7 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
     private function outgoingCollection(): Collection
     {
         $query = OutgoingLetter::query()
-            ->with(['requesterDirectorate', 'recipient', 'perihalIncomingLetter'])
+            ->with(['requesterDirectorate', 'recipient', 'letterType', 'perihalIncomingLetter'])
             ->latest();
 
         if ($this->status !== '') {
@@ -174,6 +175,7 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
             $row->registration_no ?? '-',
             $row->order_date ? $row->order_date->format('Y-m-d') : '-',
             $row->subject ?? '-',
+            $row->letterType?->name ?? '-',
             $row->summary ?? '-',
             $row->recipient?->name ?? ($row->recipient_other ?? '-'),
             $perihalType,
@@ -181,7 +183,7 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
             $perihalDescription,
             $row->need_compliance_review ? 'Ya' : 'Tidak',
             $row->letter_no ?? '-',
-            $row->status ?? '-',
+            OutgoingLetter::displayStatusLabel($row->status),
             $row->created_at ? $row->created_at->format('Y-m-d H:i:s') : '-',
         ];
     }

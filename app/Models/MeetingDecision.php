@@ -14,6 +14,11 @@ class MeetingDecision extends Model
 {
     use SoftDeletes, HasAuditUsers;
 
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_IN_PROGRESS = 'in_progress';
+    public const STATUS_DONE = 'done';
+    public const STATUS_DROPPED = 'dropped';
+
     protected $table = 'corsec_meeting_decisions';
 
     protected $fillable = [

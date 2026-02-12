@@ -73,6 +73,8 @@ class ApprovalRequestService
 
             if ($modelClass === LetterType::class) {
                 Cache::forget('corsec.letter_types.list');
+                Cache::forget('corsec.letter_types.in.list');
+                Cache::forget('corsec.letter_types.out.list');
             }
 
             $approvalRequest->update([

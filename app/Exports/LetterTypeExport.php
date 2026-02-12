@@ -10,12 +10,15 @@ use Maatwebsite\Excel\Concerns\WithMapping;
 class LetterTypeExport implements FromCollection, WithHeadings, WithMapping
 {
     public function __construct(
-        protected string $search = ''
+        protected string $search = '',
+        protected string $scope = LetterType::SCOPE_IN
     ) {}
 
     public function collection()
     {
-        $query = LetterType::query()->latest();
+        $query = LetterType::query()
+            ->forScope($this->scope)
+            ->latest();
 
         if ($this->search !== '') {
             $s = $this->search;

@@ -53,6 +53,8 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/datatables', [OutgoingLetterController::class, 'datatables'])->middleware('permission:corsec.read')->name('datatables');
         Route::get('/export', [OutgoingLetterController::class, 'export'])->middleware('permission:corsec.export')->name('export');
         Route::post('/delete-multiple', [OutgoingLetterController::class, 'deleteMultiple'])->middleware('permission:corsec.delete')->name('delete_multiple');
+        Route::get('/registration-preview', [OutgoingLetterController::class, 'registrationPreview'])->middleware('permission:corsec.create')->name('registration_preview');
+        Route::get('/incoming-preview', [OutgoingLetterController::class, 'incomingPreview'])->middleware('permission:corsec.create|corsec.update')->name('incoming_preview');
         Route::get('/create', [OutgoingLetterController::class, 'create'])->middleware('permission:corsec.create')->name('create');
         Route::post('/', [OutgoingLetterController::class, 'store'])->middleware('permission:corsec.create')->name('store');
         Route::get('/{outgoingLetter}', [OutgoingLetterController::class, 'show'])->middleware('permission:corsec.read')->name('show');
@@ -69,13 +71,23 @@ Route::middleware(['auth'])->group(function () {
 
     // Meeting Routes
     Route::prefix('meeting')->name('meeting.')->group(function () {
-        Route::get('/', [MeetingController::class, 'index'])->name('index');
-        Route::get('/create', [MeetingController::class, 'create'])->name('create');
-        Route::post('/store', [MeetingController::class, 'store'])->name('store');
-        Route::get('/{meeting}', [MeetingController::class, 'show'])->name('show');
-        Route::get('/{meeting}/edit', [MeetingController::class, 'edit'])->name('edit');
-        Route::put('/{meeting}', [MeetingController::class, 'update'])->name('update');
-        Route::delete('/{meeting}', [MeetingController::class, 'destroy'])->name('destroy');
+        Route::get('/', [MeetingController::class, 'index'])->middleware('permission:corsec.read')->name('index');
+        Route::get('/create', [MeetingController::class, 'create'])->middleware('permission:corsec.create')->name('create');
+        Route::post('/store', [MeetingController::class, 'store'])->middleware('permission:corsec.create')->name('store');
+        Route::get('/{meeting}', [MeetingController::class, 'show'])->middleware('permission:corsec.read')->name('show');
+        Route::get('/{meeting}/edit', [MeetingController::class, 'edit'])->middleware('permission:corsec.update')->name('edit');
+        Route::put('/{meeting}', [MeetingController::class, 'update'])->middleware('permission:corsec.update')->name('update');
+        Route::delete('/{meeting}', [MeetingController::class, 'destroy'])->middleware('permission:corsec.delete')->name('destroy');
+
+        Route::post('/{meeting}/submit', [MeetingController::class, 'submit'])->middleware('permission:corsec.update')->name('submit');
+        Route::post('/{meeting}/corsec-approval', [MeetingController::class, 'corsecApproval'])->middleware('permission:corsec.authorize')->name('corsec.approval');
+        Route::post('/{meeting}/mark-pending-directorate', [MeetingController::class, 'markPendingDirectorate'])->middleware('permission:corsec.update')->name('mark.pending.directorate');
+        Route::post('/{meeting}/directorate-submit', [MeetingController::class, 'directorateSubmit'])->middleware('permission:corsec.update')->name('directorate.submit');
+        Route::post('/{meeting}/directorate-approval', [MeetingController::class, 'directorateApproval'])->middleware('permission:corsec.authorize')->name('directorate.approval');
+        Route::post('/{meeting}/minutes', [MeetingController::class, 'saveMinutes'])->middleware('permission:corsec.update')->name('minutes.save');
+        Route::post('/{meeting}/minutes/finalize', [MeetingController::class, 'finalizeMinutes'])->middleware('permission:corsec.update')->name('minutes.finalize');
+        Route::post('/{meeting}/decisions/{decision}/updates', [MeetingController::class, 'submitDecisionUpdate'])->middleware('permission:corsec.update')->name('decision.update');
+        Route::post('/{meeting}/followup/complete', [MeetingController::class, 'completeFollowup'])->middleware('permission:corsec.update')->name('followup.complete');
     });
 
     // Workplan Routes
@@ -143,22 +155,58 @@ Route::middleware(['auth'])->group(function () {
         ],
     ]);
 
-    // Letter Type Routes
-    Route::prefix('letter-type')->name('letter-type.')->group(function () {
-        Route::get('datatables', [LetterTypeController::class, 'dataForDatatables'])->name('datatables');
-        Route::get('export', [LetterTypeController::class, 'export'])->name('export');
-        Route::post('delete-multiple', [LetterTypeController::class, 'deleteMultiple'])->name('deleteMultiple');
+    // Letter Type In Routes
+    Route::group([
+        'prefix' => 'letter-type-in',
+        'as' => 'letter-type.in.',
+        'defaults' => ['scope' => 'in'],
+    ], function () {
+        Route::get('/', [LetterTypeController::class, 'index'])->name('index');
+        Route::get('/datatables', [LetterTypeController::class, 'dataForDatatables'])->name('datatables');
+        Route::get('/export', [LetterTypeController::class, 'export'])->name('export');
+        Route::post('/delete-multiple', [LetterTypeController::class, 'deleteMultiple'])->name('deleteMultiple');
+        Route::get('/create', [LetterTypeController::class, 'create'])->name('create');
+        Route::post('/', [LetterTypeController::class, 'store'])->name('store');
+        Route::get('/{letterType}', [LetterTypeController::class, 'show'])->name('show');
+        Route::get('/{letterType}/edit', [LetterTypeController::class, 'edit'])->name('edit');
+        Route::put('/{letterType}', [LetterTypeController::class, 'update'])->name('update');
+        Route::delete('/{letterType}', [LetterTypeController::class, 'destroy'])->name('destroy');
     });
-    Route::resource('letter-type', LetterTypeController::class, [
-        'names' => [
-            'index'   => 'letter-type.index',
-            'show'    => 'letter-type.show',
-            'create'  => 'letter-type.create',
-            'store'   => 'letter-type.store',
-            'edit'    => 'letter-type.edit',
-            'update'  => 'letter-type.update',
-            'destroy' => 'letter-type.destroy',
-        ],
-    ]);
+
+    // Letter Type Out Routes
+    Route::group([
+        'prefix' => 'letter-type-out',
+        'as' => 'letter-type.out.',
+        'defaults' => ['scope' => 'out'],
+    ], function () {
+        Route::get('/', [LetterTypeController::class, 'index'])->name('index');
+        Route::get('/datatables', [LetterTypeController::class, 'dataForDatatables'])->name('datatables');
+        Route::get('/export', [LetterTypeController::class, 'export'])->name('export');
+        Route::post('/delete-multiple', [LetterTypeController::class, 'deleteMultiple'])->name('deleteMultiple');
+        Route::get('/create', [LetterTypeController::class, 'create'])->name('create');
+        Route::post('/', [LetterTypeController::class, 'store'])->name('store');
+        Route::get('/{letterType}', [LetterTypeController::class, 'show'])->name('show');
+        Route::get('/{letterType}/edit', [LetterTypeController::class, 'edit'])->name('edit');
+        Route::put('/{letterType}', [LetterTypeController::class, 'update'])->name('update');
+        Route::delete('/{letterType}', [LetterTypeController::class, 'destroy'])->name('destroy');
+    });
+
+    // Legacy Letter Type Routes (default to In)
+    Route::group([
+        'prefix' => 'letter-type',
+        'as' => 'letter-type.',
+        'defaults' => ['scope' => 'in'],
+    ], function () {
+        Route::get('/', [LetterTypeController::class, 'index'])->name('index');
+        Route::get('/datatables', [LetterTypeController::class, 'dataForDatatables'])->name('datatables');
+        Route::get('/export', [LetterTypeController::class, 'export'])->name('export');
+        Route::post('/delete-multiple', [LetterTypeController::class, 'deleteMultiple'])->name('deleteMultiple');
+        Route::get('/create', [LetterTypeController::class, 'create'])->name('create');
+        Route::post('/', [LetterTypeController::class, 'store'])->name('store');
+        Route::get('/{letterType}', [LetterTypeController::class, 'show'])->name('show');
+        Route::get('/{letterType}/edit', [LetterTypeController::class, 'edit'])->name('edit');
+        Route::put('/{letterType}', [LetterTypeController::class, 'update'])->name('update');
+        Route::delete('/{letterType}', [LetterTypeController::class, 'destroy'])->name('destroy');
+    });
 
 });

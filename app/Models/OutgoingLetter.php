@@ -23,6 +23,7 @@ class OutgoingLetter extends Model
         'registration_no',
         'order_date',
         'subject',
+        'letter_type_id',
         'requester_directorate_id',
         'recipient_id',
         'recipient_other',
@@ -56,6 +57,11 @@ class OutgoingLetter extends Model
         'deleted_at' => 'datetime',
     ];
 
+    protected $appends = [
+        'display_status',
+        'display_status_label',
+    ];
+
     public function getRouteKeyName(): string
     {
         return 'uuid';
@@ -71,6 +77,12 @@ class OutgoingLetter extends Model
     public const STATUS_VERIFIED = 'verified';
     public const STATUS_FINAL_UPLOADED = 'final_uploaded';
 
+    public const DISPLAY_STATUS_ORDER = 'order';
+    public const DISPLAY_STATUS_REVIEW_KEPATUHAN = 'review_kepatuhan';
+    public const DISPLAY_STATUS_PENOMORAN = 'penomoran';
+    public const DISPLAY_STATUS_DONE = 'done';
+    public const DISPLAY_STATUS_REVISI = 'revisi';
+
     public function requesterDirectorate()
     {
         return $this->belongsTo(Directorate::class, 'requester_directorate_id');
@@ -79,6 +91,11 @@ class OutgoingLetter extends Model
     public function recipient()
     {
         return $this->belongsTo(Sender::class, 'recipient_id');
+    }
+
+    public function letterType(): BelongsTo
+    {
+        return $this->belongsTo(LetterType::class, 'letter_type_id');
     }
 
     public function perihalIncomingLetter()
@@ -119,5 +136,46 @@ class OutgoingLetter extends Model
     public function approvals(): MorphMany
     {
         return $this->morphMany(Approval::class, 'approvable');
+    }
+
+    public static function toDisplayStatus(?string $status): string
+    {
+        return match ((string) $status) {
+            self::STATUS_DRAFT,
+            self::STATUS_WAITING_DIR_APPROVAL => self::DISPLAY_STATUS_ORDER,
+
+            self::STATUS_COMPLIANCE_REVIEW,
+            self::STATUS_WAITING_COMPLIANCE_APPROVAL => self::DISPLAY_STATUS_REVIEW_KEPATUHAN,
+
+            self::STATUS_NUMBERING,
+            self::STATUS_WAITING_VERIFICATION,
+            self::STATUS_FINAL_UPLOADED => self::DISPLAY_STATUS_PENOMORAN,
+
+            self::STATUS_VERIFIED => self::DISPLAY_STATUS_DONE,
+            self::STATUS_RETURNED => self::DISPLAY_STATUS_REVISI,
+            default => self::DISPLAY_STATUS_ORDER,
+        };
+    }
+
+    public static function displayStatusLabel(?string $status): string
+    {
+        return match (self::toDisplayStatus($status)) {
+            self::DISPLAY_STATUS_ORDER => 'Order',
+            self::DISPLAY_STATUS_REVIEW_KEPATUHAN => 'Review Kepatuhan',
+            self::DISPLAY_STATUS_PENOMORAN => 'Penomoran',
+            self::DISPLAY_STATUS_DONE => 'Done',
+            self::DISPLAY_STATUS_REVISI => 'Revisi',
+            default => 'Order',
+        };
+    }
+
+    public function getDisplayStatusAttribute(): string
+    {
+        return self::toDisplayStatus($this->status);
+    }
+
+    public function getDisplayStatusLabelAttribute(): string
+    {
+        return self::displayStatusLabel($this->status);
     }
 }
