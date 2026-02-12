@@ -113,17 +113,28 @@
                 "permission": "",
                 "roles": [
                     "administrator"
-                ]
-            },
-            {
-                "title": "Bank",
-                "path": "bank",
-                "icon": "ki-filled ki-bank text-lg text-primary",
-                "classes": "",
-                "attributes": [],
-                "permission": "",
-                "roles": [
-                    "administrator"
+                ],
+                "sub": [
+                    {
+                        "title": "Letter Types In",
+                        "path": "letter-type.in",
+                        "classes": "",
+                        "attributes": [],
+                        "permission": "",
+                        "roles": [
+                            "administrator"
+                        ]
+                    },
+                    {
+                        "title": "Letter Types Out",
+                        "path": "letter-type.out",
+                        "classes": "",
+                        "attributes": [],
+                        "permission": "",
+                        "roles": [
+                            "administrator"
+                        ]
+                    }
                 ]
             }
         ],
@@ -136,9 +147,7 @@
                 "attributes": [],
                 "permission": "",
                 "roles": [
-                    "administrator",
-                    "checker",
-                    "approver"
+                    "administrator"
                 ]
             }
         ]

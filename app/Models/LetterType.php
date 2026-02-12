@@ -2,6 +2,7 @@
 
 namespace Modules\Corsec\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Corsec\Models\Concerns\HasAuditUsers;
@@ -12,12 +13,16 @@ class LetterType extends Model
 {
     use SoftDeletes, HasUuidColumn, HasAuditUsers, HasAuthorizedUsers;
 
+    public const SCOPE_IN = 'in';
+    public const SCOPE_OUT = 'out';
+
     protected $table = 'corsec_letter_types';
 
     protected $fillable = [
         'uuid',
         'code',
         'name',
+        'scope',
         'description',
         'status',
         'authorized_at',
@@ -44,5 +49,31 @@ class LetterType extends Model
     public function incomingLetters()
     {
         return $this->hasMany(IncomingLetter::class, 'letter_type_id');
+    }
+
+    public function outgoingLetters()
+    {
+        return $this->hasMany(OutgoingLetter::class, 'letter_type_id');
+    }
+
+    public function scopeForScope(Builder $query, string $scope): Builder
+    {
+        if ($scope === self::SCOPE_IN) {
+            return $query->where(function (Builder $inner) {
+                $inner->where('scope', self::SCOPE_IN)->orWhereNull('scope');
+            });
+        }
+
+        return $query->where('scope', $scope);
+    }
+
+    public function scopeIncoming(Builder $query): Builder
+    {
+        return $query->forScope(self::SCOPE_IN);
+    }
+
+    public function scopeOutgoing(Builder $query): Builder
+    {
+        return $query->forScope(self::SCOPE_OUT);
     }
 }

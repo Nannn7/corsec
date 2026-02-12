@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -25,9 +24,8 @@ use Modules\Corsec\Services\IncomingLetterWorkflowService;
 use Modules\Corsec\Models\Directorate;
 use Modules\Corsec\Models\Sender;
 use Modules\Corsec\Models\LetterType;
-use Modules\Corsec\Models\Bank;
 use Modules\Basicdata\Models\Branch;
-use Modules\Corsec\Notifications\IncomingLetterDirectorateNotification;
+use Modules\Corsec\Notifications\CorsecFlowNotification;
 use Modules\Usermanagement\Models\User;
 use Modules\Usermanagement\Models\Position;
 
@@ -106,11 +104,9 @@ class IncomingLetterController extends Controller
         $directorates = $this->getCachedDirectorates();
         $senders = $this->getCachedSenders();
         $letterTypes = $this->getCachedLetterTypes();
-        $banks = $this->getCachedBanks();
-        $counterpartySenderId = $this->getCounterpartySenderId($senders);
         $branches = $this->getCachedBranches();
         $customerSenderId = $this->getCustomerSenderId($senders);
-        return view('corsec::letter.incoming.create', compact('directorates', 'senders', 'letterTypes', 'banks', 'counterpartySenderId', 'branches', 'customerSenderId'));
+        return view('corsec::letter.incoming.create', compact('directorates', 'senders', 'letterTypes', 'branches', 'customerSenderId'));
     }
 
     /**
@@ -125,7 +121,6 @@ class IncomingLetterController extends Controller
             'summary' => ['required', 'string'],
             'sender_id' => ['required', 'string'],
             'sender_other' => ['nullable', 'string', 'max:150'],
-            'counterparty_bank_id' => ['nullable', 'exists:corsec_banks,id'],
             'customer_branch_id' => ['nullable', 'exists:branches,id'],
             'letter_type_id' => ['required', 'string'],
             'letter_type_other' => ['nullable', 'string', 'max:150'],
@@ -133,7 +128,7 @@ class IncomingLetterController extends Controller
             'priority' => ['nullable', 'string', 'max:50'],
             'description' => ['nullable', 'string'],
             'target_directorate_id' => ['required', 'exists:corsec_directorates,id'],
-            'target_date' => ['nullable', 'date'],
+            'target_date' => ['nullable', 'date', 'after_or_equal:today'],
             'circulation_directorate_ids' => ['required', 'array'],
             'circulation_directorate_ids.*' => ['required', 'exists:corsec_directorates,id'],
             'files' => ['required', 'array'],
@@ -159,13 +154,6 @@ class IncomingLetterController extends Controller
             ]);
             $senderName = Sender::query()->whereKey($senderId)->value('name');
         }
-        $counterpartyName = Str::lower((string) config('corsec.counterparty_bank_sender_name', 'Counterparty Bank'));
-        $isCounterpartyBank = $senderName && Str::lower((string) $senderName) === $counterpartyName;
-        if ($isCounterpartyBank) {
-            $request->validate([
-                'counterparty_bank_id' => ['required', 'exists:corsec_banks,id'],
-            ]);
-        }
         $customerName = Str::lower((string) config('corsec.customer_sender_name', 'Nasabah/Debitur'));
         $isCustomerSender = $senderName && Str::lower((string) $senderName) === $customerName;
         if ($isCustomerSender) {
@@ -181,7 +169,14 @@ class IncomingLetterController extends Controller
             ]);
         } else {
             $request->validate([
-                'letter_type_id' => ['required', Rule::exists('corsec_letter_types', 'id')],
+                'letter_type_id' => [
+                    'required',
+                    Rule::exists('corsec_letter_types', 'id')->where(function ($query) {
+                        $query->where(function ($inner) {
+                            $inner->where('scope', LetterType::SCOPE_IN)->orWhereNull('scope');
+                        });
+                    }),
+                ],
             ]);
         }
 
@@ -191,7 +186,7 @@ class IncomingLetterController extends Controller
             ]);
         }
 
-        $letter = DB::transaction(function () use ($request, $user, $circulationDirectorateIds, $senderId, $senderName, $isCounterpartyBank, $isCustomerSender, $letterTypeId) {
+        $letter = DB::transaction(function () use ($request, $user, $circulationDirectorateIds, $senderId, $senderName, $isCustomerSender, $letterTypeId) {
             $letter = IncomingLetter::create([
                 'external_letter_no' => $request->external_letter_no,
                 'letter_date' => $request->letter_date,
@@ -200,7 +195,6 @@ class IncomingLetterController extends Controller
                 'sender' => $senderName,
                 'sender_id' => $senderId === 'other' ? null : $senderId,
                 'sender_other' => $senderId === 'other' ? $request->sender_other : null,
-                'counterparty_bank_id' => $isCounterpartyBank ? $request->counterparty_bank_id : null,
                 'customer_branch_id' => $isCustomerSender ? $request->customer_branch_id : null,
                 'letter_type_id' => $letterTypeId === 'other' ? null : $letterTypeId,
                 'letter_type_other' => $letterTypeId === 'other' ? $request->letter_type_other : null,
@@ -257,13 +251,7 @@ class IncomingLetterController extends Controller
         }
 
         if (!empty($circulationDirectorateIds)) {
-            $users = User::query()
-                ->whereIn('directorate_id', $circulationDirectorateIds)
-                ->get();
-
-            if ($users->isNotEmpty()) {
-                Notification::send($users, new IncomingLetterDirectorateNotification($letter, $user));
-            }
+            $this->notifyIncomingDirectorates($circulationDirectorateIds, $letter, $user);
         }
 
         return redirect()
@@ -282,7 +270,6 @@ class IncomingLetterController extends Controller
             'targetDirectorate',
             'sender',
             'letterType',
-            'counterpartyBank',
             'customerBranch',
             'circulationDirectorates',
             'lastRoutedFromDirectorate',
@@ -329,11 +316,9 @@ class IncomingLetterController extends Controller
         $directorates = $this->getCachedDirectorates();
         $senders = $this->getCachedSenders();
         $letterTypes = $this->getCachedLetterTypes();
-        $banks = $this->getCachedBanks();
-        $counterpartySenderId = $this->getCounterpartySenderId($senders);
         $branches = $this->getCachedBranches();
         $customerSenderId = $this->getCustomerSenderId($senders);
-        return view('corsec::letter.incoming.create', compact('incomingLetter', 'directorates', 'senders', 'letterTypes', 'banks', 'counterpartySenderId', 'branches', 'customerSenderId'));
+        return view('corsec::letter.incoming.create', compact('incomingLetter', 'directorates', 'senders', 'letterTypes', 'branches', 'customerSenderId'));
     }
 
     /**
@@ -348,7 +333,6 @@ class IncomingLetterController extends Controller
             'summary' => ['required', 'string'],
             'sender_id' => ['required', 'string'],
             'sender_other' => ['nullable', 'string', 'max:150'],
-            'counterparty_bank_id' => ['nullable', 'exists:corsec_banks,id'],
             'customer_branch_id' => ['nullable', 'exists:branches,id'],
             'letter_type_id' => ['required', 'string'],
             'letter_type_other' => ['nullable', 'string', 'max:150'],
@@ -356,7 +340,7 @@ class IncomingLetterController extends Controller
             'priority' => ['nullable', 'string', 'max:50'],
             'description' => ['nullable', 'string'],
             'target_directorate_id' => ['required', 'exists:corsec_directorates,id'],
-            'target_date' => ['nullable', 'date'],
+            'target_date' => ['nullable', 'date', 'after_or_equal:today'],
             'circulation_directorate_ids' => ['required', 'array'],
             'circulation_directorate_ids.*' => ['required', 'exists:corsec_directorates,id'],
             'files.*' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,xls,xlsx'],
@@ -380,13 +364,6 @@ class IncomingLetterController extends Controller
             ]);
             $senderName = Sender::query()->whereKey($senderId)->value('name');
         }
-        $counterpartyName = Str::lower((string) config('corsec.counterparty_bank_sender_name', 'Counterparty Bank'));
-        $isCounterpartyBank = $senderName && Str::lower((string) $senderName) === $counterpartyName;
-        if ($isCounterpartyBank) {
-            $request->validate([
-                'counterparty_bank_id' => ['required', 'exists:corsec_banks,id'],
-            ]);
-        }
         $customerName = Str::lower((string) config('corsec.customer_sender_name', 'Nasabah/Debitur'));
         $isCustomerSender = $senderName && Str::lower((string) $senderName) === $customerName;
         if ($isCustomerSender) {
@@ -402,7 +379,14 @@ class IncomingLetterController extends Controller
             ]);
         } else {
             $request->validate([
-                'letter_type_id' => ['required', Rule::exists('corsec_letter_types', 'id')],
+                'letter_type_id' => [
+                    'required',
+                    Rule::exists('corsec_letter_types', 'id')->where(function ($query) {
+                        $query->where(function ($inner) {
+                            $inner->where('scope', LetterType::SCOPE_IN)->orWhereNull('scope');
+                        });
+                    }),
+                ],
             ]);
         }
 
@@ -412,7 +396,7 @@ class IncomingLetterController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($request, $incomingLetter, $user, $circulationDirectorateIds, $senderName, $senderId, $isCounterpartyBank, $isCustomerSender, $letterTypeId) {
+        DB::transaction(function () use ($request, $incomingLetter, $user, $circulationDirectorateIds, $senderName, $senderId, $isCustomerSender, $letterTypeId) {
             $incomingLetter->update([
                 'external_letter_no' => $request->external_letter_no,
                 'letter_date' => $request->letter_date,
@@ -421,7 +405,6 @@ class IncomingLetterController extends Controller
                 'sender' => $senderName,
                 'sender_id' => $senderId === 'other' ? null : $senderId,
                 'sender_other' => $senderId === 'other' ? $request->sender_other : null,
-                'counterparty_bank_id' => $isCounterpartyBank ? $request->counterparty_bank_id : null,
                 'customer_branch_id' => $isCustomerSender ? $request->customer_branch_id : null,
                 'letter_type_id' => $letterTypeId === 'other' ? null : $letterTypeId,
                 'letter_type_other' => $letterTypeId === 'other' ? $request->letter_type_other : null,
@@ -480,15 +463,11 @@ class IncomingLetterController extends Controller
 
     private function getCachedLetterTypes()
     {
-        return Cache::remember('corsec.letter_types.list', 300, function () {
-            return LetterType::query()->orderBy('name')->get(['id', 'name']);
-        });
-    }
-
-    private function getCachedBanks()
-    {
-        return Cache::remember('corsec.banks.list', 300, function () {
-            return Bank::query()->orderBy('name')->get(['id', 'name']);
+        return Cache::remember('corsec.letter_types.in.list', 300, function () {
+            return LetterType::query()
+                ->forScope(LetterType::SCOPE_IN)
+                ->orderBy('name')
+                ->get(['id', 'name']);
         });
     }
 
@@ -497,20 +476,6 @@ class IncomingLetterController extends Controller
         return Cache::remember('corsec.branches.list', 300, function () {
             return Branch::query()->orderBy('name')->get(['id', 'code', 'name']);
         });
-    }
-
-    private function getCounterpartySenderId($senders): ?int
-    {
-        $targetName = Str::lower((string) config('corsec.counterparty_bank_sender_name', 'Counterparty Bank'));
-        if (!$senders) {
-            return null;
-        }
-
-        $sender = $senders->first(function ($item) use ($targetName) {
-            return Str::lower((string) ($item?->name ?? '')) === $targetName;
-        });
-
-        return $sender?->id ? (int) $sender->id : null;
     }
 
     private function getCustomerSenderId($senders): ?int
@@ -1065,15 +1030,36 @@ class IncomingLetterController extends Controller
             ]);
         }
 
-        $users = User::query()
-            ->whereIn('directorate_id', $newIds)
-            ->get();
-
-        if ($users->isNotEmpty()) {
-            Notification::send($users, new IncomingLetterDirectorateNotification($incomingLetter, $user));
-        }
+        $this->notifyIncomingDirectorates($newIds, $incomingLetter, $user);
 
         return back()->with('success', 'Direktorat monitoring berhasil ditambahkan.');
+    }
+
+    private function notifyIncomingDirectorates(iterable $directorateIds, IncomingLetter $incomingLetter, User $actor): void
+    {
+        $ids = collect($directorateIds)->filter()->unique()->values();
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        $targetUserIds = User::query()
+            ->whereIn('directorate_id', $ids)
+            ->pluck('id');
+
+        CorsecFlowNotification::insertForUsers($targetUserIds, 'incoming_letter_dir_circulation', [
+            'title' => 'Surat masuk baru',
+            'message' => 'Surat masuk perlu tindak lanjut direktorat.',
+            'incoming_letter_id' => $incomingLetter->id,
+            'registration_no' => $incomingLetter->registration_no,
+            'subject' => $incomingLetter->subject,
+            'sender' => $incomingLetter->sender,
+            'status' => $incomingLetter->status,
+            'target_directorate_id' => $incomingLetter->target_directorate_id,
+            'created_by' => [
+                'id' => $actor->id,
+                'name' => $actor->name,
+            ],
+        ]);
     }
 
     private function isEoCorpAffairActor(?User $user): bool

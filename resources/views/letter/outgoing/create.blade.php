@@ -12,6 +12,8 @@
     @php
         $outgoingLetter = $outgoingLetter ?? null;
         $isEditableStatus = !$outgoingLetter || in_array($outgoingLetter->status, ['draft', 'returned'], true);
+        $selectedLetterTypeId = old('letter_type_id', $outgoingLetter?->letter_type_id);
+        $showDetailFields = isset($outgoingLetter) || !empty($selectedLetterTypeId);
     @endphp
     <div class="grid gap-5 mx-auto w-full lg:gap-7.5">
         <div class="card">
@@ -38,15 +40,35 @@
 
                     <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
                         <div class="flex flex-col">
-                            <label class="form-label">No. Registrasi</label>
-                            <input class="input" type="text" name="registration_no" readonly
-                                value="{{ old('registration_no', $outgoingLetter?->registration_no ?? 'Auto Generated') }}">
+                            <label class="form-label">Jenis Surat <span class="text-danger">*</span></label>
+                            <select class="select @error('letter_type_id') border-danger bg-danger-light @enderror"
+                                name="letter_type_id" id="letter_type_id" required>
+                                <option value="">- Pilih Jenis Surat -</option>
+                                @foreach ($letterTypes as $letterType)
+                                    <option value="{{ $letterType->id }}"
+                                        {{ (string) old('letter_type_id', $outgoingLetter?->letter_type_id) === (string) $letterType->id ? 'selected' : '' }}>
+                                        {{ $letterType->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            @error('letter_type_id')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
                         </div>
 
                         <div class="flex flex-col">
+                            <label class="form-label">No. Registrasi</label>
+                            <input class="input" type="text" id="registration_no" name="registration_no" readonly
+                                value="{{ old('registration_no', $outgoingLetter?->registration_no ?? ($showDetailFields ? 'Auto Generated' : 'Pilih jenis surat terlebih dahulu')) }}">
+                        </div>
+                    </div>
+
+                    <div id="outgoing-form-fields" style="{{ $showDetailFields ? '' : 'display:none;' }}"
+                        class="mt-8 grid grid-cols-1 gap-5 md:grid-cols-2">
+                        <div class="flex flex-col">
                             <label class="form-label">Tanggal Order <span class="text-danger">*</span></label>
                             <input class="input @error('order_date') border-danger bg-danger-light @enderror" type="date"
-                                name="order_date" readonly
+                                name="order_date" id="order_date" readonly
                                 value="{{ old('order_date', $outgoingLetter?->order_date?->format('Y-m-d') ?? now()->format('Y-m-d')) }}">
                             @error('order_date')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
@@ -88,7 +110,7 @@
                         <div class="flex flex-col md:col-span-2">
                             <label class="form-label">Perihal <span class="text-danger">*</span></label>
                             <input class="input @error('subject') border-danger bg-danger-light @enderror" type="text"
-                                name="subject" value="{{ old('subject', $outgoingLetter?->subject) }}" maxlength="255"
+                                name="subject" id="subject" value="{{ old('subject', $outgoingLetter?->subject) }}" maxlength="255"
                                 placeholder="Perihal surat..." required>
                             @error('subject')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
@@ -98,7 +120,7 @@
                         <div class="flex flex-col md:col-span-2">
                             <label class="form-label">Ringkasan Isi Surat <span class="text-danger">*</span></label>
                             <textarea class="textarea w-full @error('summary') border-danger bg-danger-light @enderror" name="summary"
-                                rows="3" placeholder="Ringkasan isi surat..." required>{{ old('summary', $outgoingLetter?->summary) }}</textarea>
+                                id="summary" rows="3" placeholder="Ringkasan isi surat..." required>{{ old('summary', $outgoingLetter?->summary) }}</textarea>
                             @error('summary')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
@@ -131,7 +153,7 @@
                             <label class="form-label">Surat Masuk</label>
                             <select
                                 class="select @error('perihal_incoming_letter_id') border-danger bg-danger-light @enderror"
-                                name="perihal_incoming_letter_id">
+                                name="perihal_incoming_letter_id" id="perihal_incoming_letter_id">
                                 <option value="">- Pilih Surat Masuk -</option>
                                 @foreach ($incomingLetters as $incomingLetter)
                                     <option value="{{ $incomingLetter->id }}"
@@ -140,6 +162,9 @@
                                     </option>
                                 @endforeach
                             </select>
+                            <small class="text-xs text-gray-500 mt-1">
+                                Menampilkan surat masuk dengan tindak lanjut Surat Jawaban. Data Penerima/Perihal/Ringkasan/Sirkulasi akan otomatis terisi.
+                            </small>
                             @error('perihal_incoming_letter_id')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
@@ -169,8 +194,9 @@
 
                         <div class="flex flex-col">
                             <label class="form-label">Sirkulasi Kepatuhan <span class="text-danger">*</span></label>
-                            <select class="select @error('need_compliance_review') border-danger bg-danger-light @enderror"
-                                name="need_compliance_review" required>
+                            <select
+                                class="select @error('need_compliance_review') border-danger bg-danger-light @enderror"
+                                name="need_compliance_review" id="need_compliance_review" required>
                                 <option value="">- Pilih -</option>
                                 <option value="1"
                                     {{ (string) old('need_compliance_review', $outgoingLetter?->need_compliance_review) === '1' ? 'selected' : '' }}>
@@ -182,6 +208,15 @@
                             @error('need_compliance_review')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
+                            <small class="text-xs text-gray-500 mt-1">
+                                Ya = akan masuk ke Direktorat Kepatuhan, Tidak = langsung ke Corporate Secretary.
+                            </small>
+                        </div>
+
+                        <div class="flex flex-col">
+                            <label class="form-label">Status</label>
+                            <input class="input" type="text" readonly
+                                value="{{ isset($outgoingLetter) ? $outgoingLetter->display_status_label : 'Order' }}">
                         </div>
 
                         <div class="flex flex-col md:col-span-2">
@@ -199,20 +234,23 @@
                         </div>
                     </div>
 
-                    <div class="border-t border-gray-200" style="margin: 24px 0;"></div>
+                    <div id="outgoing-form-extra" style="{{ $showDetailFields ? '' : 'display:none;' }}">
+                        <div class="border-t border-gray-200" style="margin: 24px 0;"></div>
 
-                    <div class="grid grid-cols-1 gap-5">
-                        <div class="flex flex-col">
-                            <label class="form-label">Catatan</label>
-                            <textarea class="textarea w-full @error('note') border-danger bg-danger-light @enderror" name="note"
-                                rows="3" placeholder="Catatan tambahan...">{{ old('note', $outgoingLetter?->note) }}</textarea>
-                            @error('note')
-                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
-                            @enderror
+                        <div class="grid grid-cols-1 gap-5">
+                            <div class="flex flex-col">
+                                <label class="form-label">Catatan</label>
+                                <textarea class="textarea w-full @error('note') border-danger bg-danger-light @enderror" name="note"
+                                    rows="3" placeholder="Catatan tambahan...">{{ old('note', $outgoingLetter?->note) }}</textarea>
+                                @error('note')
+                                    <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                @enderror
+                            </div>
                         </div>
                     </div>
 
-                    <div class="flex justify-end mt-8 gap-2">
+                    <div id="outgoing-form-actions" class="flex justify-end mt-8 gap-2"
+                        style="{{ $showDetailFields ? '' : 'display:none;' }}">
                         <a href="{{ route('letter.outgoing.index') }}" class="btn btn-light">
                             Cancel
                         </a>
@@ -249,11 +287,77 @@
             const approvalInput = document.getElementById('submit_for_approval');
             const saveDraftButton = document.getElementById('save-draft');
             const submitApprovalButton = document.getElementById('submit-approval');
+            const isEdit = {{ isset($outgoingLetter) ? 'true' : 'false' }};
+            const registrationPreviewUrl = @json(route('letter.outgoing.registration_preview'));
+            const incomingPreviewUrl = @json(route('letter.outgoing.incoming_preview'));
+            const letterTypeSelect = document.getElementById('letter_type_id');
+            const registrationInput = document.getElementById('registration_no');
+            const orderDateInput = document.getElementById('order_date');
+            const outgoingFormFields = document.getElementById('outgoing-form-fields');
+            const outgoingFormExtra = document.getElementById('outgoing-form-extra');
+            const outgoingFormActions = document.getElementById('outgoing-form-actions');
             const recipientSelect = document.getElementById('recipient_id');
             const recipientOtherWrapper = document.getElementById('recipient-other-wrapper');
             const recipientOtherInput = document.getElementById('recipient_other');
             const perihalSelect = document.getElementById('perihal_type');
             const perihalFields = document.querySelectorAll('.perihal-field');
+            const incomingLetterSelect = document.getElementById('perihal_incoming_letter_id');
+            const subjectInput = document.getElementById('subject');
+            const summaryInput = document.getElementById('summary');
+            const complianceReviewSelect = document.getElementById('need_compliance_review');
+            const incomingPreviewCache = {};
+
+            async function refreshRegistrationPreview() {
+                if (isEdit || !registrationInput) return;
+
+                const hasLetterType = !!(letterTypeSelect && letterTypeSelect.value);
+                if (!hasLetterType) {
+                    registrationInput.value = 'Pilih jenis surat terlebih dahulu';
+                    return;
+                }
+
+                const params = new URLSearchParams({
+                    letter_type_id: letterTypeSelect.value
+                });
+
+                if (orderDateInput && orderDateInput.value) {
+                    params.set('order_date', orderDateInput.value);
+                }
+
+                try {
+                    const response = await fetch(`${registrationPreviewUrl}?${params.toString()}`, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Failed to preview registration number');
+                    }
+
+                    const payload = await response.json();
+                    registrationInput.value = payload.registration_no || 'Auto Generated';
+                } catch (error) {
+                    registrationInput.value = 'Auto Generated';
+                }
+            }
+
+            function toggleFormByLetterType() {
+                const hasLetterType = !!(letterTypeSelect && letterTypeSelect.value);
+
+                if (!isEdit) {
+                    if (outgoingFormFields) outgoingFormFields.style.display = hasLetterType ? '' : 'none';
+                    if (outgoingFormExtra) outgoingFormExtra.style.display = hasLetterType ? '' : 'none';
+                    if (outgoingFormActions) outgoingFormActions.style.display = hasLetterType ? 'flex' : 'none';
+                }
+
+                if (hasLetterType || isEdit) {
+                    refreshRegistrationPreview();
+                } else if (registrationInput) {
+                    registrationInput.value = 'Pilih jenis surat terlebih dahulu';
+                }
+            }
 
             if (saveDraftButton) {
                 saveDraftButton.addEventListener('click', function() {
@@ -272,6 +376,14 @@
                 });
             }
 
+            if (letterTypeSelect) {
+                letterTypeSelect.addEventListener('change', toggleFormByLetterType);
+            }
+
+            if (orderDateInput) {
+                orderDateInput.addEventListener('change', refreshRegistrationPreview);
+            }
+
             function toggleRecipientOther() {
                 if (!recipientSelect || !recipientOtherWrapper || !recipientOtherInput) return;
                 if (recipientSelect.value === 'other') {
@@ -284,6 +396,82 @@
                 }
             }
 
+            async function fetchIncomingPreview(incomingLetterId) {
+                if (!incomingLetterId) return null;
+                if (incomingPreviewCache[incomingLetterId]) {
+                    return incomingPreviewCache[incomingLetterId];
+                }
+
+                const params = new URLSearchParams({
+                    incoming_letter_id: incomingLetterId,
+                });
+
+                const response = await fetch(`${incomingPreviewUrl}?${params.toString()}`, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to preview incoming letter');
+                }
+
+                const payload = await response.json();
+                incomingPreviewCache[incomingLetterId] = payload;
+                return payload;
+            }
+
+            function applyIncomingRecipient(payload) {
+                if (!recipientSelect) return;
+
+                const recipientId = payload && payload.recipient_id ? String(payload.recipient_id) : '';
+                const hasRecipientOption = recipientId !== '' && Array.from(recipientSelect.options).some((option) =>
+                    option.value === recipientId);
+
+                if (hasRecipientOption) {
+                    recipientSelect.value = recipientId;
+                    if (recipientOtherInput) recipientOtherInput.value = '';
+                } else {
+                    recipientSelect.value = 'other';
+                    if (recipientOtherInput) {
+                        recipientOtherInput.value = payload && payload.recipient_other ? payload.recipient_other : '';
+                    }
+                }
+
+                toggleRecipientOther();
+            }
+
+            async function consumeIncomingLetterData(forceFill = false) {
+                const isTanggapanSuratMasuk = perihalSelect && perihalSelect.value === 'tanggapan_surat_masuk';
+                if (!isTanggapanSuratMasuk || !incomingLetterSelect || !incomingLetterSelect.value) {
+                    return;
+                }
+
+                try {
+                    const payload = await fetchIncomingPreview(incomingLetterSelect.value);
+                    if (!payload) return;
+
+                    if (subjectInput && (forceFill || !subjectInput.value.trim())) {
+                        subjectInput.value = payload.subject || '';
+                    }
+
+                    if (summaryInput && (forceFill || !summaryInput.value.trim())) {
+                        summaryInput.value = payload.summary || '';
+                    }
+
+                    if (complianceReviewSelect && (forceFill || !complianceReviewSelect.value)) {
+                        complianceReviewSelect.value = payload.need_compliance_review ? '1' : '0';
+                    }
+
+                    if (forceFill || !recipientSelect || !recipientSelect.value || recipientSelect.value === 'other') {
+                        applyIncomingRecipient(payload);
+                    }
+                } catch (error) {
+                    // Keep form usable even if preview request fails.
+                }
+            }
+
             function togglePerihalFields() {
                 const selected = perihalSelect ? perihalSelect.value : '';
                 perihalFields.forEach((field) => {
@@ -293,6 +481,10 @@
                         field.classList.add('hidden');
                     }
                 });
+
+                if (selected === 'tanggapan_surat_masuk') {
+                    consumeIncomingLetterData(false);
+                }
             }
 
             if (recipientSelect) {
@@ -305,6 +497,15 @@
                 togglePerihalFields();
             }
 
+            if (incomingLetterSelect) {
+                incomingLetterSelect.addEventListener('change', function() {
+                    consumeIncomingLetterData(true);
+                });
+            }
+
+            toggleFormByLetterType();
+            consumeIncomingLetterData(false);
+
             if (window.jQuery && window.CorsecIncomingValidation) {
                 const $document = window.jQuery(document);
                 const {
@@ -315,7 +516,6 @@
 
                 function validateOutgoingForm($form) {
                     const errors = {};
-                    const isEdit = {{ isset($outgoingLetter) ? 'true' : 'false' }};
                     const requiredMessage = 'Field ini tidak boleh kosong.';
 
                     if (!$form.find('[name="order_date"]').val()) {
@@ -330,6 +530,9 @@
                     }
                     if (!$form.find('[name="subject"]').val()) {
                         errors.subject = requiredMessage;
+                    }
+                    if (!$form.find('[name="letter_type_id"]').val()) {
+                        errors.letter_type_id = requiredMessage;
                     }
                     if (!$form.find('[name="summary"]').val()) {
                         errors.summary = requiredMessage;

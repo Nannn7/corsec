@@ -11,7 +11,7 @@ use Modules\Corsec\Models\Approval;
 use Modules\Corsec\Models\Comment;
 use Modules\Corsec\Models\Attachment;
 use Modules\Corsec\Models\Attachable;
-use Modules\Corsec\Notifications\IncomingLetterDirectorateNotification;
+use Modules\Corsec\Notifications\CorsecFlowNotification;
 
 class IncomingLetterWorkflowService
 {
@@ -45,8 +45,7 @@ class IncomingLetterWorkflowService
                         ->pluck('id');
 
                     if ($checkerIds->isNotEmpty()) {
-                        $now = now();
-                        $data = json_encode([
+                        CorsecFlowNotification::insertForUsers($checkerIds, 'incoming_letter_eo_corp_affair', [
                             'title' => 'Approval EO Corp Affair',
                             'message' => 'Surat masuk menunggu approval EO Corp Affair.',
                             'incoming_letter_id' => $incomingLetter->id,
@@ -59,20 +58,6 @@ class IncomingLetterWorkflowService
                                 'name' => $actor->name,
                             ],
                         ]);
-
-                        $payload = $checkerIds->map(function ($checkerId) use ($data, $now) {
-                            return [
-                                'id' => (string) Str::uuid(),
-                                'type' => 'incoming_letter_eo_corp_affair',
-                                'notifiable_type' => User::class,
-                                'notifiable_id' => $checkerId,
-                                'data' => $data,
-                                'created_at' => $now,
-                                'updated_at' => $now,
-                            ];
-                        })->all();
-
-                        DB::table('notifications')->insert($payload);
                     }
                 }
             }
@@ -99,8 +84,7 @@ class IncomingLetterWorkflowService
                 ->pluck('id');
 
             if ($targetUserIds->isNotEmpty()) {
-                $now = now();
-                $data = json_encode([
+                CorsecFlowNotification::insertForUsers($targetUserIds, 'incoming_letter_dir_circulation', [
                     'title' => 'Surat masuk baru',
                     'message' => 'Surat masuk perlu tindak lanjut direktorat.',
                     'incoming_letter_id' => $incomingLetter->id,
@@ -114,20 +98,6 @@ class IncomingLetterWorkflowService
                         'name' => $actor->name,
                     ],
                 ]);
-
-                $payload = $targetUserIds->map(function ($targetUserId) use ($data, $now) {
-                    return [
-                        'id' => (string) Str::uuid(),
-                        'type' => IncomingLetterDirectorateNotification::class,
-                        'notifiable_type' => User::class,
-                        'notifiable_id' => $targetUserId,
-                        'data' => $data,
-                        'created_at' => $now,
-                        'updated_at' => $now,
-                    ];
-                })->all();
-
-                DB::table('notifications')->insert($payload);
             }
         });
     }
@@ -570,26 +540,6 @@ class IncomingLetterWorkflowService
 
     private function notifyUsers(iterable $userIds, string $type, array $data): void
     {
-        $ids = collect($userIds)->filter()->unique()->values();
-        if ($ids->isEmpty()) {
-            return;
-        }
-
-        $now = now();
-        $payloadData = json_encode($data);
-
-        $payload = $ids->map(function ($userId) use ($type, $payloadData, $now) {
-            return [
-                'id' => (string) Str::uuid(),
-                'type' => $type,
-                'notifiable_type' => User::class,
-                'notifiable_id' => $userId,
-                'data' => $payloadData,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ];
-        })->all();
-
-        DB::table('notifications')->insert($payload);
+        CorsecFlowNotification::insertForUsers($userIds, $type, $data);
     }
 }

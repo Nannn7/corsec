@@ -8,6 +8,7 @@
     @php
         $user = auth()->user();
         $status = $outgoingLetter->status;
+        $displayStatus = \Modules\Corsec\Models\OutgoingLetter::toDisplayStatus($status);
         $isAdmin = $user?->hasRole('administrator');
         $isChecker = $user?->hasRole('checker');
         $isApprover = $user?->hasRole('approver');
@@ -90,15 +91,11 @@
         $canVerify = $canCorpSecretaryCheckerVerify;
 
         $statusSteps = [
-            'draft' => 'Draft',
-            'waiting_dir_approval' => 'Waiting Dir Approval',
-            'compliance_review' => 'Compliance Review',
-            'waiting_compliance_approval' => 'Waiting Compliance Approval',
-            'numbering' => 'Numbering',
-            'waiting_verification' => 'Waiting Verification',
-            'final_uploaded' => 'Final Uploaded',
-            'verified' => 'Verified',
-            'returned' => 'Returned',
+            'order' => 'Order',
+            'review_kepatuhan' => 'Review Kepatuhan',
+            'penomoran' => 'Penomoran',
+            'done' => 'Done',
+            'revisi' => 'Revisi',
         ];
     @endphp
 
@@ -142,6 +139,10 @@
                         </span>
                     </div>
                     <div class="flex justify-between items-center">
+                        <span class="text-gray-600">Jenis Surat:</span>
+                        <span class="font-medium">{{ $outgoingLetter->letterType?->name ?? '-' }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
                         <span class="text-gray-600">Perihal:</span>
                         <span class="font-medium">{{ $outgoingLetter->subject ?? '-' }}</span>
                     </div>
@@ -155,7 +156,7 @@
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-gray-600">Status:</span>
-                        <span class="badge badge-light">{{ $outgoingLetter->status ?? '-' }}</span>
+                        <span class="badge badge-light">{{ $outgoingLetter->display_status_label }}</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-gray-600">Draft Surat:</span>
@@ -214,7 +215,7 @@
             <div class="card-body">
                 <div class="flex flex-wrap gap-2">
                     @foreach ($statusSteps as $key => $label)
-                        <span class="badge {{ $status === $key ? 'badge-success' : 'badge-light' }}">{{ $label }}</span>
+                        <span class="badge {{ $displayStatus === $key ? 'badge-success' : 'badge-light' }}">{{ $label }}</span>
                     @endforeach
                 </div>
             </div>

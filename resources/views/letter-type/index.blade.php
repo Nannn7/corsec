@@ -1,16 +1,23 @@
 @extends('layouts.main')
 
+@php
+    $routePrefix = $routePrefix ?? 'letter-type';
+    $scopeLabel = $scopeLabel ?? 'In';
+    $breadcrumb = $breadcrumb ?? 'corsec.letter-type';
+@endphp
+
 @section('breadcrumbs')
-    {{ Breadcrumbs::render('corsec.letter-type') }}
+    {{ Breadcrumbs::render($breadcrumb) }}
 @endsection
 
 @section('content')
     <div class="grid">
         <div class="min-w-full card card-grid" data-datatable="false" data-datatable-page-size="10"
-            data-datatable-state-save="false" id="letter-type-table" data-api-url="{{ route('letter-type.datatables') }}">
+            data-datatable-state-save="false" id="letter-type-table" data-api-url="{{ route($routePrefix . '.datatables') }}"
+            data-base-url="{{ route($routePrefix . '.index') }}">
             <div class="flex-wrap py-5 card-header">
                 <h3 class="card-title">
-                    Daftar Letter Type
+                    Daftar Letter Type {{ $scopeLabel }}
                 </h3>
                 <div class="flex flex-wrap gap-2 lg:gap-5">
                     <div class="flex">
@@ -21,12 +28,12 @@
                     <div class="flex flex-wrap gap-2.5">
                         <div class="h-[24px] border border-r-gray-200"></div>
                         @can('letter-type.export')
-                            <a id="export-btn" class="btn btn-sm btn-light" href="{{ route('letter-type.export') }}">
+                            <a id="export-btn" class="btn btn-sm btn-light" href="{{ route($routePrefix . '.export') }}">
                                 Export to
                                 Excel </a>
                         @endcan
                         @can('letter-type.create')
-                            <a class="btn btn-sm btn-primary" href="{{ route('letter-type.create') }}"> Tambah Letter Type
+                            <a class="btn btn-sm btn-primary" href="{{ route($routePrefix . '.create') }}"> Tambah Letter Type
                             </a>
                         @endcan
                         @can('letter-type.delete')
@@ -85,6 +92,9 @@
 @push('scripts')
     <script type="text/javascript">
         function deleteData(rowKey) {
+            const element = document.querySelector('#letter-type-table');
+            const baseUrl = element.getAttribute('data-base-url');
+
             Swal.fire({
                 title: 'Apakah anda yakin?',
                 text: "Anda tidak dapat mengembalikan ini!",
@@ -102,7 +112,7 @@
                         }
                     });
 
-                    $.ajax(`letter-type/${rowKey}`, {
+                    $.ajax(`${baseUrl}/${rowKey}`, {
                         type: 'DELETE'
                     }).then((response) => {
                         swal.fire('Deleted!', response.message, 'success').then(() => {
@@ -142,7 +152,7 @@
                         }
                     });
 
-                    $.ajax('{{ route('letter-type.deleteMultiple') }}', {
+                    $.ajax('{{ route($routePrefix . '.deleteMultiple') }}', {
                         type: 'POST',
                         data: {
                             ids: ids
@@ -166,6 +176,7 @@
         const deleteSelectedButton = document.getElementById('deleteSelected');
 
         const apiUrl = element.getAttribute('data-api-url');
+        const baseUrl = element.getAttribute('data-base-url');
         const dataTableOptions = {
             apiEndpoint: apiUrl,
             pageSize: 5,
@@ -206,7 +217,7 @@
                         let html = `<div class="flex flex-nowrap justify-center">`;
 
                         @can('letter-type.update')
-                            html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="letter-type/${rowKey}/edit">
+                            html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}/edit">
                                 <i class="ki-outline ki-notepad-edit"></i>
                             </a>`;
                         @endcan

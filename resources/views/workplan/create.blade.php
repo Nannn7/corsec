@@ -59,8 +59,7 @@
             </div>
 
             <div class="card-body">
-                <form method="POST"
-                    action="{{ $isEdit ? route('workplan.update', $workplan) : route('workplan.store') }}"
+                <form method="POST" action="{{ $isEdit ? route('workplan.update', $workplan) : route('workplan.store') }}"
                     enctype="multipart/form-data" id="workplan-form">
                     @csrf
                     @if ($isEdit)
@@ -85,7 +84,7 @@
                                 @foreach ($directorates as $directorate)
                                     <option value="{{ $directorate->id }}"
                                         {{ (string) $selectedDirectorate === (string) $directorate->id ? 'selected' : '' }}>
-                                        {{ $directorate->name }} ({{ $directorate->code }})
+                                        {{ $directorate->name }}
                                     </option>
                                 @endforeach
                             </select>
@@ -108,7 +107,7 @@
                         </div>
 
                         <div class="flex flex-col md:col-span-2">
-                            <label class="form-label">Judul Program (Header) <span class="text-danger">*</span></label>
+                            <label class="form-label">Judul Program<span class="text-danger">*</span></label>
                             <input class="input @error('title') border-danger bg-danger-light @enderror" type="text"
                                 name="title" maxlength="255" value="{{ old('title', $workplan?->title) }}"
                                 placeholder="Contoh: Program Kerja Direktorat 2026" required>
@@ -116,20 +115,20 @@
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
                         </div>
+                    </div>
 
-                        <div class="flex flex-col md:col-span-2">
-                            <label class="form-label">Deskripsi Header</label>
-                            <textarea class="textarea w-full @error('description') border-danger bg-danger-light @enderror" name="description"
-                                rows="2" placeholder="Deskripsi tambahan (opsional)">{{ old('description', $workplan?->description) }}</textarea>
-                            @error('description')
-                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
-                            @enderror
-                        </div>
+                    <div class="mt-5">
+                        <label class="form-label">Deskripsi</label>
+                        <textarea class="textarea w-full @error('description') border-danger bg-danger-light @enderror" name="description"
+                            rows="3" placeholder="Catatan untuk deskripsi (opsional)">{{ old('description', $workplan?->description) }}</textarea>
+                        @error('description')
+                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                        @enderror
                     </div>
 
                     <div class="border-t border-gray-200 my-7"></div>
 
-                    <div class="flex items-center justify-between gap-2 mb-4">
+                    <div class="flex items-center justify-between gap-2 mb-3">
                         <h4 class="font-semibold text-gray-800">Daftar Program Kerja (Item)</h4>
                         <button type="button" class="btn btn-sm btn-light-primary" id="add-item-row">
                             <i class="ki-filled ki-plus"></i> Tambah Item
@@ -143,14 +142,13 @@
                                 if (is_numeric($row['id'] ?? null) && $workplan) {
                                     $existingAttachment = $workplan->items
                                         ->firstWhere('id', (int) $row['id'])
-                                        ?->attachables
-                                        ?->first()
-                                        ?->attachment;
+                                        ?->attachables?->first()?->attachment;
                                 }
                             @endphp
-                            <div class="p-4 border rounded-xl border-gray-200 item-row" data-index="{{ $i }}">
+                            <div class="p-4 border rounded-xl border-gray-200 item-row">
                                 @if (!empty($row['id']))
-                                    <input type="hidden" name="items[{{ $i }}][id]" value="{{ $row['id'] }}">
+                                    <input type="hidden" name="items[{{ $i }}][id]"
+                                        value="{{ $row['id'] }}">
                                 @endif
                                 <div class="flex justify-between items-center mb-3">
                                     <div class="font-medium text-gray-800">Item #{{ $i + 1 }}</div>
@@ -159,10 +157,11 @@
                                     </button>
                                 </div>
 
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div class="flex flex-col md:col-span-2">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    <div class="flex flex-col">
                                         <label class="form-label">Program Kerja <span class="text-danger">*</span></label>
-                                        <input class="input @error('items.' . $i . '.title') border-danger bg-danger-light @enderror"
+                                        <input
+                                            class="input @error('items.' . $i . '.title') border-danger bg-danger-light @enderror"
                                             type="text" name="items[{{ $i }}][title]"
                                             value="{{ old('items.' . $i . '.title', $row['title'] ?? '') }}" required>
                                         @error('items.' . $i . '.title')
@@ -172,7 +171,8 @@
 
                                     <div class="flex flex-col">
                                         <label class="form-label">Target <span class="text-danger">*</span></label>
-                                        <input class="input @error('items.' . $i . '.target_date') border-danger bg-danger-light @enderror"
+                                        <input
+                                            class="input @error('items.' . $i . '.target_date') border-danger bg-danger-light @enderror"
                                             type="date" name="items[{{ $i }}][target_date]"
                                             value="{{ old('items.' . $i . '.target_date', $row['target_date'] ?? '') }}"
                                             required>
@@ -182,58 +182,60 @@
                                     </div>
 
                                     <div class="flex flex-col">
-                                        <label class="form-label">
-                                            Upload
-                                            @if (!$isEdit)
-                                                <span class="text-danger">*</span>
-                                            @endif
-                                        </label>
-                                        <input class="file-input @error('items.' . $i . '.file') border-danger bg-danger-light @enderror"
-                                            type="file" name="items[{{ $i }}][file]"
-                                            accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx"
-                                            {{ !$isEdit ? 'required' : '' }}>
-                                        @if ($existingAttachment)
-                                            <a class="text-primary hover:underline text-xs mt-1"
-                                                href="{{ Storage::disk($existingAttachment->disk ?? 'public')->url($existingAttachment->path) }}"
-                                                target="_blank" rel="noopener">
-                                                File existing:
-                                                {{ $existingAttachment->original_name ?? $existingAttachment->file_name }}
-                                            </a>
-                                        @endif
-                                        @error('items.' . $i . '.file')
-                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
-                                        @enderror
-                                    </div>
-
-                                    <div class="flex flex-col md:col-span-2">
                                         <label class="form-label">Deskripsi Item</label>
                                         <textarea class="textarea w-full @error('items.' . $i . '.description') border-danger bg-danger-light @enderror"
-                                            name="items[{{ $i }}][description]" rows="2" placeholder="Detail item program kerja">{{ old('items.' . $i . '.description', $row['description'] ?? '') }}</textarea>
+                                            name="items[{{ $i }}][description]" rows="3"
+                                            placeholder="Catatan untuk deskripsi item (opsional)">{{ old('items.' . $i . '.description', $row['description'] ?? '') }}</textarea>
                                         @error('items.' . $i . '.description')
                                             <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                                         @enderror
                                     </div>
 
-                                    <div class="flex flex-col md:col-span-2">
+                                    <div class="flex flex-col">
                                         <label class="form-label">Catatan (Opsional)</label>
                                         <textarea class="textarea w-full @error('items.' . $i . '.note') border-danger bg-danger-light @enderror"
-                                            name="items[{{ $i }}][note]" rows="2" placeholder="Catatan tambahan item">{{ old('items.' . $i . '.note', $row['note'] ?? '') }}</textarea>
+                                            name="items[{{ $i }}][note]" rows="3" placeholder="Catatan untuk item (opsional)">{{ old('items.' . $i . '.note', $row['note'] ?? '') }}</textarea>
                                         @error('items.' . $i . '.note')
                                             <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                                         @enderror
                                     </div>
+
+                                </div>
+                                <div class="mt-5 w-full">
+                                    <label class="form-label">
+                                        Upload
+                                        @if (!$isEdit)
+                                            <span class="text-danger">*</span>
+                                        @endif
+                                    </label>
+                                    <input
+                                        class="file-input w-full @error('items.' . $i . '.file') border-danger bg-danger-light @enderror"
+                                        style="width: 100%;" type="file" name="items[{{ $i }}][file]"
+                                        accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx"
+                                        {{ !$isEdit ? 'required' : '' }}>
+                                    @if ($existingAttachment)
+                                        <a class="text-primary hover:underline text-xs mt-1"
+                                            href="{{ Storage::disk($existingAttachment->disk ?? 'public')->url($existingAttachment->path) }}"
+                                            target="_blank" rel="noopener">
+                                            File existing:
+                                            {{ $existingAttachment->original_name ?? $existingAttachment->file_name }}
+                                        </a>
+                                    @endif
+                                    @error('items.' . $i . '.file')
+                                        <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                    @enderror
                                 </div>
                             </div>
                         @endforeach
                     </div>
 
-                    <div class="border-t border-gray-200 my-7"></div>
+                    <div class="border-t border-gray-200 my-8"></div>
 
-                    <div class="grid grid-cols-1 gap-4">
+                    <div class="grid grid-cols-1 gap-4 mt-1">
                         <div class="flex flex-col">
                             <label class="form-label">Catatan Submit ke Otorisator</label>
                             <textarea class="textarea w-full @error('submit_note') border-danger bg-danger-light @enderror" name="submit_note"
-                                rows="2" placeholder="Catatan untuk approval (opsional)">{{ old('submit_note') }}</textarea>
+                                rows="3" placeholder="Catatan untuk approval (opsional)">{{ old('submit_note') }}</textarea>
                             @error('submit_note')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
@@ -345,8 +347,8 @@
                         <div class="font-medium text-gray-800">Item #${index + 1}</div>
                         <button type="button" class="btn btn-xs btn-danger remove-item-row">Hapus</button>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="flex flex-col md:col-span-2">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div class="flex flex-col">
                             <label class="form-label">Program Kerja <span class="text-danger">*</span></label>
                             <input class="input" type="text" name="items[${index}][title]" required>
                         </div>
@@ -355,17 +357,17 @@
                             <input class="input" type="date" name="items[${index}][target_date]" required>
                         </div>
                         <div class="flex flex-col">
-                            <label class="form-label">Upload <span class="text-danger">*</span></label>
-                            <input class="file-input" type="file" name="items[${index}][file]" accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx" required>
-                        </div>
-                        <div class="flex flex-col md:col-span-2">
                             <label class="form-label">Deskripsi Item</label>
-                            <textarea class="textarea w-full" name="items[${index}][description]" rows="2"></textarea>
+                            <textarea class="textarea w-full" name="items[${index}][description]" rows="3" placeholder="Catatan untuk deskripsi item (opsional)"></textarea>
                         </div>
-                        <div class="flex flex-col md:col-span-2">
+                        <div class="flex flex-col">
                             <label class="form-label">Catatan (Opsional)</label>
-                            <textarea class="textarea w-full" name="items[${index}][note]" rows="2"></textarea>
+                            <textarea class="textarea w-full" name="items[${index}][note]" rows="3" placeholder="Catatan untuk item (opsional)"></textarea>
                         </div>
+                    </div>
+                    <div class="mt-5 w-full">
+                        <label class="form-label">Upload <span class="text-danger">*</span></label>
+                        <input class="file-input w-full" style="width: 100%;" type="file" name="items[${index}][file]" accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx" required>
                     </div>
                 `;
 

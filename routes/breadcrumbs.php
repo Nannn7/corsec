@@ -113,35 +113,48 @@ Breadcrumbs::for('sender.edit', function (BreadcrumbTrail $trail) {
 // Letter Type
 Breadcrumbs::for('corsec.letter-type', function (BreadcrumbTrail $trail) {
     $trail->parent('dashboard');
-    $trail->push('Letter Types', route('letter-type.index'));
+    $trail->push('Letter Types In', route('letter-type.index'));
 });
 
 Breadcrumbs::for('letter-type.create', function (BreadcrumbTrail $trail) {
     $trail->parent('corsec.letter-type');
-    $trail->push('Tambah Letter Type', route('letter-type.create'));
+    $trail->push('Tambah Letter Type In', route('letter-type.create'));
 });
 
 Breadcrumbs::for('letter-type.edit', function (BreadcrumbTrail $trail) {
     $trail->parent('corsec.letter-type');
-    $trail->push('Edit Letter Type');
+    $trail->push('Edit Letter Type In');
 });
 
-// Bank
-Breadcrumbs::for('corsec.bank', function (BreadcrumbTrail $trail) {
+Breadcrumbs::for('corsec.letter-type.in', function (BreadcrumbTrail $trail) {
     $trail->parent('dashboard');
-    $trail->push('Bank', route('bank.index'));
+    $trail->push('Letter Types In', route('letter-type.in.index'));
 });
 
-Breadcrumbs::for('bank.create', function (BreadcrumbTrail $trail) {
-    $trail->parent('corsec.bank');
-    $trail->push('Tambah Bank', route('bank.create'));
+Breadcrumbs::for('letter-type.in.create', function (BreadcrumbTrail $trail) {
+    $trail->parent('corsec.letter-type.in');
+    $trail->push('Tambah Letter Type In', route('letter-type.in.create'));
 });
 
-Breadcrumbs::for('bank.edit', function (BreadcrumbTrail $trail) {
-    $trail->parent('corsec.bank');
-    $trail->push('Edit Bank');
+Breadcrumbs::for('letter-type.in.edit', function (BreadcrumbTrail $trail) {
+    $trail->parent('corsec.letter-type.in');
+    $trail->push('Edit Letter Type In');
 });
 
+Breadcrumbs::for('corsec.letter-type.out', function (BreadcrumbTrail $trail) {
+    $trail->parent('dashboard');
+    $trail->push('Letter Types Out', route('letter-type.out.index'));
+});
+
+Breadcrumbs::for('letter-type.out.create', function (BreadcrumbTrail $trail) {
+    $trail->parent('corsec.letter-type.out');
+    $trail->push('Tambah Letter Type Out', route('letter-type.out.create'));
+});
+
+Breadcrumbs::for('letter-type.out.edit', function (BreadcrumbTrail $trail) {
+    $trail->parent('corsec.letter-type.out');
+    $trail->push('Edit Letter Type Out');
+});
 
 // Approval
 // Breadcrumbs::for('corsec.approval', function (BreadcrumbTrail $trail) {

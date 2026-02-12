@@ -6,6 +6,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
@@ -31,44 +32,65 @@ class LetterTypeController extends Controller
         });
     }
 
-    public function index()
+    public function index(Request $request)
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('letter-type.read')) {
             abort(403, 'Sorry! You are not allowed to view letter type.');
         }
 
-        Log::info('User accessed letter type index', ['user_id' => $user->id]);
-        return view('corsec::letter-type.index');
+        $scope = $this->resolveScope($request);
+        $routePrefix = $this->resolveRoutePrefix($request, $scope);
+        $scopeLabel = $this->scopeLabel($scope);
+        $breadcrumb = $this->resolveIndexBreadcrumb($routePrefix, $scope);
+
+        Log::info('User accessed letter type index', [
+            'user_id' => $user->id,
+            'scope' => $scope,
+        ]);
+
+        return view('corsec::letter-type.index', compact('scope', 'scopeLabel', 'routePrefix', 'breadcrumb'));
     }
 
-    public function create()
+    public function create(Request $request)
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('letter-type.create')) {
             abort(403, 'Sorry! You are not allowed to create letter type.');
         }
 
-        Log::info('User accessed letter type create form', ['user_id' => $user->id]);
-        $codes = LetterType::query()->pluck('code');
+        $scope = $this->resolveScope($request);
+        $routePrefix = $this->resolveRoutePrefix($request, $scope);
+        $scopeLabel = $this->scopeLabel($scope);
+        $breadcrumb = $this->resolveFormBreadcrumb($routePrefix, false);
+
+        Log::info('User accessed letter type create form', [
+            'user_id' => $user->id,
+            'scope' => $scope,
+        ]);
+
+        $codes = LetterType::query()->forScope($scope)->pluck('code');
         $numericCodes = $codes
             ->filter(function ($code) {
                 return is_string($code) && preg_match('/^\\d+$/', $code);
             })
             ->values();
+
         $maxNumber = $numericCodes
             ->map(function ($code) {
                 return (int) $code;
             })
             ->max();
+
         $padLength = $numericCodes
             ->map(function ($code) {
                 return strlen($code);
             })
             ->max() ?? 3;
+
         $nextCode = $maxNumber !== null ? str_pad((string) ($maxNumber + 1), $padLength, '0', STR_PAD_LEFT) : null;
 
-        return view('corsec::letter-type.create', compact('nextCode'));
+        return view('corsec::letter-type.create', compact('nextCode', 'scope', 'scopeLabel', 'routePrefix', 'breadcrumb'));
     }
 
     public function store(LetterTypeRequest $request)
@@ -78,11 +100,15 @@ class LetterTypeController extends Controller
             abort(403, 'Sorry! You are not allowed to create letter type.');
         }
 
+        $scope = $this->resolveScope($request);
+        $routePrefix = $this->resolveRoutePrefix($request, $scope);
+
         try {
             $validated = $request->validated();
             $payload = [
                 'code' => $validated['code'],
                 'name' => $validated['name'],
+                'scope' => $scope,
                 'description' => $validated['description'] ?? null,
                 'status' => $request->boolean('status', true),
                 'created_by' => $user->id,
@@ -95,38 +121,59 @@ class LetterTypeController extends Controller
                 null,
                 $payload,
                 null,
-                'Pengajuan create letter type'
+                'Pengajuan create letter type ' . $this->scopeLabel($scope)
             );
 
-            Log::info('Letter type create submitted for approval', ['user_id' => $user->id]);
+            Log::info('Letter type create submitted for approval', [
+                'user_id' => $user->id,
+                'scope' => $scope,
+            ]);
 
             return redirect()
-                ->route('letter-type.index')
+                ->route($routePrefix . '.index')
                 ->with('success', 'Letter type submitted for approval.');
         } catch (Exception $e) {
-            Log::error('Failed to create letter type: ' . $e->getMessage(), ['user_id' => $user->id]);
+            Log::error('Failed to create letter type: ' . $e->getMessage(), [
+                'user_id' => $user->id,
+                'scope' => $scope,
+            ]);
 
             return redirect()
-                ->route('letter-type.create')
+                ->route($routePrefix . '.create')
                 ->with('error', 'Failed to create letter type: ' . $e->getMessage())
                 ->withInput();
         }
     }
 
-    public function show(LetterType $letterType)
+    public function show(Request $request, LetterType $letterType)
     {
+        $scope = $this->resolveScope($request);
+        $this->ensureLetterTypeScope($letterType, $scope);
+
         return view('corsec::show');
     }
 
-    public function edit(LetterType $letterType)
+    public function edit(Request $request, LetterType $letterType)
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('letter-type.update')) {
             abort(403, 'Sorry! You are not allowed to update letter type.');
         }
 
-        Log::info('User accessed letter type edit form', ['letter_type_id' => $letterType->id, 'user_id' => $user->id]);
-        return view('corsec::letter-type.create', compact('letterType'));
+        $scope = $this->resolveScope($request);
+        $routePrefix = $this->resolveRoutePrefix($request, $scope);
+        $scopeLabel = $this->scopeLabel($scope);
+        $breadcrumb = $this->resolveFormBreadcrumb($routePrefix, true);
+
+        $this->ensureLetterTypeScope($letterType, $scope);
+
+        Log::info('User accessed letter type edit form', [
+            'letter_type_id' => $letterType->id,
+            'user_id' => $user->id,
+            'scope' => $scope,
+        ]);
+
+        return view('corsec::letter-type.create', compact('letterType', 'scope', 'scopeLabel', 'routePrefix', 'breadcrumb'));
     }
 
     public function update(LetterTypeRequest $request, LetterType $letterType)
@@ -136,11 +183,17 @@ class LetterTypeController extends Controller
             abort(403, 'Sorry! You are not allowed to update letter type.');
         }
 
+        $scope = $this->resolveScope($request);
+        $routePrefix = $this->resolveRoutePrefix($request, $scope);
+
+        $this->ensureLetterTypeScope($letterType, $scope);
+
         try {
             $validated = $request->validated();
             $payload = [
                 'code' => $validated['code'],
                 'name' => $validated['name'],
+                'scope' => $scope,
                 'description' => $validated['description'] ?? null,
                 'status' => $request->boolean('status', $letterType->status),
                 'updated_by' => $user->id,
@@ -152,25 +205,33 @@ class LetterTypeController extends Controller
                 (string) $letterType->id,
                 $payload,
                 $letterType->only(array_keys($payload)),
-                'Pengajuan update letter type'
+                'Pengajuan update letter type ' . $this->scopeLabel($scope)
             );
 
-            Log::info('Letter type update submitted for approval', ['letter_type_id' => $letterType->id, 'user_id' => $user->id]);
+            Log::info('Letter type update submitted for approval', [
+                'letter_type_id' => $letterType->id,
+                'user_id' => $user->id,
+                'scope' => $scope,
+            ]);
 
             return redirect()
-                ->route('letter-type.index')
+                ->route($routePrefix . '.index')
                 ->with('success', 'Letter type update submitted for approval.');
         } catch (Exception $e) {
-            Log::error('Failed to update letter type: ' . $e->getMessage(), ['letter_type_id' => $letterType->id, 'user_id' => $user->id]);
+            Log::error('Failed to update letter type: ' . $e->getMessage(), [
+                'letter_type_id' => $letterType->id,
+                'user_id' => $user->id,
+                'scope' => $scope,
+            ]);
 
             return redirect()
-                ->route('letter-type.edit', $letterType)
+                ->route($routePrefix . '.edit', $letterType)
                 ->with('error', 'Failed to update letter type: ' . $e->getMessage())
                 ->withInput();
         }
     }
 
-    public function destroy(LetterType $letterType)
+    public function destroy(Request $request, LetterType $letterType)
     {
         $user = Auth::user();
         if (!$user || !$user->can('letter-type.delete')) {
@@ -180,15 +241,21 @@ class LetterTypeController extends Controller
             ], 403);
         }
 
+        $scope = $this->resolveScope($request);
+        $this->ensureLetterTypeScope($letterType, $scope);
+
         try {
             DB::transaction(function () use ($letterType, $user) {
                 $letterType->update(['deleted_by' => $user->id]);
                 $letterType->delete();
             });
 
+            $this->forgetLetterTypeCaches($scope);
+
             Log::info('Letter type deleted successfully', [
                 'letter_type_id' => $letterType->id,
-                'user_id' => $user->id
+                'user_id' => $user->id,
+                'scope' => $scope,
             ]);
 
             return response()->json([
@@ -197,8 +264,9 @@ class LetterTypeController extends Controller
             ]);
         } catch (Exception $e) {
             Log::error('Failed to delete letter type: ' . $e->getMessage(), [
-                'letter_type_id' => $id,
+                'letter_type_id' => $letterType->id,
                 'user_id' => $user->id,
+                'scope' => $scope,
                 'trace' => $e->getTraceAsString()
             ]);
 
@@ -219,8 +287,10 @@ class LetterTypeController extends Controller
             ], 403);
         }
 
+        $scope = $this->resolveScope($request);
+
         try {
-            $ids = $request->input('ids', []);
+            $ids = array_values(array_unique(array_map('intval', (array) $request->input('ids', []))));
             if (empty($ids)) {
                 return response()->json([
                     'success' => false,
@@ -228,14 +298,20 @@ class LetterTypeController extends Controller
                 ], 400);
             }
 
-            $existingLetterType = LetterType::whereIn('id', $ids)->pluck('id')->toArray();
+            $existingLetterType = LetterType::query()
+                ->forScope($scope)
+                ->whereIn('id', $ids)
+                ->pluck('id')
+                ->toArray();
+
             $missingIds = array_diff($ids, $existingLetterType);
 
             if (!empty($missingIds)) {
                 Log::warning('Some letter type not found for multiple delete', [
                     'requested_ids' => $ids,
                     'missing_ids' => $missingIds,
-                    'user_id' => $user->id
+                    'user_id' => $user->id,
+                    'scope' => $scope,
                 ]);
 
                 return response()->json([
@@ -246,14 +322,24 @@ class LetterTypeController extends Controller
                 ], 404);
             }
 
-            DB::transaction(function () use ($ids, $user) {
-                LetterType::whereIn('id', $ids)->update(['deleted_by' => $user->id]);
-                LetterType::whereIn('id', $ids)->delete();
+            DB::transaction(function () use ($ids, $scope, $user) {
+                LetterType::query()
+                    ->forScope($scope)
+                    ->whereIn('id', $ids)
+                    ->update(['deleted_by' => $user->id]);
+
+                LetterType::query()
+                    ->forScope($scope)
+                    ->whereIn('id', $ids)
+                    ->delete();
             });
+
+            $this->forgetLetterTypeCaches($scope);
 
             Log::info('Multiple letter type deleted successfully', [
                 'requested_ids' => $ids,
                 'user_id' => $user->id,
+                'scope' => $scope,
             ]);
 
             return response()->json([
@@ -264,6 +350,7 @@ class LetterTypeController extends Controller
             Log::error('Failed to delete multiple letter type: ' . $e->getMessage(), [
                 'requested_ids' => $ids ?? [],
                 'user_id' => $user->id,
+                'scope' => $scope,
                 'trace' => $e->getTraceAsString()
             ]);
 
@@ -285,8 +372,10 @@ class LetterTypeController extends Controller
             ], 403);
         }
 
+        $scope = $this->resolveScope($request);
+
         try {
-            $query = LetterType::query();
+            $query = LetterType::query()->forScope($scope);
 
             $search = trim((string) $request->get('search', ''));
             if ($search !== '') {
@@ -297,7 +386,7 @@ class LetterTypeController extends Controller
                 });
             }
 
-            $totalRecords    = LetterType::count();
+            $totalRecords = LetterType::query()->forScope($scope)->count();
             $filteredRecords = (clone $query)->count();
 
             $sortField = (string) $request->get('sortField', 'id');
@@ -326,22 +415,29 @@ class LetterTypeController extends Controller
             $offset = ($page - 1) * $size;
 
             $data = $query->skip($offset)->take($size)->get();
-
             $pageCount = (int) ceil($filteredRecords / $size);
 
-            Log::info('letter type datatables data retrieved', ['user_id' => $user->id, 'total_records' => $totalRecords]);
+            Log::info('letter type datatables data retrieved', [
+                'user_id' => $user->id,
+                'scope' => $scope,
+                'total_records' => $totalRecords,
+            ]);
 
             return response()->json([
-                'draw'            => $request->get('draw'),
-                'recordsTotal'    => $totalRecords,
+                'draw' => $request->get('draw'),
+                'recordsTotal' => $totalRecords,
                 'recordsFiltered' => $filteredRecords,
-                'pageCount'       => $pageCount,
-                'page'            => (int) $page,
-                'totalCount'      => $totalRecords,
-                'data'            => $data,
+                'pageCount' => $pageCount,
+                'page' => (int) $page,
+                'totalCount' => $totalRecords,
+                'data' => $data,
             ]);
         } catch (Exception $e) {
-            Log::error('Failed to get letter type datatables data: ' . $e->getMessage(), ['user_id' => $user->id]);
+            Log::error('Failed to get letter type datatables data: ' . $e->getMessage(), [
+                'user_id' => $user->id,
+                'scope' => $scope,
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to load data'
@@ -356,15 +452,110 @@ class LetterTypeController extends Controller
             abort(403, 'Sorry! You are not allowed to export letter type.');
         }
 
+        $scope = $this->resolveScope($request);
+        $routePrefix = $this->resolveRoutePrefix($request, $scope);
+
         try {
             $search = trim((string) $request->get('search', ''));
-            Log::info('letter type export initiated', ['user_id' => $user->id, 'search' => $search]);
-            return Excel::download(new LetterTypeExport($search), 'letter_type.xlsx');
+            Log::info('letter type export initiated', [
+                'user_id' => $user->id,
+                'search' => $search,
+                'scope' => $scope,
+            ]);
+
+            $filename = sprintf('letter_type_%s.xlsx', $scope);
+
+            return Excel::download(new LetterTypeExport($search, $scope), $filename);
         } catch (Exception $e) {
-            Log::error('Failed to export letter type: ' . $e->getMessage(), ['user_id' => $user->id]);
+            Log::error('Failed to export letter type: ' . $e->getMessage(), [
+                'user_id' => $user->id,
+                'scope' => $scope,
+            ]);
+
             return redirect()
-                ->route('letter-type.index')
+                ->route($routePrefix . '.index')
                 ->with('error', 'Failed to export letter type.');
+        }
+    }
+
+    private function resolveScope(Request $request): string
+    {
+        $scope = (string) ($request->route('scope') ?? '');
+
+        if (!in_array($scope, [LetterType::SCOPE_IN, LetterType::SCOPE_OUT], true)) {
+            $routeName = (string) ($request->route()?->getName() ?? '');
+            if (str_starts_with($routeName, 'letter-type.out.')) {
+                $scope = LetterType::SCOPE_OUT;
+            } else {
+                $scope = LetterType::SCOPE_IN;
+            }
+        }
+
+        return $scope;
+    }
+
+    private function resolveRoutePrefix(Request $request, string $scope): string
+    {
+        $routeName = (string) ($request->route()?->getName() ?? '');
+
+        if (str_starts_with($routeName, 'letter-type.out.')) {
+            return 'letter-type.out';
+        }
+
+        if (str_starts_with($routeName, 'letter-type.in.')) {
+            return 'letter-type.in';
+        }
+
+        if (str_starts_with($routeName, 'letter-type.')) {
+            return 'letter-type';
+        }
+
+        return $scope === LetterType::SCOPE_OUT ? 'letter-type.out' : 'letter-type.in';
+    }
+
+    private function resolveIndexBreadcrumb(string $routePrefix, string $scope): string
+    {
+        if ($scope === LetterType::SCOPE_OUT) {
+            return 'corsec.letter-type.out';
+        }
+
+        return $routePrefix === 'letter-type.in' ? 'corsec.letter-type.in' : 'corsec.letter-type';
+    }
+
+    private function resolveFormBreadcrumb(string $routePrefix, bool $isEdit): string
+    {
+        if ($routePrefix === 'letter-type.out') {
+            return $isEdit ? 'letter-type.out.edit' : 'letter-type.out.create';
+        }
+
+        if ($routePrefix === 'letter-type.in') {
+            return $isEdit ? 'letter-type.in.edit' : 'letter-type.in.create';
+        }
+
+        return $isEdit ? 'letter-type.edit' : 'letter-type.create';
+    }
+
+    private function scopeLabel(string $scope): string
+    {
+        return $scope === LetterType::SCOPE_OUT ? 'Out' : 'In';
+    }
+
+    private function ensureLetterTypeScope(LetterType $letterType, string $scope): void
+    {
+        $letterTypeScope = (string) ($letterType->scope ?: LetterType::SCOPE_IN);
+        if ($letterTypeScope !== $scope) {
+            abort(404, 'Letter type not found.');
+        }
+    }
+
+    private function forgetLetterTypeCaches(?string $scope = null): void
+    {
+        Cache::forget('corsec.letter_types.list');
+        Cache::forget('corsec.letter_types.in.list');
+        Cache::forget('corsec.letter_types.out.list');
+
+        if ($scope && in_array($scope, [LetterType::SCOPE_IN, LetterType::SCOPE_OUT], true)) {
+            Cache::forget("corsec.letter_types.{$scope}.list");
         }
     }
 }

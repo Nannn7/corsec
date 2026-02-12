@@ -59,6 +59,7 @@
                                     <th class="min-w-[220px]" data-datatable-column="subject">Perihal</th>
                                     <th class="min-w-[220px]" data-datatable-column="summary">Ringkasan</th>
                                     <th class="min-w-[180px]" data-datatable-column="recipient">Penerima</th>
+                                    <th class="min-w-[180px]" data-datatable-column="letter_type">Jenis Surat</th>
                                     <th class="min-w-[170px]" data-datatable-column="perihal_type">Jenis Perihal</th>
                                     <th class="min-w-[170px]" data-datatable-column="requester_directorate">Direktorat</th>
                                     <th class="min-w-[140px]" data-datatable-column="need_compliance_review">Kepatuhan</th>
@@ -182,18 +183,20 @@
 
         const statusBadge = (status) => {
             const val = (status ?? '').toString().toLowerCase();
+            let normalized = 'order';
+            if (val === 'compliance_review' || val === 'waiting_compliance_approval') normalized = 'review_kepatuhan';
+            if (val === 'numbering' || val === 'waiting_verification' || val === 'final_uploaded') normalized = 'penomoran';
+            if (val === 'verified') normalized = 'done';
+            if (val === 'returned') normalized = 'revisi';
+
             const map = {
-                draft: ['badge-light', 'Draft'],
-                waiting_dir_approval: ['badge-warning', 'Waiting Dir Approval'],
-                compliance_review: ['badge-info', 'Compliance Review'],
-                waiting_compliance_approval: ['badge-warning', 'Waiting Compliance Approval'],
-                numbering: ['badge-primary', 'Numbering'],
-                waiting_verification: ['badge-info', 'Waiting Verification'],
-                final_uploaded: ['badge-info', 'Final Uploaded'],
-                verified: ['badge-success', 'Verified'],
-                returned: ['badge-danger', 'Returned'],
+                order: ['badge-warning', 'Order'],
+                review_kepatuhan: ['badge-info', 'Review Kepatuhan'],
+                penomoran: ['badge-primary', 'Penomoran'],
+                done: ['badge-success', 'Done'],
+                revisi: ['badge-danger', 'Revisi'],
             };
-            const [cls, text] = map[val] ?? ['badge-light', status ?? '-'];
+            const [cls, text] = map[normalized] ?? ['badge-light', status ?? '-'];
             return `<span class="badge ${cls}">${text}</span>`;
         };
 
@@ -265,6 +268,12 @@
                     title: 'Penerima',
                     render: (item, data) => {
                         return data.recipient?.name || data.recipient_other || '-';
+                    },
+                },
+                letter_type: {
+                    title: 'Jenis Surat',
+                    render: (item, data) => {
+                        return data.letter_type?.name || data.letterType?.name || '-';
                     },
                 },
                 perihal_type: {

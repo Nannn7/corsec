@@ -9,6 +9,7 @@ use Modules\Corsec\Models\Attachment;
 use Modules\Corsec\Models\Comment;
 use Modules\Corsec\Models\Directorate;
 use Modules\Corsec\Models\OutgoingLetter;
+use Modules\Corsec\Notifications\CorsecFlowNotification;
 use Modules\Usermanagement\Models\User;
 
 class OutgoingLetterWorkflowService
@@ -41,8 +42,7 @@ class OutgoingLetterWorkflowService
                     ->pluck('id');
 
                 if ($checkerIds->isNotEmpty()) {
-                    $now = now();
-                    $data = json_encode([
+                    CorsecFlowNotification::insertForUsers($checkerIds, 'outgoing_letter_dir_approval', [
                         'title' => 'Approval Surat Keluar',
                         'message' => 'Surat keluar menunggu approval direktorat.',
                         'outgoing_letter_id' => $letter->id,
@@ -55,20 +55,6 @@ class OutgoingLetterWorkflowService
                             'name' => $actor->name,
                         ],
                     ]);
-
-                    $payload = $checkerIds->map(function ($checkerId) use ($data, $now) {
-                        return [
-                            'id' => (string) Str::uuid(),
-                            'type' => 'outgoing_letter_dir_approval',
-                            'notifiable_type' => User::class,
-                            'notifiable_id' => $checkerId,
-                            'data' => $data,
-                            'created_at' => $now,
-                            'updated_at' => $now,
-                        ];
-                    })->all();
-
-                    DB::table('notifications')->insert($payload);
                 }
             }
         });
@@ -651,27 +637,7 @@ class OutgoingLetterWorkflowService
 
     private function notifyUsers(iterable $userIds, string $type, array $data): void
     {
-        $ids = collect($userIds)->filter()->unique()->values();
-        if ($ids->isEmpty()) {
-            return;
-        }
-
-        $now = now();
-        $payloadData = json_encode($data);
-
-        $payload = $ids->map(function ($userId) use ($type, $payloadData, $now) {
-            return [
-                'id' => (string) Str::uuid(),
-                'type' => $type,
-                'notifiable_type' => User::class,
-                'notifiable_id' => $userId,
-                'data' => $payloadData,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ];
-        })->all();
-
-        DB::table('notifications')->insert($payload);
+        CorsecFlowNotification::insertForUsers($userIds, $type, $data);
     }
 
     private function addOutgoingComment(OutgoingLetter $letter, User $actor, string $label, ?string $note): void
