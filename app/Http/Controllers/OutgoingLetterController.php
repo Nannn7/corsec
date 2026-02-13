@@ -45,7 +45,7 @@ class OutgoingLetterController extends Controller
         $this->authorizeRead();
 
         $query = OutgoingLetter::query()
-            ->with(['requesterDirectorate', 'recipient', 'letterType', 'perihalIncomingLetter', 'authorizedBy'])
+            ->with(['requesterDirectorate', 'recipient', 'letterType', 'authorizedBy'])
             ->latest();
 
         if ($request->filled('status')) {
@@ -71,10 +71,6 @@ class OutgoingLetterController extends Controller
                     ->orWhereHas('requesterDirectorate', function ($directorateQuery) use ($search) {
                         $directorateQuery->where('name', 'ilike', "%{$search}%")
                             ->orWhere('code', 'ilike', "%{$search}%");
-                    })
-                    ->orWhereHas('perihalIncomingLetter', function ($incomingQuery) use ($search) {
-                        $incomingQuery->where('registration_no', 'ilike', "%{$search}%")
-                            ->orWhere('subject', 'ilike', "%{$search}%");
                     });
             });
         }
@@ -237,13 +233,23 @@ class OutgoingLetterController extends Controller
         }
     }
 
-    public function create()
+    public function create(Request $request)
     {
         $this->authorizeCreate();
         $senders = Sender::query()->orderBy('name')->get(['id', 'name']);
         $letterTypes = $this->getOutgoingLetterTypes();
         $incomingLetters = $this->getIncomingLettersForResponseLetter();
-        return view('corsec::letter.outgoing.create', compact('senders', 'letterTypes', 'incomingLetters'));
+        $prefillIncomingLetterId = null;
+        if ($request->filled('incoming_letter_id')) {
+            $candidateId = (int) $request->input('incoming_letter_id');
+            if ($candidateId > 0) {
+                $prefillAllowed = $incomingLetters->contains('id', $candidateId);
+                if ($prefillAllowed) {
+                    $prefillIncomingLetterId = $candidateId;
+                }
+            }
+        }
+        return view('corsec::letter.outgoing.create', compact('senders', 'letterTypes', 'incomingLetters', 'prefillIncomingLetterId'));
     }
 
     public function registrationPreview(Request $request)
@@ -351,7 +357,13 @@ class OutgoingLetterController extends Controller
             ]);
         }
         if ($request->perihal_type === 'tanggapan_surat_masuk' && $request->perihal_incoming_letter_id) {
-            $this->ensureIncomingLetterIsResponseLetter((int) $request->perihal_incoming_letter_id);
+            $incomingLetterId = (int) $request->perihal_incoming_letter_id;
+            $this->ensureIncomingLetterIsResponseLetter($incomingLetterId);
+            if ($this->hasActiveResponseOutgoingForIncoming($incomingLetterId)) {
+                throw ValidationException::withMessages([
+                    'perihal_incoming_letter_id' => 'Surat masuk ini sudah memiliki surat jawaban aktif.',
+                ]);
+            }
         }
         if (in_array($request->perihal_type, ['rutinitas', 'insidentil'], true) && !$request->perihal_text) {
             throw ValidationException::withMessages([
@@ -483,7 +495,13 @@ class OutgoingLetterController extends Controller
             ]);
         }
         if ($request->perihal_type === 'tanggapan_surat_masuk' && $request->perihal_incoming_letter_id) {
-            $this->ensureIncomingLetterIsResponseLetter((int) $request->perihal_incoming_letter_id);
+            $incomingLetterId = (int) $request->perihal_incoming_letter_id;
+            $this->ensureIncomingLetterIsResponseLetter($incomingLetterId);
+            if ($this->hasActiveResponseOutgoingForIncoming($incomingLetterId, $outgoingLetter->id)) {
+                throw ValidationException::withMessages([
+                    'perihal_incoming_letter_id' => 'Surat masuk ini sudah memiliki surat jawaban aktif.',
+                ]);
+            }
         }
         if (in_array($request->perihal_type, ['rutinitas', 'insidentil'], true) && !$request->perihal_text) {
             throw ValidationException::withMessages([
@@ -696,7 +714,12 @@ class OutgoingLetterController extends Controller
     {
         return IncomingLetter::query()
             ->where(function ($query) use ($selectedIncomingLetterId) {
-                $query->where('followup_action', 'response_letter');
+                $query->where(function ($eligibleQuery) {
+                    $eligibleQuery
+                        ->where('followup_action', 'response_letter')
+                        ->where('status', IncomingLetter::STATUS_WAITING_RESPONSE_LETTER)
+                        ->whereDoesntHave('responseOutgoingLetters');
+                });
                 if ($selectedIncomingLetterId) {
                     $query->orWhere('id', $selectedIncomingLetterId);
                 }
@@ -720,7 +743,26 @@ class OutgoingLetterController extends Controller
             ]);
         }
 
+        if ($incomingLetter->status !== IncomingLetter::STATUS_WAITING_RESPONSE_LETTER) {
+            throw ValidationException::withMessages([
+                $field => 'Surat masuk belum siap diproses melalui Surat Keluar.',
+            ]);
+        }
+
         return $incomingLetter;
+    }
+
+    private function hasActiveResponseOutgoingForIncoming(int $incomingLetterId, ?int $ignoreOutgoingLetterId = null): bool
+    {
+        $query = OutgoingLetter::query()
+            ->where('perihal_type', 'tanggapan_surat_masuk')
+            ->where('perihal_incoming_letter_id', $incomingLetterId);
+
+        if ($ignoreOutgoingLetterId) {
+            $query->where('id', '!=', $ignoreOutgoingLetterId);
+        }
+
+        return $query->exists();
     }
 
     private function generateRegistrationNoPreview(?string $orderDate): string

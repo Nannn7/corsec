@@ -219,7 +219,9 @@ class IncomingLetterWorkflowService
                         }
 
                         $incomingLetter->update([
-                            'status' => IncomingLetter::STATUS_WAITING_VERIFICATION,
+                            'status' => $incomingLetter->followup_action === 'response_letter'
+                                ? IncomingLetter::STATUS_WAITING_RESPONSE_LETTER
+                                : IncomingLetter::STATUS_WAITING_VERIFICATION,
                             'updated_by' => $actor->id,
                         ]);
 
@@ -228,7 +230,9 @@ class IncomingLetterWorkflowService
                             $actor,
                             [$decisionTargetId],
                             'Approval Direktorat',
-                            'Approval direktorat disetujui (DD Direktorat).'
+                            $incomingLetter->followup_action === 'response_letter'
+                                ? 'Approval direktorat disetujui (DD Direktorat). Lanjut proses melalui Surat Keluar.'
+                                : 'Approval direktorat disetujui (DD Direktorat).'
                         );
 
                         return;
@@ -410,6 +414,13 @@ class IncomingLetterWorkflowService
         DB::transaction(function () use ($incomingLetter, $actor, $action, $note) {
             $isAdmin = $actor->hasRole('administrator');
             $isEoCorpAffairActor = $this->isEoCorpAffairActor($actor);
+
+            if ($incomingLetter->status === IncomingLetter::STATUS_WAITING_RESPONSE_LETTER) {
+                abort(403, 'Surat masuk dengan tindak lanjut Surat Jawaban diverifikasi melalui proses Surat Keluar.');
+            }
+            if ($incomingLetter->status !== IncomingLetter::STATUS_WAITING_VERIFICATION) {
+                abort(403, 'Verifikasi EO Corp Affair hanya untuk status waiting verification.');
+            }
 
             if (!$isAdmin && !$isEoCorpAffairActor) {
                 abort(403, 'Verifikasi EO Corp Affair hanya untuk checker/approver dari direktorat Corporate Secretary.');

@@ -99,6 +99,7 @@
             'dispatched' => 'Dispatched',
             'in_progress' => 'In Progress',
             'waiting_dir_approval' => 'Waiting Dir Approval',
+            'waiting_response_letter' => 'Waiting Response Letter',
             'waiting_verification' => 'Waiting Verification',
             'verified' => 'Verified',
             'returned' => 'Returned',
@@ -109,6 +110,44 @@
         $socialMaterialFiles =
             $incomingLetter->attachables?->where('category', 'social_material')->values() ?? collect();
         $directorateMap = $directorates?->keyBy('id') ?? collect();
+        $responseOutgoingLetter = $responseOutgoingLetter ?? null;
+        $canCreateOutgoingFromIncoming =
+            $incomingLetter->followup_action === 'response_letter' &&
+            $status === 'waiting_response_letter' &&
+            !$responseOutgoingLetter &&
+            $user &&
+            $user->can('corsec.create') &&
+            !$isEoCorpAffairDirectorate;
+        $responseLetterProgressBadgeLabel = null;
+        $responseLetterProgressBadgeClass = 'badge-light';
+        if ($incomingLetter->followup_action === 'response_letter') {
+            if ($responseOutgoingLetter) {
+                $outgoingStatus = (string) ($responseOutgoingLetter->status ?? '');
+                if ($outgoingStatus === 'verified') {
+                    $responseLetterProgressBadgeLabel = 'Selesai via Surat Keluar';
+                    $responseLetterProgressBadgeClass = 'badge-success';
+                } elseif ($outgoingStatus === 'returned') {
+                    $responseLetterProgressBadgeLabel = 'Perlu Revisi Surat Jawaban';
+                    $responseLetterProgressBadgeClass = 'badge-danger';
+                } else {
+                    $responseLetterProgressBadgeLabel =
+                        'Diproses di Surat Keluar' .
+                        ($responseOutgoingLetter->display_status_label
+                            ? ' (' . $responseOutgoingLetter->display_status_label . ')'
+                            : '');
+                    $responseLetterProgressBadgeClass = 'badge-info';
+                }
+            } elseif ($status === 'waiting_response_letter') {
+                $responseLetterProgressBadgeLabel = 'Menunggu Pembuatan Surat Jawaban';
+                $responseLetterProgressBadgeClass = 'badge-warning';
+            } elseif ($status === 'verified') {
+                $responseLetterProgressBadgeLabel = 'Selesai';
+                $responseLetterProgressBadgeClass = 'badge-success';
+            } else {
+                $responseLetterProgressBadgeLabel = 'Belum Dimulai';
+                $responseLetterProgressBadgeClass = 'badge-light';
+            }
+        }
     @endphp
     <div class="grid gap-5 lg:gap-7.5">
         <div class="card">
@@ -206,7 +245,9 @@
                         </div>
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600">Status:</span>
-                            <span class="badge badge-light">{{ $incomingLetter->status ?? '-' }}</span>
+                            <span class="badge badge-light">
+                                {{ $statusSteps[$incomingLetter->status] ?? ($incomingLetter->status ?? '-') }}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -396,6 +437,56 @@
                                 <span class="text-gray-600">Target Jawaban:</span>
                                 <span class="font-medium">{{ $followupDetail['target_date'] ?? '-' }}</span>
                             </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Surat Jawaban:</span>
+                                <span class="font-medium">
+                                    @if ($responseOutgoingLetter)
+                                        <a class="text-primary hover:underline"
+                                            href="{{ route('letter.outgoing.show', $responseOutgoingLetter) }}">
+                                            {{ $responseOutgoingLetter->registration_no ?? ('ID #' . $responseOutgoingLetter->id) }}
+                                        </a>
+                                    @else
+                                        <span class="text-warning">Belum dibuat</span>
+                                    @endif
+                                </span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Status Surat Jawaban:</span>
+                                <span class="font-medium">
+                                    {{ $responseOutgoingLetter?->display_status_label ?? '-' }}
+                                </span>
+                            </div>
+                            @if ($responseLetterProgressBadgeLabel)
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">Progress Surat Jawaban:</span>
+                                    <span class="badge {{ $responseLetterProgressBadgeClass }}">
+                                        {{ $responseLetterProgressBadgeLabel }}
+                                    </span>
+                                </div>
+                            @endif
+                            @if ($responseOutgoingLetter?->finalAttachment)
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">Final Surat Jawaban:</span>
+                                    <span class="font-medium">
+                                        <a class="text-primary hover:underline"
+                                            href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($responseOutgoingLetter->finalAttachment->path) }}"
+                                            target="_blank" rel="noopener">
+                                            {{ $responseOutgoingLetter->finalAttachment->original_name ?? $responseOutgoingLetter->finalAttachment->file_name }}
+                                        </a>
+                                    </span>
+                                </div>
+                            @endif
+                            @if ($canCreateOutgoingFromIncoming)
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">Aksi:</span>
+                                    <span class="font-medium">
+                                        <a class="btn btn-sm btn-primary"
+                                            href="{{ route('letter.outgoing.create', ['incoming_letter_id' => $incomingLetter->id]) }}">
+                                            Buat Surat Jawaban
+                                        </a>
+                                    </span>
+                                </div>
+                            @endif
                         @elseif ($incomingLetter->followup_action === 'socialization')
                             @php
                                 $participantsValue = $followupDetail['participants'] ?? [];
@@ -817,10 +908,13 @@
                                 <textarea class="textarea w-full" name="followup_note" rows="3" placeholder="Tambahkan catatan...">{{ old('followup_note', $incomingLetter->followup_note) }}</textarea>
                             </div>
 
-                            <div class="flex flex-col">
-                                <label class="form-label">Upload Hasil (PDF/JPG/PNG)</label>
+                            <div class="flex flex-col" id="evidence-upload-wrapper">
+                                <label class="form-label">Upload Draft/Hasil (PDF/JPG/PNG)</label>
                                 <input class="file-input" type="file" name="evidence_files[]" multiple
                                     accept=".pdf,.jpg,.jpeg,.png">
+                                <small class="text-xs text-gray-500 mt-1" id="evidence-upload-note" style="display:none;">
+                                    Untuk tindak lanjut Surat Jawaban, final dokumen diselesaikan lewat form Surat Keluar.
+                                </small>
                             </div>
 
                             <div class="flex justify-end gap-2">
@@ -997,6 +1091,10 @@
             const socialCoordinationDropdown = document.getElementById('social-coordination-dropdown');
             const socialCoordinationOptions = document.getElementById('social-coordination-options');
             const socialCoordinationSelectedText = document.getElementById('social-coordination-selected-text');
+            const evidenceUploadWrapper = document.getElementById('evidence-upload-wrapper');
+            const evidenceUploadNote = document.getElementById('evidence-upload-note');
+            const evidenceFileInput = evidenceUploadWrapper ? evidenceUploadWrapper.querySelector(
+                'input[name="evidence_files[]"]') : null;
 
             function toggleFollowupFields() {
                 const selected = followupSelect ? followupSelect.value : '';
@@ -1007,6 +1105,21 @@
                         field.classList.add('hidden');
                     }
                 });
+
+                if (evidenceUploadWrapper) {
+                    evidenceUploadWrapper.style.display = '';
+                }
+
+                if (evidenceUploadNote) {
+                    evidenceUploadNote.style.display = selected === 'response_letter' ? '' : 'none';
+                }
+
+                if (evidenceFileInput) {
+                    evidenceFileInput.style.display = selected === 'response_letter' ? 'none' : '';
+                    if (selected === 'response_letter') {
+                        evidenceFileInput.value = '';
+                    }
+                }
             }
 
             if (followupSelect) {
@@ -1228,7 +1341,7 @@
                     }
 
                     const submitForApproval = $form.data('submitForApproval');
-                    if (submitForApproval === '1') {
+                    if (submitForApproval === '1' && action !== 'response_letter') {
                         const filesInput = $form.find('[name="evidence_files[]"]')[0];
                         if (!filesInput || filesInput.files.length === 0) {
                             errors['evidence_files[]'] = 'Harap upload file.';
