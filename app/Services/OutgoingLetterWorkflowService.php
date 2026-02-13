@@ -8,6 +8,7 @@ use Modules\Corsec\Models\Approval;
 use Modules\Corsec\Models\Attachment;
 use Modules\Corsec\Models\Comment;
 use Modules\Corsec\Models\Directorate;
+use Modules\Corsec\Models\IncomingLetter;
 use Modules\Corsec\Models\OutgoingLetter;
 use Modules\Corsec\Notifications\CorsecFlowNotification;
 use Modules\Usermanagement\Models\User;
@@ -554,11 +555,66 @@ class OutgoingLetterWorkflowService
 
     public function uploadFinal(OutgoingLetter $letter, User $actor, Attachment $attachment): void
     {
-        $letter->update([
-            'final_attachment_id' => $attachment->id,
-            'status' => OutgoingLetter::STATUS_VERIFIED,
-            'updated_by' => $actor->id,
-        ]);
+        DB::transaction(function () use ($letter, $actor, $attachment) {
+            $letter->update([
+                'final_attachment_id' => $attachment->id,
+                'status' => OutgoingLetter::STATUS_VERIFIED,
+                'updated_by' => $actor->id,
+            ]);
+
+            if (
+                $letter->perihal_type !== 'tanggapan_surat_masuk' ||
+                !$letter->perihal_incoming_letter_id
+            ) {
+                return;
+            }
+
+            $incomingLetter = IncomingLetter::query()->find($letter->perihal_incoming_letter_id);
+            if (!$incomingLetter || $incomingLetter->followup_action !== 'response_letter') {
+                return;
+            }
+
+            $incomingLetter->update([
+                'status' => IncomingLetter::STATUS_VERIFIED,
+                'updated_by' => $actor->id,
+            ]);
+
+            Approval::create([
+                'approvable_type' => IncomingLetter::class,
+                'approvable_id' => $incomingLetter->id,
+                'status' => 'approved',
+                'note' => 'Verifikasi via Surat Keluar - ' . ($letter->registration_no ?? ('ID ' . $letter->id)),
+                'acted_by' => $actor->id,
+                'acted_at' => now(),
+            ]);
+
+            $targetUserIds = collect([
+                $incomingLetter->created_by,
+                $incomingLetter->followup_submitted_by,
+            ])
+                ->filter()
+                ->unique()
+                ->values();
+
+            if ($targetUserIds->isNotEmpty()) {
+                $this->notifyUsers($targetUserIds, 'incoming_letter_action', [
+                    'title' => 'Penyelesaian Surat Jawaban',
+                    'message' => 'Surat masuk ditandai selesai berdasarkan final Surat Keluar.',
+                    'incoming_letter_id' => $incomingLetter->id,
+                    'registration_no' => $incomingLetter->registration_no,
+                    'subject' => $incomingLetter->subject,
+                    'sender' => $incomingLetter->sender,
+                    'status' => $incomingLetter->status,
+                    'target_directorate_id' => $incomingLetter->target_directorate_id,
+                    'created_by' => [
+                        'id' => $actor->id,
+                        'name' => $actor->name,
+                    ],
+                    'outgoing_letter_id' => $letter->id,
+                    'outgoing_registration_no' => $letter->registration_no,
+                ]);
+            }
+        });
     }
 
     private function latestPendingApproval(OutgoingLetter $letter): ?Approval

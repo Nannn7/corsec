@@ -11,8 +11,17 @@
 @section('content')
     @php
         $outgoingLetter = $outgoingLetter ?? null;
+        $prefillIncomingLetterId = $prefillIncomingLetterId ?? null;
         $isEditableStatus = !$outgoingLetter || in_array($outgoingLetter->status, ['draft', 'returned'], true);
         $selectedLetterTypeId = old('letter_type_id', $outgoingLetter?->letter_type_id);
+        $selectedPerihalType = old(
+            'perihal_type',
+            $outgoingLetter?->perihal_type ?? ($prefillIncomingLetterId ? 'tanggapan_surat_masuk' : ''),
+        );
+        $selectedPerihalIncomingLetterId = old(
+            'perihal_incoming_letter_id',
+            $outgoingLetter?->perihal_incoming_letter_id ?? $prefillIncomingLetterId,
+        );
         $showDetailFields = isset($outgoingLetter) || !empty($selectedLetterTypeId);
     @endphp
     <div class="grid gap-5 mx-auto w-full lg:gap-7.5">
@@ -110,8 +119,8 @@
                         <div class="flex flex-col md:col-span-2">
                             <label class="form-label">Perihal <span class="text-danger">*</span></label>
                             <input class="input @error('subject') border-danger bg-danger-light @enderror" type="text"
-                                name="subject" id="subject" value="{{ old('subject', $outgoingLetter?->subject) }}" maxlength="255"
-                                placeholder="Perihal surat..." required>
+                                name="subject" id="subject" value="{{ old('subject', $outgoingLetter?->subject) }}"
+                                maxlength="255" placeholder="Perihal surat..." required>
                             @error('subject')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
@@ -132,15 +141,13 @@
                                 name="perihal_type" id="perihal_type" required>
                                 <option value="">- Pilih -</option>
                                 <option value="tanggapan_surat_masuk"
-                                    {{ old('perihal_type', $outgoingLetter?->perihal_type) === 'tanggapan_surat_masuk' ? 'selected' : '' }}>
+                                    {{ $selectedPerihalType === 'tanggapan_surat_masuk' ? 'selected' : '' }}>
                                     Tanggapan Surat Masuk
                                 </option>
-                                <option value="rutinitas"
-                                    {{ old('perihal_type', $outgoingLetter?->perihal_type) === 'rutinitas' ? 'selected' : '' }}>
+                                <option value="rutinitas" {{ $selectedPerihalType === 'rutinitas' ? 'selected' : '' }}>
                                     Rutinitas
                                 </option>
-                                <option value="insidentil"
-                                    {{ old('perihal_type', $outgoingLetter?->perihal_type) === 'insidentil' ? 'selected' : '' }}>
+                                <option value="insidentil" {{ $selectedPerihalType === 'insidentil' ? 'selected' : '' }}>
                                     Insidentil
                                 </option>
                             </select>
@@ -157,14 +164,11 @@
                                 <option value="">- Pilih Surat Masuk -</option>
                                 @foreach ($incomingLetters as $incomingLetter)
                                     <option value="{{ $incomingLetter->id }}"
-                                        {{ (string) old('perihal_incoming_letter_id', $outgoingLetter?->perihal_incoming_letter_id) === (string) $incomingLetter->id ? 'selected' : '' }}>
+                                        {{ (string) $selectedPerihalIncomingLetterId === (string) $incomingLetter->id ? 'selected' : '' }}>
                                         {{ $incomingLetter->registration_no }} - {{ $incomingLetter->subject }}
                                     </option>
                                 @endforeach
                             </select>
-                            <small class="text-xs text-gray-500 mt-1">
-                                Menampilkan surat masuk dengan tindak lanjut Surat Jawaban. Data Penerima/Perihal/Ringkasan/Sirkulasi akan otomatis terisi.
-                            </small>
                             @error('perihal_incoming_letter_id')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
@@ -426,7 +430,8 @@
                 if (!recipientSelect) return;
 
                 const recipientId = payload && payload.recipient_id ? String(payload.recipient_id) : '';
-                const hasRecipientOption = recipientId !== '' && Array.from(recipientSelect.options).some((option) =>
+                const hasRecipientOption = recipientId !== '' && Array.from(recipientSelect.options).some((
+                    option) =>
                     option.value === recipientId);
 
                 if (hasRecipientOption) {
@@ -435,7 +440,8 @@
                 } else {
                     recipientSelect.value = 'other';
                     if (recipientOtherInput) {
-                        recipientOtherInput.value = payload && payload.recipient_other ? payload.recipient_other : '';
+                        recipientOtherInput.value = payload && payload.recipient_other ? payload.recipient_other :
+                            '';
                     }
                 }
 
@@ -464,7 +470,8 @@
                         complianceReviewSelect.value = payload.need_compliance_review ? '1' : '0';
                     }
 
-                    if (forceFill || !recipientSelect || !recipientSelect.value || recipientSelect.value === 'other') {
+                    if (forceFill || !recipientSelect || !recipientSelect.value || recipientSelect.value ===
+                        'other') {
                         applyIncomingRecipient(payload);
                     }
                 } catch (error) {

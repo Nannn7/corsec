@@ -210,7 +210,7 @@ class IncomingLetterController extends Controller
 
             if (!$letter->registration_no) {
                 $letter->update([
-                    'registration_no' => 'REG-' . now()->format('Ymd') . '-' . str_pad((string) $letter->id, 6, '0', STR_PAD_LEFT),
+                    'registration_no' => $this->generateIncomingRegistrationNo(),
                 ]);
             }
 
@@ -261,6 +261,50 @@ class IncomingLetterController extends Controller
                 : 'Surat masuk berhasil dibuat.');
     }
 
+    private function generateIncomingRegistrationNo(): string
+    {
+        $month = now()->format('m');
+        $year = now()->format('Y');
+        $nextSequence = $this->nextIncomingRegistrationSequence($month, $year);
+
+        return $this->formatIncomingRegistrationNo($nextSequence, $month, $year);
+    }
+
+    private function nextIncomingRegistrationSequence(string $month, string $year): int
+    {
+        $registrationNos = IncomingLetter::withTrashed()
+            ->whereNotNull('registration_no')
+            ->where('registration_no', 'like', "%/{$month}/{$year}")
+            ->pluck('registration_no');
+
+        $maxSequence = 0;
+        foreach ($registrationNos as $registrationNo) {
+            if (!is_string($registrationNo)) {
+                continue;
+            }
+
+            if (preg_match('/^(\d{4})\/(\d{2})\/(\d{4})$/', $registrationNo, $matches) !== 1) {
+                continue;
+            }
+
+            if ($matches[2] !== $month || $matches[3] !== $year) {
+                continue;
+            }
+
+            $sequence = (int) $matches[1];
+            if ($sequence > $maxSequence) {
+                $maxSequence = $sequence;
+            }
+        }
+
+        return $maxSequence + 1;
+    }
+
+    private function formatIncomingRegistrationNo(int $sequence, string $month, string $year): string
+    {
+        return str_pad((string) $sequence, 4, '0', STR_PAD_LEFT) . '/' . $month . '/' . $year;
+    }
+
     /**
      * Show the specified resource.
      */
@@ -279,6 +323,11 @@ class IncomingLetterController extends Controller
             'attachables.attachment',
             'comments.createdBy',
         ]);
+        $responseOutgoingLetter = $incomingLetter
+            ->responseOutgoingLetters()
+            ->with(['finalAttachment'])
+            ->latest('id')
+            ->first();
 
         $user = Auth::user();
         if ($user && !$user->hasRole('administrator')) {
@@ -305,7 +354,7 @@ class IncomingLetterController extends Controller
 
         $directorates = $this->getCachedDirectorates();
 
-        return view('corsec::letter.incoming.show', compact('incomingLetter', 'approvals', 'directorates'));
+        return view('corsec::letter.incoming.show', compact('incomingLetter', 'approvals', 'directorates', 'responseOutgoingLetter'));
     }
 
     /**
@@ -785,6 +834,7 @@ class IncomingLetterController extends Controller
     public function directorateUpdate(Request $request, IncomingLetter $incomingLetter)
     {
         $submitForApproval = $request->boolean('submit_for_approval', true);
+        $followupActionInput = $request->string('followup_action')->toString();
 
         $rules = [
             'target_date' => ['nullable', 'date'],
@@ -817,7 +867,7 @@ class IncomingLetterController extends Controller
             'submit_for_approval' => ['nullable', 'boolean'],
         ];
 
-        if ($submitForApproval) {
+        if ($submitForApproval && $followupActionInput !== 'response_letter') {
             $rules['evidence_files'] = ['required', 'array', 'min:1'];
             $rules['evidence_files.*'] = ['file', 'max:10240'];
         } else {

@@ -256,6 +256,7 @@
                 dispatched: ['badge-info', 'Dispatched'],
                 in_progress: ['badge-warning', 'In Progress'],
                 waiting_dir_approval: ['badge-warning', 'Waiting Dir Approval'],
+                waiting_response_letter: ['badge-info', 'Waiting Response Letter'],
                 waiting_verification: ['badge-info', 'Waiting Verification'],
                 verified: ['badge-success', 'Verified'],
                 returned: ['badge-danger', 'Returned'],

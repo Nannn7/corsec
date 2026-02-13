@@ -6,6 +6,7 @@ use Modules\Corsec\Models\Directorate;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Modules\Corsec\Models\Concerns\HasAuditUsers;
 use Modules\Corsec\Models\Concerns\HasAuthorizedUsers;
@@ -24,6 +25,7 @@ class IncomingLetter extends Model
     public const STATUS_DISPATCHED = 'dispatched';        // sudah disirkulasi ke direktorat
     public const STATUS_IN_PROGRESS = 'in_progress';      // direktorat sedang kerjain
     public const STATUS_WAITING_DIR_APPROVAL = 'waiting_dir_approval'; // nunggu approval EO+DD direktorat
+    public const STATUS_WAITING_RESPONSE_LETTER = 'waiting_response_letter'; // nunggu penyelesaian via surat keluar
     public const STATUS_WAITING_VERIFICATION = 'waiting_verification'; // nunggu verifikasi EO corp affair
     public const STATUS_VERIFIED = 'verified';            // verified, close
     public const STATUS_RETURNED = 'returned';            // balik ke staff + comment
@@ -146,5 +148,11 @@ class IncomingLetter extends Model
     public function approvals(): MorphMany
     {
         return $this->morphMany(Approval::class, 'approvable');
+    }
+
+    public function responseOutgoingLetters(): HasMany
+    {
+        return $this->hasMany(OutgoingLetter::class, 'perihal_incoming_letter_id')
+            ->where('perihal_type', 'tanggapan_surat_masuk');
     }
 }
