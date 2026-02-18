@@ -69,17 +69,20 @@ class OutgoingLetter extends Model
 
     public const STATUS_DRAFT = 'draft';
     public const STATUS_WAITING_DIR_APPROVAL = 'waiting_dir_approval';
-    public const STATUS_RETURNED = 'returned';
     public const STATUS_COMPLIANCE_REVIEW = 'compliance_review';
     public const STATUS_WAITING_COMPLIANCE_APPROVAL = 'waiting_compliance_approval';
-    public const STATUS_NUMBERING = 'numbering';
     public const STATUS_WAITING_VERIFICATION = 'waiting_verification';
+    public const STATUS_WAITING_FINAL_UPLOAD = 'waiting_final_upload';
     public const STATUS_VERIFIED = 'verified';
-    public const STATUS_FINAL_UPLOADED = 'final_uploaded';
+    public const STATUS_RETURNED = 'returned';
+    public const STATUS_FINAL_UPLOADED = 'final_uploaded'; // legacy alias
 
-    public const DISPLAY_STATUS_ORDER = 'order';
-    public const DISPLAY_STATUS_REVIEW_KEPATUHAN = 'review_kepatuhan';
-    public const DISPLAY_STATUS_PENOMORAN = 'penomoran';
+    public const DISPLAY_STATUS_DRAFT = 'draft';
+    public const DISPLAY_STATUS_WAITING_DIR_APPROVAL = 'waiting_dir_approval';
+    public const DISPLAY_STATUS_COMPLIANCE_REVIEW = 'compliance_review';
+    public const DISPLAY_STATUS_WAITING_COMPLIANCE_APPROVAL = 'waiting_compliance_approval';
+    public const DISPLAY_STATUS_WAITING_VERIFICATION = 'waiting_verification';
+    public const DISPLAY_STATUS_WAITING_FINAL_UPLOAD = 'waiting_final_upload';
     public const DISPLAY_STATUS_DONE = 'done';
     public const DISPLAY_STATUS_REVISI = 'revisi';
 
@@ -141,31 +144,32 @@ class OutgoingLetter extends Model
     public static function toDisplayStatus(?string $status): string
     {
         return match ((string) $status) {
-            self::STATUS_DRAFT,
-            self::STATUS_WAITING_DIR_APPROVAL => self::DISPLAY_STATUS_ORDER,
-
-            self::STATUS_COMPLIANCE_REVIEW,
-            self::STATUS_WAITING_COMPLIANCE_APPROVAL => self::DISPLAY_STATUS_REVIEW_KEPATUHAN,
-
-            self::STATUS_NUMBERING,
+            self::STATUS_DRAFT => self::DISPLAY_STATUS_DRAFT,
+            self::STATUS_WAITING_DIR_APPROVAL => self::DISPLAY_STATUS_WAITING_DIR_APPROVAL,
+            self::STATUS_COMPLIANCE_REVIEW => self::DISPLAY_STATUS_COMPLIANCE_REVIEW,
+            self::STATUS_WAITING_COMPLIANCE_APPROVAL => self::DISPLAY_STATUS_WAITING_COMPLIANCE_APPROVAL,
             self::STATUS_WAITING_VERIFICATION,
-            self::STATUS_FINAL_UPLOADED => self::DISPLAY_STATUS_PENOMORAN,
-
+            'numbering' => self::DISPLAY_STATUS_WAITING_VERIFICATION, // legacy state mapped to new flow
+            self::STATUS_WAITING_FINAL_UPLOAD,
+            self::STATUS_FINAL_UPLOADED => self::DISPLAY_STATUS_WAITING_FINAL_UPLOAD,
             self::STATUS_VERIFIED => self::DISPLAY_STATUS_DONE,
             self::STATUS_RETURNED => self::DISPLAY_STATUS_REVISI,
-            default => self::DISPLAY_STATUS_ORDER,
+            default => self::DISPLAY_STATUS_DRAFT,
         };
     }
 
     public static function displayStatusLabel(?string $status): string
     {
         return match (self::toDisplayStatus($status)) {
-            self::DISPLAY_STATUS_ORDER => 'Order',
-            self::DISPLAY_STATUS_REVIEW_KEPATUHAN => 'Review Kepatuhan',
-            self::DISPLAY_STATUS_PENOMORAN => 'Penomoran',
+            self::DISPLAY_STATUS_DRAFT => 'Draft',
+            self::DISPLAY_STATUS_WAITING_DIR_APPROVAL => 'Approval EO dan DD Direktorat',
+            self::DISPLAY_STATUS_COMPLIANCE_REVIEW => 'Review Direktorat Kepatuhan',
+            self::DISPLAY_STATUS_WAITING_COMPLIANCE_APPROVAL => 'Approval EO dan DD Kepatuhan',
+            self::DISPLAY_STATUS_WAITING_VERIFICATION => 'Verifikasi EO Corp Affair',
+            self::DISPLAY_STATUS_WAITING_FINAL_UPLOAD => 'Final Upload',
             self::DISPLAY_STATUS_DONE => 'Done',
             self::DISPLAY_STATUS_REVISI => 'Revisi',
-            default => 'Order',
+            default => 'Draft',
         };
     }
 

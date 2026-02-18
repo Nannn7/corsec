@@ -8,31 +8,18 @@
     @php
         $user = auth()->user();
         $status = $outgoingLetter->status;
-        $displayStatus = \Modules\Corsec\Models\OutgoingLetter::toDisplayStatus($status);
         $isAdmin = $user?->hasRole('administrator');
         $isChecker = $user?->hasRole('checker');
         $isApprover = $user?->hasRole('approver');
         $canEdit =
             in_array($status, ['draft', 'returned'], true) &&
             ($isAdmin || ($user && (int) $outgoingLetter->requester_directorate_id === (int) $user->directorate_id));
-
-        $checkerApproved =
-            $approvals
-                ->where('status', 'approved')
-                ->filter(function ($approval) {
-                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
-                })
-                ->count() > 0;
-        $canCheckerDirApproval = $status === 'waiting_dir_approval' && !$checkerApproved && ($isAdmin || $isChecker);
-        $canApproverApproval = $status === 'waiting_dir_approval' && $checkerApproved && ($isAdmin || $isApprover);
-
-        $checkerComplianceApproved =
-            $approvals
-                ->where('status', 'approved')
-                ->filter(function ($approval) {
-                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Kepatuhan Approved');
-                })
-                ->count() > 0;
+        $isRequesterDirectorate =
+            $user && (int) $outgoingLetter->requester_directorate_id === (int) $user->directorate_id;
+        $requesterRoleNames =
+            $user?->roles?->pluck('name')->map(function ($name) {
+                return \Illuminate\Support\Str::lower((string) $name);
+            }) ?? collect();
         $corpSecretaryCode = config('corsec.eo_corp_affair_directorate_code', '');
         $corpDirectorateName = \Illuminate\Support\Str::lower((string) ($user?->directorate?->name ?? ''));
         $isCorpSecretaryDirectorate =
@@ -40,62 +27,125 @@
             (($corpSecretaryCode !== '' && $user->directorate?->code === $corpSecretaryCode) ||
                 ($corpDirectorateName !== '' &&
                     \Illuminate\Support\Str::contains($corpDirectorateName, 'corporate secretary')));
-        $corpRoleNames = $user?->roles?->pluck('name')->map(function ($name) {
-            return \Illuminate\Support\Str::lower((string) $name);
-        }) ?? collect();
-        $corpPositionName = \Illuminate\Support\Str::lower((string) ($user?->position?->name ?? ''));
-        $isCorpSecretaryStaffPosition =
-            $corpPositionName !== '' && \Illuminate\Support\Str::contains($corpPositionName, 'staff');
-        $isCorpSecretaryMaker =
-            $isCorpSecretaryDirectorate &&
-            $corpRoleNames->contains(function ($name) {
-                return \Illuminate\Support\Str::contains($name, 'maker');
-            });
-        $isCorpSecretaryChecker =
-            $isCorpSecretaryDirectorate &&
-            $corpRoleNames->contains(function ($name) {
-                return \Illuminate\Support\Str::contains($name, 'checker');
-            });
-        $isCorpSecretaryMakerStaff = $isCorpSecretaryMaker && $isCorpSecretaryStaffPosition;
-        $complianceDirectorateCode = config('corsec.compliance_directorate_code', '');
-        $directorateName = \Illuminate\Support\Str::lower((string) ($user?->directorate?->name ?? ''));
+        $complianceCode = config('corsec.compliance_directorate_code', '');
+        $complianceDirectorateName = \Illuminate\Support\Str::lower((string) ($user?->directorate?->name ?? ''));
         $isComplianceDirectorate =
             $user &&
-            (($complianceDirectorateCode !== '' && $user->directorate?->code === $complianceDirectorateCode) ||
-                ($directorateName !== '' &&
-                    (\Illuminate\Support\Str::contains($directorateName, 'compliance') ||
-                        \Illuminate\Support\Str::contains($directorateName, 'kepatuhan'))));
-        $positionName = \Illuminate\Support\Str::lower((string) ($user?->position?->name ?? ''));
-        $isComplianceStaff = $isComplianceDirectorate && $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'staff');
-        $canComplianceCheckerApproval =
-            $status === 'waiting_compliance_approval' &&
-            !$checkerComplianceApproved &&
-            ($isAdmin || ($isComplianceDirectorate && $isChecker));
-        $canComplianceApproverApproval =
-            $status === 'waiting_compliance_approval' &&
-            $checkerComplianceApproved &&
-            ($isAdmin || ($isComplianceDirectorate && $isApprover));
+            (($complianceCode !== '' && $user->directorate?->code === $complianceCode) ||
+                ($complianceDirectorateName !== '' &&
+                    (\Illuminate\Support\Str::contains($complianceDirectorateName, 'kepatuhan') ||
+                        \Illuminate\Support\Str::contains($complianceDirectorateName, 'compliance'))));
 
-        $canComplianceReview = $status === 'compliance_review' && ($isAdmin || $isComplianceStaff);
-        $canNumbering = $status === 'numbering' && $isCorpSecretaryMakerStaff;
-        $canFinalUpload = $status === 'final_uploaded' && $isCorpSecretaryMakerStaff;
-
-        $corpSecretaryCheckerApproved =
+        $checkerApprovedDir =
             $approvals
                 ->where('status', 'approved')
                 ->filter(function ($approval) {
-                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Corp Affair Approved');
+                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
                 })
                 ->count() > 0;
-        $canCorpSecretaryCheckerVerify = $status === 'waiting_verification' && !$corpSecretaryCheckerApproved && $isCorpSecretaryChecker;
-        $canVerify = $canCorpSecretaryCheckerVerify;
+        $checkerApprovedCompliance =
+            $approvals
+                ->where('status', 'approved')
+                ->filter(function ($approval) {
+                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Kepatuhan Approved');
+                })
+                ->count() > 0;
+
+        $userHasDirCheckerAction =
+            $user &&
+            $approvals
+                ->where('acted_by', $user->id)
+                ->filter(function ($approval) {
+                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Approved') ||
+                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Returned');
+                })
+                ->count() > 0;
+        $userHasDirApproverAction =
+            $user &&
+            $approvals
+                ->where('acted_by', $user->id)
+                ->filter(function ($approval) {
+                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'DD Direktorat Approved') ||
+                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'DD Direktorat Returned');
+                })
+                ->count() > 0;
+        $userHasComplianceCheckerAction =
+            $user &&
+            $approvals
+                ->where('acted_by', $user->id)
+                ->filter(function ($approval) {
+                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Kepatuhan Approved') ||
+                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Kepatuhan Returned');
+                })
+                ->count() > 0;
+        $userHasComplianceApproverAction =
+            $user &&
+            $approvals
+                ->where('acted_by', $user->id)
+                ->filter(function ($approval) {
+                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'DD Kepatuhan Approved') ||
+                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'DD Kepatuhan Returned');
+                })
+                ->count() > 0;
+
+        $canDirCheckerApproval =
+            $status === 'waiting_dir_approval' &&
+            !$checkerApprovedDir &&
+            ($isAdmin || ($isRequesterDirectorate && $isChecker)) &&
+            !$userHasDirCheckerAction;
+        $canDirApproverApproval =
+            $status === 'waiting_dir_approval' &&
+            $checkerApprovedDir &&
+            ($isAdmin || ($isRequesterDirectorate && $isApprover)) &&
+            !$userHasDirApproverAction;
+
+        $corpPositionName = \Illuminate\Support\Str::lower((string) ($user?->position?->name ?? ''));
+        $isCorpSecretaryChecker =
+            $isCorpSecretaryDirectorate &&
+            $requesterRoleNames->contains(function ($name) {
+                return \Illuminate\Support\Str::contains($name, 'checker');
+            });
+
+        $isComplianceMakerStaff =
+            $isComplianceDirectorate &&
+            $requesterRoleNames->contains(function ($name) {
+                return \Illuminate\Support\Str::contains($name, 'maker');
+            }) &&
+            $corpPositionName !== '' &&
+            \Illuminate\Support\Str::contains($corpPositionName, 'staff');
+        $canComplianceReview = $status === 'compliance_review' && ($isAdmin || $isComplianceMakerStaff);
+
+        $canComplianceCheckerApproval =
+            $status === 'waiting_compliance_approval' &&
+            !$checkerApprovedCompliance &&
+            ($isAdmin || ($isComplianceDirectorate && $isChecker)) &&
+            !$userHasComplianceCheckerAction;
+        $canComplianceApproverApproval =
+            $status === 'waiting_compliance_approval' &&
+            $checkerApprovedCompliance &&
+            ($isAdmin || ($isComplianceDirectorate && $isApprover)) &&
+            !$userHasComplianceApproverAction;
+
+        $isRequesterDirectorateMakerStaff =
+            $user &&
+            (int) $outgoingLetter->requester_directorate_id === (int) $user->directorate_id &&
+            $requesterRoleNames->contains(function ($name) {
+                return \Illuminate\Support\Str::contains($name, 'maker');
+            }) &&
+            $corpPositionName !== '' &&
+            \Illuminate\Support\Str::contains($corpPositionName, 'staff');
+        $canFinalUpload = $status === 'waiting_final_upload' && ($isAdmin || $isRequesterDirectorateMakerStaff);
+        $canVerify = $status === 'waiting_verification' && ($isAdmin || $isCorpSecretaryChecker);
 
         $statusSteps = [
-            'order' => 'Order',
-            'review_kepatuhan' => 'Review Kepatuhan',
-            'penomoran' => 'Penomoran',
-            'done' => 'Done',
-            'revisi' => 'Revisi',
+            'draft' => 'Draft',
+            'waiting_dir_approval' => 'Approval EO dan DD Direktorat',
+            'compliance_review' => 'Review Kepatuhan',
+            'waiting_compliance_approval' => 'Approval EO dan DD Kepatuhan',
+            'waiting_verification' => 'Verifikasi EO Corp Affair',
+            'waiting_final_upload' => 'Final Upload',
+            'verified' => 'Done',
+            'returned' => 'Revisi',
         ];
     @endphp
 
@@ -151,8 +201,8 @@
                         <span class="font-medium">{{ $outgoingLetter->summary ?? '-' }}</span>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-gray-600">Sirkulasi Kepatuhan:</span>
-                        <span class="font-medium">{{ $outgoingLetter->need_compliance_review ? 'Y' : 'N' }}</span>
+                        <span class="text-gray-600">Review Kepatuhan:</span>
+                        <span class="font-medium">{{ $outgoingLetter->need_compliance_review ? 'Ya' : 'Tidak' }}</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-gray-600">Status:</span>
@@ -173,7 +223,7 @@
                         </span>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-gray-600">Draft Kepatuhan:</span>
+                        <span class="text-gray-600">Review Kepatuhan:</span>
                         <span class="font-medium">
                             @if ($outgoingLetter->complianceAttachment)
                                 <a class="text-primary hover:underline"
@@ -215,62 +265,39 @@
             <div class="card-body">
                 <div class="flex flex-wrap gap-2">
                     @foreach ($statusSteps as $key => $label)
-                        <span class="badge {{ $displayStatus === $key ? 'badge-success' : 'badge-light' }}">{{ $label }}</span>
+                        <span
+                            class="badge {{ $status === $key ? 'badge-success' : 'badge-light' }}">{{ $label }}</span>
                     @endforeach
                 </div>
             </div>
         </div>
 
-        @if ($status === 'compliance_review' && $canComplianceReview)
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Review Kepatuhan</h3>
+        @can('corsec.update')
+            @if ($canComplianceReview)
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Review Direktorat Kepatuhan</h3>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ route('letter.outgoing.compliance.review', $outgoingLetter) }}"
+                            enctype="multipart/form-data" class="grid gap-4 js-ajax-form" data-form-type="outgoing-compliance">
+                            @csrf
+                            <div class="flex flex-col">
+                                <label class="form-label">File Review Kepatuhan <span class="text-danger">*</span></label>
+                                <input class="file-input" type="file" name="compliance_file" accept=".pdf,.jpg,.jpeg,.png">
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="form-label">Catatan (opsional)</label>
+                                <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan review..."></textarea>
+                            </div>
+                            <div class="flex justify-end">
+                                <button class="btn btn-primary" type="submit">Submit Review</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <form method="POST" action="{{ route('letter.outgoing.compliance.review', $outgoingLetter) }}"
-                        enctype="multipart/form-data" class="grid gap-4 js-ajax-form" data-form-type="outgoing-compliance">
-                        @csrf
-                        <div class="flex flex-col">
-                            <label class="form-label">Upload Draft Review <span class="text-danger">*</span></label>
-                            <input class="file-input" type="file" name="compliance_draft" accept=".pdf,.jpg,.jpeg,.png">
-                        </div>
-                        <div class="flex flex-col">
-                            <label class="form-label">Catatan</label>
-                            <textarea class="textarea w-full" name="note" rows="3" placeholder="Catatan review..."></textarea>
-                        </div>
-                        <div class="flex flex-wrap gap-2 justify-end">
-                            <button class="btn btn-danger" type="submit" name="action" value="reject">Reject</button>
-                            <button class="btn btn-primary" type="submit" name="action" value="submit">Submit Review</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        @endif
-
-        @if ($status === 'numbering' && $canNumbering)
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Input Nomor Surat</h3>
-                </div>
-                <div class="card-body">
-                    <form method="POST" action="{{ route('letter.outgoing.numbering', $outgoingLetter) }}"
-                        class="grid gap-4 js-ajax-form" data-form-type="outgoing-numbering">
-                        @csrf
-                        <div class="flex flex-col">
-                            <label class="form-label">Nomor Surat <span class="text-danger">*</span></label>
-                            <input class="input" type="text" name="letter_no" placeholder="Nomor surat...">
-                        </div>
-                        <div class="flex flex-col">
-                            <label class="form-label">Catatan</label>
-                            <textarea class="textarea w-full" name="note" rows="2" placeholder="Catatan..."></textarea>
-                        </div>
-                        <div class="flex justify-end">
-                            <button class="btn btn-primary" type="submit">Simpan & Kirim</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        @endif
+            @endif
+        @endcan
 
         @if ($canFinalUpload)
             <div class="card">
@@ -316,7 +343,8 @@
                                         <td>
                                             {{ $approval->actor?->name ?? '-' }}
                                             @if ($approval->actor?->directorate?->name)
-                                                <span class="text-gray-500 text-xs">({{ $approval->actor->directorate->name }})</span>
+                                                <span
+                                                    class="text-gray-500 text-xs">({{ $approval->actor->directorate->name }})</span>
                                             @endif
                                         </td>
                                         <td>{{ $approval->note ?? '-' }}</td>
@@ -338,9 +366,7 @@
             </div>
             <div class="card-body">
                 @php
-                    $comments = $outgoingLetter->comments
-                        ->sortByDesc('created_at')
-                        ->values();
+                    $comments = $outgoingLetter->comments->sortByDesc('created_at')->values();
                 @endphp
 
                 @if ($comments->count() > 0)
@@ -378,20 +404,22 @@
                     <h3 class="card-title">Approval</h3>
                 </div>
                 <div class="card-body">
-                    @if ($status === 'waiting_dir_approval' && ($canCheckerDirApproval || $canApproverApproval))
+                    @if ($status === 'waiting_dir_approval' && ($canDirCheckerApproval || $canDirApproverApproval))
                         <form method="POST" action="{{ route('letter.outgoing.approval.action', $outgoingLetter) }}"
                             class="grid gap-4 js-ajax-form" data-form-type="outgoing-approval">
                             @csrf
                             <div class="text-sm text-gray-500">
-                                {{ $canCheckerDirApproval ? 'Approval EO Direktorat' : 'Approval DD Direktorat' }}
+                                {{ $canDirCheckerApproval ? 'Approval EO Direktorat' : 'Approval DD Direktorat' }}
                             </div>
                             <div class="flex flex-col">
                                 <label class="form-label">Catatan (opsional)</label>
                                 <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan..."></textarea>
                             </div>
                             <div class="flex flex-wrap gap-2 justify-end">
-                                <button class="btn btn-sm btn-danger" type="submit" name="action" value="reject">Reject</button>
-                                <button class="btn btn-sm btn-success" type="submit" name="action" value="approve">Approve</button>
+                                <button class="btn btn-sm btn-danger" type="submit" name="action"
+                                    value="reject">Reject</button>
+                                <button class="btn btn-sm btn-success" type="submit" name="action"
+                                    value="approve">Approve</button>
                             </div>
                         </form>
                     @elseif ($status === 'waiting_compliance_approval' && ($canComplianceCheckerApproval || $canComplianceApproverApproval))
@@ -406,8 +434,10 @@
                                 <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan..."></textarea>
                             </div>
                             <div class="flex flex-wrap gap-2 justify-end">
-                                <button class="btn btn-sm btn-danger" type="submit" name="action" value="reject">Reject</button>
-                                <button class="btn btn-sm btn-success" type="submit" name="action" value="approve">Approve</button>
+                                <button class="btn btn-sm btn-danger" type="submit" name="action"
+                                    value="reject">Reject</button>
+                                <button class="btn btn-sm btn-success" type="submit" name="action"
+                                    value="approve">Approve</button>
                             </div>
                         </form>
                     @elseif ($canVerify)
@@ -415,15 +445,17 @@
                             class="grid gap-4 js-ajax-form" data-form-type="outgoing-verify">
                             @csrf
                             <div class="text-sm text-gray-500">
-                                Approval EO Corporate Secretary
+                                Verifikasi EO Corp Affair
                             </div>
                             <div class="flex flex-col">
                                 <label class="form-label">Catatan (opsional)</label>
                                 <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan..."></textarea>
                             </div>
                             <div class="flex flex-wrap gap-2 justify-end">
-                                <button class="btn btn-sm btn-danger" type="submit" name="action" value="reject">Reject</button>
-                                <button class="btn btn-sm btn-success" type="submit" name="action" value="verify">Verify</button>
+                                <button class="btn btn-sm btn-danger" type="submit" name="action"
+                                    value="reject">Reject</button>
+                                <button class="btn btn-sm btn-success" type="submit" name="action"
+                                    value="verify">Verify</button>
                             </div>
                         </form>
                     @else
@@ -456,6 +488,13 @@
                     return errors;
                 }
 
+                // Track clicked submit button per form to avoid wrong action value in AJAX submit.
+                $document.on('click', 'form.js-ajax-form button[type="submit"]', function() {
+                    if (this.form) {
+                        this.form.__lastSubmitter = this;
+                    }
+                });
+
                 $document.on('submit', 'form.js-ajax-form', function(event) {
                     event.preventDefault();
                     const $form = window.jQuery(this);
@@ -464,21 +503,10 @@
                     let errors = {};
                     const formType = $form.data('formType');
 
-                    if (formType === 'outgoing-compliance') {
-                        const submitter = document.activeElement;
-                        const isReject =
-                            submitter &&
-                            submitter.getAttribute('name') === 'action' &&
-                            submitter.value === 'reject';
-                        errors = isReject
-                            ? validateSimpleRequired($form, ['note'])
-                            : validateSimpleRequired($form, ['compliance_draft']);
-                    }
-                    if (formType === 'outgoing-numbering') {
-                        errors = validateSimpleRequired($form, ['letter_no']);
-                    }
                     if (formType === 'outgoing-final') {
                         errors = validateSimpleRequired($form, ['final_file']);
+                    } else if (formType === 'outgoing-compliance') {
+                        errors = validateSimpleRequired($form, ['compliance_file']);
                     }
 
                     if (Object.keys(errors).length > 0) {
@@ -489,10 +517,13 @@
                     }
 
                     const formData = new FormData(this);
-                    const submitter = document.activeElement;
+                    const nativeEvent = event.originalEvent || {};
+                    const submitter = nativeEvent.submitter || this.__lastSubmitter || document
+                        .activeElement;
                     if (submitter && submitter.name) {
                         formData.set(submitter.name, submitter.value);
                     }
+                    this.__lastSubmitter = null;
 
                     window.jQuery.ajax({
                         url: $form.attr('action'),
@@ -514,10 +545,13 @@
                             window.location.reload();
                         },
                         error: function(xhr) {
-                            if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
+                            if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON
+                                .errors) {
                                 const serverErrors = xhr.responseJSON.errors;
                                 Object.keys(serverErrors).forEach((field) => {
-                                    showFieldError($form, field, serverErrors[field][0]);
+                                    showFieldError($form, field, serverErrors[field][
+                                        0
+                                    ]);
                                 });
                                 return;
                             }
