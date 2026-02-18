@@ -63,8 +63,7 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/{outgoingLetter}/submit', [OutgoingLetterController::class, 'submit'])->middleware('permission:corsec.update')->name('submit');
         Route::post('/{outgoingLetter}/approval', [OutgoingLetterController::class, 'approvalAction'])->middleware('permission:corsec.authorize')->name('approval.action');
         Route::post('/{outgoingLetter}/compliance-review', [OutgoingLetterController::class, 'complianceReview'])->middleware('permission:corsec.update')->name('compliance.review');
-        Route::post('/{outgoingLetter}/numbering', [OutgoingLetterController::class, 'numbering'])->middleware('permission:corsec.update')->name('numbering');
-        Route::post('/{outgoingLetter}/upload-final', [OutgoingLetterController::class, 'uploadFinal'])->middleware('permission:corsec.update')->name('upload_final');
+        Route::post('/{outgoingLetter}/upload-final', [OutgoingLetterController::class, 'uploadFinal'])->middleware('permission:corsec.create|corsec.update')->name('upload_final');
         Route::post('/{outgoingLetter}/verify', [OutgoingLetterController::class, 'verifyAction'])->middleware('permission:corsec.authorize')->name('verify.action');
         Route::delete('/{outgoingLetter}', [OutgoingLetterController::class, 'destroy'])->middleware('permission:corsec.delete')->name('destroy');
     });

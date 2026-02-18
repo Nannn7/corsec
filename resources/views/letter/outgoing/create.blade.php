@@ -22,6 +22,10 @@
             'perihal_incoming_letter_id',
             $outgoingLetter?->perihal_incoming_letter_id ?? $prefillIncomingLetterId,
         );
+        $needComplianceReview = (string) old(
+            'need_compliance_review',
+            isset($outgoingLetter) ? (int) $outgoingLetter->need_compliance_review : 0,
+        );
         $showDetailFields = isset($outgoingLetter) || !empty($selectedLetterTypeId);
     @endphp
     <div class="grid gap-5 mx-auto w-full lg:gap-7.5">
@@ -136,6 +140,18 @@
                         </div>
 
                         <div class="flex flex-col">
+                            <label class="form-label">Perlu Review Direktorat Kepatuhan?</label>
+                            <select class="select @error('need_compliance_review') border-danger bg-danger-light @enderror"
+                                name="need_compliance_review" id="need_compliance_review">
+                                <option value="0" {{ $needComplianceReview === '0' ? 'selected' : '' }}>Tidak</option>
+                                <option value="1" {{ $needComplianceReview === '1' ? 'selected' : '' }}>Ya</option>
+                            </select>
+                            @error('need_compliance_review')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+
+                        <div class="flex flex-col">
                             <label class="form-label">Jenis Perihal <span class="text-danger">*</span></label>
                             <select class="select @error('perihal_type') border-danger bg-danger-light @enderror"
                                 name="perihal_type" id="perihal_type" required>
@@ -197,30 +213,9 @@
                         </div>
 
                         <div class="flex flex-col">
-                            <label class="form-label">Sirkulasi Kepatuhan <span class="text-danger">*</span></label>
-                            <select
-                                class="select @error('need_compliance_review') border-danger bg-danger-light @enderror"
-                                name="need_compliance_review" id="need_compliance_review" required>
-                                <option value="">- Pilih -</option>
-                                <option value="1"
-                                    {{ (string) old('need_compliance_review', $outgoingLetter?->need_compliance_review) === '1' ? 'selected' : '' }}>
-                                    Ya</option>
-                                <option value="0"
-                                    {{ (string) old('need_compliance_review', $outgoingLetter?->need_compliance_review) === '0' ? 'selected' : '' }}>
-                                    Tidak</option>
-                            </select>
-                            @error('need_compliance_review')
-                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
-                            @enderror
-                            <small class="text-xs text-gray-500 mt-1">
-                                Ya = akan masuk ke Direktorat Kepatuhan, Tidak = langsung ke Corporate Secretary.
-                            </small>
-                        </div>
-
-                        <div class="flex flex-col">
                             <label class="form-label">Status</label>
                             <input class="input" type="text" readonly
-                                value="{{ isset($outgoingLetter) ? $outgoingLetter->display_status_label : 'Order' }}">
+                                value="{{ isset($outgoingLetter) ? $outgoingLetter->display_status_label : 'Draft' }}">
                         </div>
 
                         <div class="flex flex-col md:col-span-2">
@@ -272,7 +267,7 @@
                                     <i class="ki-filled ki-archive"></i> Save Draft
                                 </button>
                                 <button type="submit" id="submit-approval" class="btn btn-primary">
-                                    <i class="ki-filled ki-check"></i> Request Approval
+                                    <i class="ki-filled ki-check"></i> Submit Approval
                                 </button>
                             @endcan
                         @endif
@@ -308,7 +303,6 @@
             const incomingLetterSelect = document.getElementById('perihal_incoming_letter_id');
             const subjectInput = document.getElementById('subject');
             const summaryInput = document.getElementById('summary');
-            const complianceReviewSelect = document.getElementById('need_compliance_review');
             const incomingPreviewCache = {};
 
             async function refreshRegistrationPreview() {
@@ -466,10 +460,6 @@
                         summaryInput.value = payload.summary || '';
                     }
 
-                    if (complianceReviewSelect && (forceFill || !complianceReviewSelect.value)) {
-                        complianceReviewSelect.value = payload.need_compliance_review ? '1' : '0';
-                    }
-
                     if (forceFill || !recipientSelect || !recipientSelect.value || recipientSelect.value ===
                         'other') {
                         applyIncomingRecipient(payload);
@@ -547,10 +537,6 @@
                     if (!$form.find('[name="perihal_type"]').val()) {
                         errors.perihal_type = requiredMessage;
                     }
-                    if (!$form.find('[name="need_compliance_review"]').val()) {
-                        errors.need_compliance_review = requiredMessage;
-                    }
-
                     const perihalType = $form.find('[name="perihal_type"]').val();
                     if (perihalType === 'tanggapan_surat_masuk' &&
                         !$form.find('[name="perihal_incoming_letter_id"]').val()) {

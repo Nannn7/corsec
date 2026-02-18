@@ -62,7 +62,6 @@
                                     <th class="min-w-[180px]" data-datatable-column="letter_type">Jenis Surat</th>
                                     <th class="min-w-[170px]" data-datatable-column="perihal_type">Jenis Perihal</th>
                                     <th class="min-w-[170px]" data-datatable-column="requester_directorate">Direktorat</th>
-                                    <th class="min-w-[140px]" data-datatable-column="need_compliance_review">Kepatuhan</th>
                                     <th class="min-w-[140px]" data-datatable-column="status">Status</th>
                                     <th class="min-w-[180px]" data-datatable-column="created_at">Dibuat</th>
                                     <th class="min-w-[70px] text-center" data-datatable-column="actions">Action</th>
@@ -183,16 +182,22 @@
 
         const statusBadge = (status) => {
             const val = (status ?? '').toString().toLowerCase();
-            let normalized = 'order';
-            if (val === 'compliance_review' || val === 'waiting_compliance_approval') normalized = 'review_kepatuhan';
-            if (val === 'numbering' || val === 'waiting_verification' || val === 'final_uploaded') normalized = 'penomoran';
+            let normalized = 'draft';
+            if (val === 'waiting_dir_approval') normalized = 'waiting_dir_approval';
+            if (val === 'compliance_review') normalized = 'compliance_review';
+            if (val === 'waiting_compliance_approval') normalized = 'waiting_compliance_approval';
+            if (val === 'waiting_verification') normalized = 'waiting_verification';
+            if (val === 'waiting_final_upload' || val === 'final_uploaded') normalized = 'waiting_final_upload';
             if (val === 'verified') normalized = 'done';
             if (val === 'returned') normalized = 'revisi';
 
             const map = {
-                order: ['badge-warning', 'Order'],
-                review_kepatuhan: ['badge-info', 'Review Kepatuhan'],
-                penomoran: ['badge-primary', 'Penomoran'],
+                draft: ['badge-light', 'Draft'],
+                waiting_dir_approval: ['badge-warning', 'Approval EO dan DD Direktorat'],
+                compliance_review: ['badge-info', 'Review Kepatuhan'],
+                waiting_compliance_approval: ['badge-warning', 'Approval EO dan DD Kepatuhan'],
+                waiting_verification: ['badge-warning', 'Verifikasi EO Corp Affair'],
+                waiting_final_upload: ['badge-primary', 'Final Upload'],
                 done: ['badge-success', 'Done'],
                 revisi: ['badge-danger', 'Revisi'],
             };
@@ -284,14 +289,6 @@
                     title: 'Direktorat',
                     render: (item, data) => {
                         return data.requester_directorate?.name || data.requesterDirectorate?.name || '-';
-                    },
-                },
-                need_compliance_review: {
-                    title: 'Kepatuhan',
-                    render: (item, data) => {
-                        return data.need_compliance_review ?
-                            '<span class="badge badge-info">Ya</span>' :
-                            '<span class="badge badge-light">Tidak</span>';
                     },
                 },
                 status: {
