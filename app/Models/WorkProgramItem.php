@@ -20,6 +20,7 @@ class WorkProgramItem extends Model
         'work_program_id',
         'title',
         'description',
+        'initial_target_date',
         'target_date',
         'weight',
         'status',
@@ -28,6 +29,7 @@ class WorkProgramItem extends Model
     ];
 
     protected $casts = [
+        'initial_target_date' => 'date',
         'target_date' => 'date',
         'weight' => 'integer',
         'completed_at' => 'datetime',

@@ -181,7 +181,7 @@
                                 @foreach ($incomingLetters as $incomingLetter)
                                     <option value="{{ $incomingLetter->id }}"
                                         {{ (string) $selectedPerihalIncomingLetterId === (string) $incomingLetter->id ? 'selected' : '' }}>
-                                        {{ $incomingLetter->registration_no }} - {{ $incomingLetter->subject }}
+                                        {{ $incomingLetter->external_letter_no }} - {{ $incomingLetter->subject }}
                                     </option>
                                 @endforeach
                             </select>
@@ -425,7 +425,7 @@
 
                 const recipientId = payload && payload.recipient_id ? String(payload.recipient_id) : '';
                 const hasRecipientOption = recipientId !== '' && Array.from(recipientSelect.options).some((
-                    option) =>
+                        option) =>
                     option.value === recipientId);
 
                 if (hasRecipientOption) {

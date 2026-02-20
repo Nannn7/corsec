@@ -292,6 +292,7 @@ class WorkplanWorkflowService
             } elseif ($update->action === WorkProgramUpdate::ACTION_REVISION) {
                 $targetDate = $update->revised_target_date ?: $item->target_date;
                 $item->update([
+                    'initial_target_date' => $item->initial_target_date ?: $item->target_date,
                     'target_date' => $targetDate,
                     'status' => $this->resolveProgressStatus($targetDate),
                     'completed_at' => null,

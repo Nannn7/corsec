@@ -6,6 +6,7 @@ use Modules\Corsec\Models\Directorate;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\Usermanagement\Models\User;
 
 class MeetingAgenda extends Model
 {
@@ -17,6 +18,7 @@ class MeetingAgenda extends Model
         'title',
         'description',
         'owner_directorate_id',
+        'pic_user_id',
     ];
 
     public function meeting(): BelongsTo
@@ -27,6 +29,11 @@ class MeetingAgenda extends Model
     public function ownerDirectorate()
     {
         return $this->belongsTo(Directorate::class, 'owner_directorate_id');
+    }
+
+    public function picUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'pic_user_id');
     }
 
     public function materials(): HasMany

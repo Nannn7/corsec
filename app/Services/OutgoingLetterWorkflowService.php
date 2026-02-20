@@ -167,25 +167,7 @@ class OutgoingLetterWorkflowService
                     'Verifikasi EO Corp Affair disetujui. Menunggu final upload oleh staff direktorat terkait.'
                 );
 
-                $staffIds = $this->getRequesterDirectorateMakerStaffIds($letter);
-                if ($staffIds->isEmpty() && $letter->created_by) {
-                    $staffIds = collect([(string) $letter->created_by]);
-                }
-
-                if ($staffIds->isNotEmpty()) {
-                    $this->notifyUsers($staffIds, 'outgoing_letter_final_upload', [
-                        'title' => 'Final Upload Surat Keluar',
-                        'message' => 'Surat keluar menunggu final upload oleh staff direktorat terkait.',
-                        'outgoing_letter_id' => $letter->id,
-                        'registration_no' => $letter->registration_no,
-                        'subject' => $letter->subject,
-                        'status' => $letter->status,
-                        'created_by' => [
-                            'id' => $actor->id,
-                            'name' => $actor->name,
-                        ],
-                    ]);
-                }
+                $this->notifyFinalUploadRequired($letter, $actor);
 
                 return;
             }
@@ -212,9 +194,14 @@ class OutgoingLetterWorkflowService
         });
     }
 
-    public function uploadFinal(OutgoingLetter $letter, User $actor, Attachment $attachment): void
+    public function uploadFinal(
+        OutgoingLetter $letter,
+        User $actor,
+        Attachment $attachment,
+        ?string $finalUploadDate = null
+    ): void
     {
-        DB::transaction(function () use ($letter, $actor, $attachment) {
+        DB::transaction(function () use ($letter, $actor, $attachment, $finalUploadDate) {
             if ($letter->status !== OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD) {
                 abort(403, 'Upload final surat hanya untuk status waiting final upload.');
             }
@@ -223,11 +210,17 @@ class OutgoingLetterWorkflowService
                 abort(403, 'Upload final surat hanya untuk staff maker dari direktorat terkait.');
             }
 
-            $letter->update([
+            $payload = [
                 'final_attachment_id' => $attachment->id,
                 'status' => OutgoingLetter::STATUS_VERIFIED,
                 'updated_by' => $actor->id,
-            ]);
+            ];
+
+            if ($finalUploadDate) {
+                $payload['final_upload_date'] = $finalUploadDate;
+            }
+
+            $letter->update($payload);
 
             if (
                 $letter->perihal_type !== 'tanggapan_surat_masuk' ||
@@ -352,26 +345,41 @@ class OutgoingLetterWorkflowService
             $this->closeOrCreateApproval($letter, $approval, 'approved', 'DD Direktorat Approved', $note, $actor);
 
             $nextStatus = $letter->need_compliance_review
-                ? OutgoingLetter::STATUS_COMPLIANCE_REVIEW
-                : OutgoingLetter::STATUS_WAITING_VERIFICATION;
+                ? OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL
+                : OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD;
 
-            $letter->update([
+            $updatePayload = [
                 'status' => $nextStatus,
                 'updated_by' => $actor->id,
-            ]);
+            ];
+
+            if (!$letter->need_compliance_review) {
+                $updatePayload['authorized_status'] = 'authorized';
+                $updatePayload['authorized_at'] = now();
+                $updatePayload['authorized_by'] = $actor->id;
+            }
+
+            $letter->update($updatePayload);
 
             if ($letter->need_compliance_review) {
+                Approval::create([
+                    'approvable_type' => OutgoingLetter::class,
+                    'approvable_id' => $letter->id,
+                    'status' => 'pending',
+                    'note' => 'Menunggu approval EO dan DD Direktorat Kepatuhan',
+                ]);
+
                 $this->notifyOutgoingDecision(
                     $letter,
                     $actor,
-                    'Approval DD Direktorat disetujui. Lanjut review Direktorat Kepatuhan.'
+                    'Approval DD Direktorat disetujui. Lanjut approval EO dan DD Kepatuhan.'
                 );
 
-                $complianceStaffIds = $this->getComplianceMakerStaffIds();
-                if ($complianceStaffIds->isNotEmpty()) {
-                    $this->notifyUsers($complianceStaffIds, 'outgoing_letter_compliance_review', [
-                        'title' => 'Review Kepatuhan Surat Keluar',
-                        'message' => 'Surat keluar menunggu review Direktorat Kepatuhan.',
+                $checkerIds = $this->getComplianceCheckerIds();
+                if ($checkerIds->isNotEmpty()) {
+                    $this->notifyUsers($checkerIds, 'outgoing_letter_compliance_approval', [
+                        'title' => 'Approval Kepatuhan Surat Keluar',
+                        'message' => 'Surat keluar menunggu approval EO Kepatuhan.',
                         'outgoing_letter_id' => $letter->id,
                         'registration_no' => $letter->registration_no,
                         'subject' => $letter->subject,
@@ -386,24 +394,10 @@ class OutgoingLetterWorkflowService
                 $this->notifyOutgoingDecision(
                     $letter,
                     $actor,
-                    'Approval DD Direktorat disetujui. Lanjut verifikasi EO Corp Affair.'
+                    'Approval DD Direktorat disetujui. Menunggu final upload oleh staff direktorat terkait.'
                 );
 
-                $checkerIds = $this->getCorpSecretaryCheckerIds();
-                if ($checkerIds->isNotEmpty()) {
-                    $this->notifyUsers($checkerIds, 'outgoing_letter_corpsec_approval', [
-                        'title' => 'Verifikasi Surat Keluar',
-                        'message' => 'Surat keluar menunggu verifikasi EO Corp Affair.',
-                        'outgoing_letter_id' => $letter->id,
-                        'registration_no' => $letter->registration_no,
-                        'subject' => $letter->subject,
-                        'status' => $letter->status,
-                        'created_by' => [
-                            'id' => $actor->id,
-                            'name' => $actor->name,
-                        ],
-                    ]);
-                }
+                $this->notifyFinalUploadRequired($letter, $actor);
             }
 
             return;
@@ -502,31 +496,20 @@ class OutgoingLetterWorkflowService
             $this->closeOrCreateApproval($letter, $approval, 'approved', 'DD Kepatuhan Approved', $note, $actor);
 
             $letter->update([
-                'status' => OutgoingLetter::STATUS_WAITING_VERIFICATION,
+                'status' => OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD,
+                'authorized_status' => 'authorized',
+                'authorized_at' => now(),
+                'authorized_by' => $actor->id,
                 'updated_by' => $actor->id,
             ]);
 
             $this->notifyOutgoingDecision(
                 $letter,
                 $actor,
-                'Approval DD Kepatuhan disetujui. Lanjut verifikasi EO Corp Affair.'
+                'Approval DD Kepatuhan disetujui. Menunggu final upload oleh staff direktorat terkait.'
             );
 
-            $checkerIds = $this->getCorpSecretaryCheckerIds();
-            if ($checkerIds->isNotEmpty()) {
-                $this->notifyUsers($checkerIds, 'outgoing_letter_corpsec_approval', [
-                    'title' => 'Verifikasi Surat Keluar',
-                    'message' => 'Surat keluar menunggu verifikasi EO Corp Affair.',
-                    'outgoing_letter_id' => $letter->id,
-                    'registration_no' => $letter->registration_no,
-                    'subject' => $letter->subject,
-                    'status' => $letter->status,
-                    'created_by' => [
-                        'id' => $actor->id,
-                        'name' => $actor->name,
-                    ],
-                ]);
-            }
+            $this->notifyFinalUploadRequired($letter, $actor);
 
             return;
         }
@@ -649,6 +632,29 @@ class OutgoingLetterWorkflowService
                 'name' => $actor->name,
             ],
         ]);
+    }
+
+    private function notifyFinalUploadRequired(OutgoingLetter $letter, User $actor): void
+    {
+        $staffIds = $this->getRequesterDirectorateMakerStaffIds($letter);
+        if ($staffIds->isEmpty() && $letter->created_by) {
+            $staffIds = collect([(string) $letter->created_by]);
+        }
+
+        if ($staffIds->isNotEmpty()) {
+            $this->notifyUsers($staffIds, 'outgoing_letter_final_upload', [
+                'title' => 'Final Upload Surat Keluar',
+                'message' => 'Surat keluar menunggu final upload oleh staff direktorat terkait.',
+                'outgoing_letter_id' => $letter->id,
+                'registration_no' => $letter->registration_no,
+                'subject' => $letter->subject,
+                'status' => $letter->status,
+                'created_by' => [
+                    'id' => $actor->id,
+                    'name' => $actor->name,
+                ],
+            ]);
+        }
     }
 
     private function notifyUsers(iterable $userIds, string $type, array $data): void

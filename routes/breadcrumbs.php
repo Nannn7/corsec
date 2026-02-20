@@ -46,6 +46,21 @@ Breadcrumbs::for('meeting.index', function (BreadcrumbTrail $trail) {
     $trail->push('Meeting', route('meeting.index'));
 });
 
+Breadcrumbs::for('meeting.create', function (BreadcrumbTrail $trail) {
+    $trail->parent('meeting.index');
+    $trail->push('Input Meeting', route('meeting.create'));
+});
+
+Breadcrumbs::for('meeting.show', function (BreadcrumbTrail $trail, $meeting) {
+    $trail->parent('meeting.index');
+    $trail->push('Detail Meeting', route('meeting.show', $meeting));
+});
+
+Breadcrumbs::for('meeting.edit', function (BreadcrumbTrail $trail, $meeting) {
+    $trail->parent('meeting.show', $meeting);
+    $trail->push('Edit Meeting', route('meeting.edit', $meeting));
+});
+
 // Workplan
 Breadcrumbs::for('workplan.index', function (BreadcrumbTrail $trail) {
     $trail->parent('dashboard');
