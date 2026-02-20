@@ -137,16 +137,36 @@
         $canFinalUpload = $status === 'waiting_final_upload' && ($isAdmin || $isRequesterDirectorateMakerStaff);
         $canVerify = $status === 'waiting_verification' && ($isAdmin || $isCorpSecretaryChecker);
 
-        $statusSteps = [
-            'draft' => 'Draft',
-            'waiting_dir_approval' => 'Approval EO dan DD Direktorat',
-            'compliance_review' => 'Review Kepatuhan',
-            'waiting_compliance_approval' => 'Approval EO dan DD Kepatuhan',
-            'waiting_verification' => 'Verifikasi EO Corp Affair',
-            'waiting_final_upload' => 'Final Upload',
-            'verified' => 'Done',
-            'returned' => 'Revisi',
-        ];
+        $isResponseLetterFlow = (string) $outgoingLetter->perihal_type === 'tanggapan_surat_masuk';
+        if ($isResponseLetterFlow) {
+            $statusSteps = [
+                'draft' => 'Draft',
+                'waiting_dir_approval' => 'Approval EO dan DD Direktorat',
+            ];
+            if ($outgoingLetter->need_compliance_review) {
+                $statusSteps['waiting_compliance_approval'] = 'Approval EO dan DD Kepatuhan';
+            }
+            $statusSteps['waiting_final_upload'] = 'Final Upload';
+            $statusSteps['verified'] = 'Done';
+            $statusSteps['returned'] = 'Revisi';
+            if ($status === 'compliance_review') {
+                $statusSteps['compliance_review'] = 'Review Kepatuhan (Legacy)';
+            }
+            if ($status === 'waiting_verification') {
+                $statusSteps['waiting_verification'] = 'Verifikasi EO Corp Affair (Legacy)';
+            }
+        } else {
+            $statusSteps = [
+                'draft' => 'Draft',
+                'waiting_dir_approval' => 'Approval EO dan DD Direktorat',
+                'compliance_review' => 'Review Kepatuhan',
+                'waiting_compliance_approval' => 'Approval EO dan DD Kepatuhan',
+                'waiting_verification' => 'Verifikasi EO Corp Affair',
+                'waiting_final_upload' => 'Final Upload',
+                'verified' => 'Done',
+                'returned' => 'Revisi',
+            ];
+        }
     @endphp
 
     <div class="grid gap-5 lg:gap-7.5">
@@ -180,6 +200,12 @@
                         <span class="text-gray-600">Tanggal Order:</span>
                         <span class="font-medium">
                             {{ $outgoingLetter->order_date ? $outgoingLetter->order_date->format('Y-m-d') : '-' }}
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600">Tanggal Rencana Upload Final:</span>
+                        <span class="font-medium">
+                            {{ $outgoingLetter->final_upload_date ? $outgoingLetter->final_upload_date->format('Y-m-d') : '-' }}
                         </span>
                     </div>
                     <div class="flex justify-between items-center">
@@ -309,11 +335,17 @@
                         enctype="multipart/form-data" class="grid gap-4 js-ajax-form" data-form-type="outgoing-final">
                         @csrf
                         <div class="flex flex-col">
-                            <label class="form-label">Final Surat <span class="text-danger">*</span></label>
+                            <label class="form-label">Tanggal Upload Final (wajib saat Simpan Draft)</label>
+                            <input class="input" type="date" name="final_upload_date"
+                                value="{{ old('final_upload_date', optional($outgoingLetter->final_upload_date)->format('Y-m-d')) }}">
+                        </div>
+                        <div class="flex flex-col">
+                            <label class="form-label">Final Surat</label>
                             <input class="file-input" type="file" name="final_file" accept=".pdf,.jpg,.jpeg,.png">
                         </div>
-                        <div class="flex justify-end">
-                            <button class="btn btn-primary" type="submit">Upload Final</button>
+                        <div class="flex justify-end gap-2">
+                            <button class="btn btn-light" type="submit" name="submit_action" value="draft">Simpan Draft</button>
+                            <button class="btn btn-primary" type="submit" name="submit_action" value="upload">Upload Final</button>
                         </div>
                     </form>
                 </div>
@@ -502,9 +534,23 @@
 
                     let errors = {};
                     const formType = $form.data('formType');
+                    const nativeEvent = event.originalEvent || {};
+                    const submitter = nativeEvent.submitter || this.__lastSubmitter || document
+                        .activeElement;
+                    const submitAction = submitter && submitter.name === 'submit_action' ? submitter.value :
+                        'upload';
 
                     if (formType === 'outgoing-final') {
-                        errors = validateSimpleRequired($form, ['final_file']);
+                        if (submitAction === 'draft') {
+                            errors = validateSimpleRequired($form, ['final_upload_date']);
+                        }
+                        if (submitAction === 'upload') {
+                            const finalFileInput = $form.find('[name="final_file"]')[0];
+                            if (!finalFileInput || !finalFileInput.files || finalFileInput.files.length ===
+                                0) {
+                                errors.final_file = 'Field ini tidak boleh kosong.';
+                            }
+                        }
                     } else if (formType === 'outgoing-compliance') {
                         errors = validateSimpleRequired($form, ['compliance_file']);
                     }
@@ -517,11 +563,10 @@
                     }
 
                     const formData = new FormData(this);
-                    const nativeEvent = event.originalEvent || {};
-                    const submitter = nativeEvent.submitter || this.__lastSubmitter || document
-                        .activeElement;
                     if (submitter && submitter.name) {
                         formData.set(submitter.name, submitter.value);
+                    } else if (formType === 'outgoing-final') {
+                        formData.set('submit_action', 'upload');
                     }
                     this.__lastSubmitter = null;
 

@@ -261,12 +261,14 @@ class WorkplanController extends Controller
             ]);
 
             foreach ((array) $request->input('items', []) as $index => $itemData) {
+                $itemTargetDate = $itemData['target_date'] ?? null;
                 $item = WorkProgramItem::create([
                     'work_program_id' => $program->id,
                     'title' => (string) ($itemData['title'] ?? ''),
                     'description' => $itemData['description'] ?? null,
-                    'target_date' => $itemData['target_date'] ?? null,
-                    'status' => $this->resolveInitialItemStatus($itemData['target_date'] ?? null),
+                    'initial_target_date' => $itemTargetDate,
+                    'target_date' => $itemTargetDate,
+                    'status' => $this->resolveInitialItemStatus($itemTargetDate),
                     'created_by' => $user->id,
                 ]);
 
@@ -447,22 +449,28 @@ class WorkplanController extends Controller
             foreach ((array) $request->input('items', []) as $index => $itemData) {
                 $itemId = (int) ($itemData['id'] ?? 0);
                 $isExisting = $itemId > 0 && $existingItems->has($itemId);
+                $itemTargetDate = $itemData['target_date'] ?? null;
 
                 if ($isExisting) {
                     $item = $existingItems->get($itemId);
-                    $item->update([
+                    $payload = [
                         'title' => (string) ($itemData['title'] ?? ''),
                         'description' => $itemData['description'] ?? null,
-                        'target_date' => $itemData['target_date'] ?? null,
-                        'status' => $this->resolveInitialItemStatus($itemData['target_date'] ?? null),
-                    ]);
+                        'target_date' => $itemTargetDate,
+                        'status' => $this->resolveInitialItemStatus($itemTargetDate),
+                    ];
+                    if (!$item->initial_target_date) {
+                        $payload['initial_target_date'] = $itemTargetDate;
+                    }
+                    $item->update($payload);
                 } else {
                     $item = WorkProgramItem::create([
                         'work_program_id' => $workplan->id,
                         'title' => (string) ($itemData['title'] ?? ''),
                         'description' => $itemData['description'] ?? null,
-                        'target_date' => $itemData['target_date'] ?? null,
-                        'status' => $this->resolveInitialItemStatus($itemData['target_date'] ?? null),
+                        'initial_target_date' => $itemTargetDate,
+                        'target_date' => $itemTargetDate,
+                        'status' => $this->resolveInitialItemStatus($itemTargetDate),
                         'created_by' => $user->id,
                     ]);
                 }

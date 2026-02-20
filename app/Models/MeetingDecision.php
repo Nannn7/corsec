@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Modules\Corsec\Models\Concerns\HasAuditUsers;
+use Modules\Usermanagement\Models\User;
 
 class MeetingDecision extends Model
 {
@@ -25,6 +26,7 @@ class MeetingDecision extends Model
         'meeting_id',
         'decision_text',
         'owner_directorate_id',
+        'pic_user_id',
         'target_date',
         'status',
         'closed_at',
@@ -47,6 +49,11 @@ class MeetingDecision extends Model
     public function ownerDirectorate()
     {
         return $this->belongsTo(Directorate::class, 'owner_directorate_id');
+    }
+
+    public function picUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'pic_user_id');
     }
 
     public function updates(): HasMany

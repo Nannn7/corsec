@@ -13,6 +13,7 @@ class MeetingParticipant extends Model
     protected $fillable = [
         'meeting_id',
         'directorate_id',
+        'user_id',
         'note',
         'created_by',
     ];
@@ -25,6 +26,11 @@ class MeetingParticipant extends Model
     public function directorate(): BelongsTo
     {
         return $this->belongsTo(Directorate::class, 'directorate_id');
+    }
+
+    public function participantUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     public function creator(): BelongsTo

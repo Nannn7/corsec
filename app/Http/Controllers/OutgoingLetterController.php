@@ -636,6 +636,26 @@ class OutgoingLetterController extends Controller
         }
 
         $request->validate([
+            'submit_action' => ['nullable', Rule::in(['draft', 'upload'])],
+            'final_upload_date' => ['nullable', 'date'],
+            'final_file' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
+        ]);
+
+        $submitAction = (string) $request->input('submit_action', 'upload');
+        if ($submitAction === 'draft') {
+            $request->validate([
+                'final_upload_date' => ['required', 'date'],
+            ]);
+
+            $outgoingLetter->update([
+                'final_upload_date' => $request->input('final_upload_date'),
+                'updated_by' => $user->id,
+            ]);
+
+            return back()->with('success', 'Draft final upload disimpan.');
+        }
+
+        $request->validate([
             'final_file' => ['required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
         ]);
 
@@ -651,7 +671,12 @@ class OutgoingLetterController extends Controller
             'created_by' => Auth::id(),
         ]);
 
-        $this->workflow->uploadFinal($outgoingLetter, $user, $attachment);
+        $this->workflow->uploadFinal(
+            $outgoingLetter,
+            $user,
+            $attachment,
+            $request->input('final_upload_date')
+        );
         return back()->with('success', 'Final surat diupload.');
     }
 
@@ -706,7 +731,7 @@ class OutgoingLetterController extends Controller
                 }
             })
             ->orderByDesc('id')
-            ->get(['id', 'registration_no', 'subject']);
+            ->get(['id', 'external_letter_no', 'registration_no', 'subject']);
     }
 
     private function ensureIncomingLetterIsResponseLetter(int $incomingLetterId, string $field = 'perihal_incoming_letter_id'): IncomingLetter

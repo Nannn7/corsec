@@ -209,7 +209,17 @@
                                             <div class="text-xs text-gray-500">{{ $item->description }}</div>
                                         @endif
                                     </td>
-                                    <td>{{ $item->target_date ? $item->target_date->format('Y-m-d') : '-' }}</td>
+                                    <td>
+                                        @php
+                                            $targetDate = $item->target_date;
+                                            $initialTargetDate = $item->initial_target_date;
+                                            $hasRevisedTarget = $targetDate && $initialTargetDate && !$initialTargetDate->isSameDay($targetDate);
+                                        @endphp
+                                        <div class="font-medium">{{ $targetDate ? $targetDate->format('Y-m-d') : '-' }}</div>
+                                        @if ($hasRevisedTarget)
+                                            <div class="text-xs text-gray-500">Target awal: {{ $initialTargetDate->format('Y-m-d') }}</div>
+                                        @endif
+                                    </td>
                                     <td>
                                         <span class="badge {{ $itemStatusBadge($item->status) }}">
                                             {{ $itemStatusLabel($item->status) }}

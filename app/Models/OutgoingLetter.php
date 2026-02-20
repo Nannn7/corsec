@@ -35,6 +35,7 @@ class OutgoingLetter extends Model
         'draft_attachment_id',
         'compliance_attachment_id',
         'final_attachment_id',
+        'final_upload_date',
         'letter_no',
         'number_requested_at',
         'number_requested_by',
@@ -52,6 +53,7 @@ class OutgoingLetter extends Model
     protected $casts = [
         'need_compliance_review' => 'boolean',
         'order_date' => 'date',
+        'final_upload_date' => 'date',
         'number_requested_at' => 'datetime',
         'authorized_at' => 'datetime',
         'deleted_at' => 'datetime',

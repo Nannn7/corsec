@@ -3,6 +3,7 @@
 namespace Modules\Corsec\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Modules\Corsec\Models\Approval;
 use Modules\Corsec\Models\Comment;
 use Modules\Corsec\Models\Directorate;
@@ -143,6 +144,11 @@ class MeetingWorkflowService
                 Meeting::STATUS_PENDING_DIREKTORAT,
                 Meeting::STATUS_RETURNED_BY_DIREKTORAT,
             ]);
+            $this->ensureActorInTargetDirectorate(
+                $meeting,
+                $actor,
+                'Persiapan rapat hanya untuk user pada direktorat peserta/PIC rapat.'
+            );
             $this->ensureNoPendingApproval($meeting);
 
             $meeting->update([
@@ -179,45 +185,115 @@ class MeetingWorkflowService
         DB::transaction(function () use ($meeting, $actor, $action, $note) {
             $meeting = $this->lockMeeting($meeting);
             $this->assertStatus($meeting, [Meeting::STATUS_WAITING_DIREKTORAT_APPROVAL]);
+            $this->ensureActorInTargetDirectorate(
+                $meeting,
+                $actor,
+                'Approval direktorat hanya untuk user pada direktorat peserta/PIC rapat.'
+            );
 
             $pending = $this->latestPendingApproval($meeting);
             if (!$pending) {
                 abort(422, 'Tidak ada approval meeting yang pending.');
             }
 
+            $isAdmin = $actor->hasRole('administrator');
+            $isChecker = $actor->hasRole('checker');
+            $isApproverDeputyDirector = $actor->hasRole('approver') && $this->isDeputyDirector($actor);
+            $checkerApproved = $this->isCheckerApprovedInCurrentRound($meeting, $pending->created_at);
+
             if ($action === 'approve') {
-                $pending->update([
-                    'status' => 'approved',
-                    'note' => $this->buildApprovalNote('EO + DD Direktorat Approved', $note),
-                    'acted_by' => $actor->id,
-                    'acted_at' => now(),
-                ]);
+                if (!$checkerApproved && ($isChecker || $isAdmin)) {
+                    if ($this->actorAlreadyActedInRound($meeting, $actor, 'EO Direktorat', $pending->created_at)) {
+                        abort(403, 'Approval EO Direktorat sudah diproses oleh user ini.');
+                    }
 
-                $meeting->update([
-                    'status' => Meeting::STATUS_DATA_TERKIRIM,
-                    'authorized_status' => 'authorized',
-                    'authorized_at' => now(),
-                    'authorized_by' => $actor->id,
-                    'updated_by' => $actor->id,
-                ]);
+                    Approval::create([
+                        'approvable_type' => Meeting::class,
+                        'approvable_id' => $meeting->id,
+                        'status' => 'approved',
+                        'note' => $this->buildApprovalNote('EO Direktorat Approved', $note),
+                        'acted_by' => $actor->id,
+                        'acted_at' => now(),
+                    ]);
 
-                $this->notifyUsers(
-                    [$meeting->created_by],
-                    'meeting_directorate_action',
-                    $this->meetingNotificationData(
-                        $meeting,
-                        $actor,
-                        'Approval Direktorat',
-                        'Persiapan rapat disetujui EO + DD Direktorat.'
-                    )
-                );
+                    $approverIds = $this->getMeetingDeputyDirectorApproverIds($meeting, $actor);
+                    if ($approverIds->isNotEmpty()) {
+                        $this->notifyUsers(
+                            $approverIds,
+                            'meeting_directorate_approval',
+                            $this->meetingNotificationData(
+                                $meeting,
+                                $actor,
+                                'Approval Direktorat',
+                                'Persiapan rapat menunggu approval DD Direktorat.'
+                            )
+                        );
+                    }
 
-                return;
+                    $this->notifyUsers(
+                        [$meeting->created_by],
+                        'meeting_directorate_action',
+                        $this->meetingNotificationData(
+                            $meeting,
+                            $actor,
+                            'Approval Direktorat',
+                            'Approval EO Direktorat disetujui. Menunggu approval DD Direktorat.'
+                        )
+                    );
+
+                    return;
+                }
+
+                if (($checkerApproved || $isAdmin) && ($isApproverDeputyDirector || $isAdmin)) {
+                    if ($this->actorAlreadyActedInRound($meeting, $actor, 'DD Direktorat', $pending->created_at)) {
+                        abort(403, 'Approval DD Direktorat sudah diproses oleh user ini.');
+                    }
+
+                    $pending->update([
+                        'status' => 'approved',
+                        'note' => $this->buildApprovalNote('DD Direktorat Approved', $note),
+                        'acted_by' => $actor->id,
+                        'acted_at' => now(),
+                    ]);
+
+                    $meeting->update([
+                        'status' => Meeting::STATUS_DATA_TERKIRIM,
+                        'authorized_status' => 'authorized',
+                        'authorized_at' => now(),
+                        'authorized_by' => $actor->id,
+                        'updated_by' => $actor->id,
+                    ]);
+
+                    $this->notifyUsers(
+                        [$meeting->created_by],
+                        'meeting_directorate_action',
+                        $this->meetingNotificationData(
+                            $meeting,
+                            $actor,
+                            'Approval Direktorat',
+                            'Persiapan rapat disetujui EO + DD Direktorat.'
+                        )
+                    );
+
+                    return;
+                }
+
+                abort(403, 'Tahap approval direktorat tidak sesuai role user.');
+            }
+
+            if (!$checkerApproved && !$isChecker && !$isAdmin) {
+                abort(403, 'Return pada tahap EO Direktorat hanya untuk checker.');
+            }
+            if ($checkerApproved && !$isApproverDeputyDirector && !$isAdmin) {
+                abort(403, 'Return pada tahap DD Direktorat hanya untuk approver Deputy Director.');
             }
 
             $pending->update([
                 'status' => 'returned',
-                'note' => $this->buildApprovalNote('EO + DD Direktorat Returned', $note),
+                'note' => $this->buildApprovalNote(
+                    $checkerApproved ? 'DD Direktorat Returned' : 'EO Direktorat Returned',
+                    $note
+                ),
                 'acted_by' => $actor->id,
                 'acted_at' => now(),
             ]);
@@ -489,11 +565,42 @@ class MeetingWorkflowService
             ->pluck('id');
     }
 
+    private function getMeetingDeputyDirectorApproverIds(Meeting $meeting, User $actor)
+    {
+        $directorateIds = $this->getTargetDirectorateIds($meeting, (int) ($actor->directorate_id ?? 0));
+        if ($directorateIds->isEmpty()) {
+            return collect();
+        }
+
+        return User::query()
+            ->whereIn('directorate_id', $directorateIds->all())
+            ->whereHas('roles', function ($query) {
+                $query->where('name', 'approver');
+            })
+            ->whereHas('position', function ($query) {
+                $query->where('name', 'ilike', '%deputy director%');
+            })
+            ->pluck('id');
+    }
+
     private function getMeetingAudienceUserIds(Meeting $meeting)
     {
+        $meeting->loadMissing('participants', 'agendas', 'decisions');
         $directorateIds = $this->getTargetDirectorateIds($meeting);
 
+        $assignedUserIds = $meeting->participants
+            ->pluck('user_id')
+            ->merge($meeting->agendas->pluck('pic_user_id'))
+            ->merge($meeting->decisions->pluck('pic_user_id'))
+            ->filter()
+            ->map(fn($id) => (int) $id)
+            ->unique()
+            ->values();
+
         $audience = collect([$meeting->created_by])->filter();
+        if ($assignedUserIds->isNotEmpty()) {
+            $audience = $audience->merge($assignedUserIds);
+        }
         if ($directorateIds->isNotEmpty()) {
             $directorateUsers = User::query()
                 ->whereIn('directorate_id', $directorateIds->all())
@@ -506,14 +613,18 @@ class MeetingWorkflowService
 
     private function getTargetDirectorateIds(Meeting $meeting, int $fallbackDirectorateId = 0)
     {
-        $meeting->loadMissing('participants', 'agendas');
+        $meeting->loadMissing('participants.participantUser', 'agendas.picUser');
 
         $participantDirectorateIds = $meeting->participants
-            ->pluck('directorate_id')
+            ->map(function ($participant) {
+                return (int) ($participant->directorate_id ?: ($participant->participantUser?->directorate_id ?? 0));
+            })
             ->filter();
 
         $agendaDirectorateIds = $meeting->agendas
-            ->pluck('owner_directorate_id')
+            ->map(function ($agenda) {
+                return (int) ($agenda->owner_directorate_id ?: ($agenda->picUser?->directorate_id ?? 0));
+            })
             ->filter();
 
         $directorateIds = $participantDirectorateIds
@@ -528,6 +639,78 @@ class MeetingWorkflowService
         }
 
         return $directorateIds;
+    }
+
+    private function ensureActorInTargetDirectorate(Meeting $meeting, User $actor, string $forbiddenMessage): void
+    {
+        if ($actor->hasRole('administrator')) {
+            return;
+        }
+
+        if ($this->isActorAssignedToMeeting($meeting, $actor)) {
+            return;
+        }
+
+        $actorDirectorateId = (int) ($actor->directorate_id ?? 0);
+        if ($actorDirectorateId <= 0) {
+            abort(403, $forbiddenMessage);
+        }
+
+        $targetDirectorateIds = $this->getTargetDirectorateIds($meeting);
+        if ($targetDirectorateIds->isEmpty()) {
+            abort(422, 'Meeting belum memiliki data peserta/PIC direktorat.');
+        }
+
+        if (!$targetDirectorateIds->contains($actorDirectorateId)) {
+            abort(403, $forbiddenMessage);
+        }
+    }
+
+    private function isActorAssignedToMeeting(Meeting $meeting, User $actor): bool
+    {
+        $meeting->loadMissing('participants', 'agendas', 'decisions');
+        $actorId = (int) $actor->id;
+
+        return $meeting->participants->contains(function ($participant) use ($actorId) {
+            return (int) ($participant->user_id ?? 0) === $actorId;
+        }) || $meeting->agendas->contains(function ($agenda) use ($actorId) {
+            return (int) ($agenda->pic_user_id ?? 0) === $actorId;
+        }) || $meeting->decisions->contains(function ($decision) use ($actorId) {
+            return (int) ($decision->pic_user_id ?? 0) === $actorId;
+        });
+    }
+
+    private function isCheckerApprovedInCurrentRound(Meeting $meeting, $roundStartedAt): bool
+    {
+        return Approval::query()
+            ->where('approvable_type', Meeting::class)
+            ->where('approvable_id', $meeting->id)
+            ->where('status', 'approved')
+            ->where('created_at', '>=', $roundStartedAt)
+            ->where('note', 'ilike', 'EO Direktorat Approved%')
+            ->exists();
+    }
+
+    private function actorAlreadyActedInRound(Meeting $meeting, User $actor, string $labelPrefix, $roundStartedAt): bool
+    {
+        return Approval::query()
+            ->where('approvable_type', Meeting::class)
+            ->where('approvable_id', $meeting->id)
+            ->where('acted_by', $actor->id)
+            ->where('created_at', '>=', $roundStartedAt)
+            ->whereIn('status', ['approved', 'returned'])
+            ->get()
+            ->contains(function (Approval $approval) use ($labelPrefix) {
+                return Str::startsWith((string) $approval->note, $labelPrefix);
+            });
+    }
+
+    private function isDeputyDirector(User $user): bool
+    {
+        $user->loadMissing('position');
+        $positionName = Str::lower(trim((string) ($user->position?->name ?? '')));
+
+        return $positionName !== '' && Str::contains($positionName, 'deputy director');
     }
 
     private function meetingNotificationData(Meeting $meeting, User $actor, string $title, string $message, array $extra = []): array
