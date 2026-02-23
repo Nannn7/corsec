@@ -28,7 +28,7 @@ class DashboardController extends Controller
             $outgoingOpen = OutgoingLetter::query()
                 ->where(function ($q) {
                     $q->whereNull('status')
-                        ->orWhereNotIn('status', ['done', 'completed', 'sent', 'verified']);
+                        ->orWhereNotIn('status', ['done', 'completed', 'sent', 'verified', OutgoingLetter::STATUS_CANCELLED]);
                 })
                 ->count();
 

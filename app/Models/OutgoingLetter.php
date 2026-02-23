@@ -40,6 +40,12 @@ class OutgoingLetter extends Model
         'number_requested_at',
         'number_requested_by',
         'number_request_note',
+        'cancel_previous_status',
+        'cancel_reason',
+        'cancel_requested_at',
+        'cancel_requested_by',
+        'cancelled_at',
+        'cancelled_by',
         'need_compliance_review',
         'status',
         'authorized_at',
@@ -55,6 +61,8 @@ class OutgoingLetter extends Model
         'order_date' => 'date',
         'final_upload_date' => 'date',
         'number_requested_at' => 'datetime',
+        'cancel_requested_at' => 'datetime',
+        'cancelled_at' => 'datetime',
         'authorized_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
@@ -75,8 +83,10 @@ class OutgoingLetter extends Model
     public const STATUS_WAITING_COMPLIANCE_APPROVAL = 'waiting_compliance_approval';
     public const STATUS_WAITING_VERIFICATION = 'waiting_verification';
     public const STATUS_WAITING_FINAL_UPLOAD = 'waiting_final_upload';
+    public const STATUS_WAITING_CANCEL_APPROVAL = 'waiting_cancel_approval';
     public const STATUS_VERIFIED = 'verified';
     public const STATUS_RETURNED = 'returned';
+    public const STATUS_CANCELLED = 'cancelled';
     public const STATUS_FINAL_UPLOADED = 'final_uploaded'; // legacy alias
 
     public const DISPLAY_STATUS_DRAFT = 'draft';
@@ -85,8 +95,10 @@ class OutgoingLetter extends Model
     public const DISPLAY_STATUS_WAITING_COMPLIANCE_APPROVAL = 'waiting_compliance_approval';
     public const DISPLAY_STATUS_WAITING_VERIFICATION = 'waiting_verification';
     public const DISPLAY_STATUS_WAITING_FINAL_UPLOAD = 'waiting_final_upload';
+    public const DISPLAY_STATUS_WAITING_CANCEL_APPROVAL = 'waiting_cancel_approval';
     public const DISPLAY_STATUS_DONE = 'done';
     public const DISPLAY_STATUS_REVISI = 'revisi';
+    public const DISPLAY_STATUS_CANCELLED = 'cancelled';
 
     public function requesterDirectorate()
     {
@@ -128,6 +140,16 @@ class OutgoingLetter extends Model
         return $this->belongsTo(User::class, 'number_requested_by');
     }
 
+    public function cancelRequestedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancel_requested_by');
+    }
+
+    public function cancelledBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
+    }
+
     public function comments(): MorphMany
     {
         return $this->morphMany(Comment::class, 'commentable');
@@ -152,10 +174,12 @@ class OutgoingLetter extends Model
             self::STATUS_WAITING_COMPLIANCE_APPROVAL => self::DISPLAY_STATUS_WAITING_COMPLIANCE_APPROVAL,
             self::STATUS_WAITING_VERIFICATION,
             'numbering' => self::DISPLAY_STATUS_WAITING_VERIFICATION, // legacy state mapped to new flow
+            self::STATUS_WAITING_CANCEL_APPROVAL => self::DISPLAY_STATUS_WAITING_CANCEL_APPROVAL,
             self::STATUS_WAITING_FINAL_UPLOAD,
             self::STATUS_FINAL_UPLOADED => self::DISPLAY_STATUS_WAITING_FINAL_UPLOAD,
             self::STATUS_VERIFIED => self::DISPLAY_STATUS_DONE,
             self::STATUS_RETURNED => self::DISPLAY_STATUS_REVISI,
+            self::STATUS_CANCELLED => self::DISPLAY_STATUS_CANCELLED,
             default => self::DISPLAY_STATUS_DRAFT,
         };
     }
@@ -169,8 +193,10 @@ class OutgoingLetter extends Model
             self::DISPLAY_STATUS_WAITING_COMPLIANCE_APPROVAL => 'Approval EO dan DD Kepatuhan',
             self::DISPLAY_STATUS_WAITING_VERIFICATION => 'Verifikasi EO Corp Affair',
             self::DISPLAY_STATUS_WAITING_FINAL_UPLOAD => 'Final Upload',
+            self::DISPLAY_STATUS_WAITING_CANCEL_APPROVAL => 'Approval Pembatalan EO Direktorat',
             self::DISPLAY_STATUS_DONE => 'Done',
             self::DISPLAY_STATUS_REVISI => 'Revisi',
+            self::DISPLAY_STATUS_CANCELLED => 'Cancelled',
             default => 'Draft',
         };
     }

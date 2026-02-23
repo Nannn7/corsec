@@ -16,6 +16,7 @@ use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Corsec\Exports\LetterExport;
 use Modules\Corsec\Models\IncomingLetter;
+use Modules\Corsec\Models\OutgoingLetter;
 use Modules\Corsec\Models\Attachment;
 use Modules\Corsec\Models\Attachable;
 use Modules\Corsec\Models\Approval;
@@ -325,6 +326,7 @@ class IncomingLetterController extends Controller
         ]);
         $responseOutgoingLetter = $incomingLetter
             ->responseOutgoingLetters()
+            ->where('status', '!=', OutgoingLetter::STATUS_CANCELLED)
             ->with(['finalAttachment'])
             ->latest('id')
             ->first();
