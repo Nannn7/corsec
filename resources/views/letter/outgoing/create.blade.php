@@ -172,6 +172,9 @@
                             @enderror
                         </div>
 
+                        <input type="hidden" name="perihal_text" id="perihal_text_unified"
+                            value="{{ old('perihal_text', $outgoingLetter?->perihal_text) }}">
+
                         <div class="flex flex-col perihal-field hidden" data-perihal="tanggapan_surat_masuk">
                             <label class="form-label">Surat Masuk</label>
                             <select
@@ -193,8 +196,8 @@
                         <div class="flex flex-col perihal-field hidden" data-perihal="rutinitas">
                             <label class="form-label">Keterangan Rutinitas</label>
                             <input class="input @error('perihal_text') border-danger bg-danger-light @enderror"
-                                type="text" name="perihal_text"
-                                value="{{ old('perihal_text', $outgoingLetter?->perihal_text) }}"
+                                type="text" name="perihal_text_rutinitas" id="perihal_text_rutinitas"
+                                value="{{ old('perihal_text_rutinitas', $selectedPerihalType === 'rutinitas' ? old('perihal_text', $outgoingLetter?->perihal_text) : '') }}"
                                 placeholder="Perihal rutinitas...">
                             @error('perihal_text')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
@@ -204,8 +207,8 @@
                         <div class="flex flex-col perihal-field hidden" data-perihal="insidentil">
                             <label class="form-label">Keterangan Insidentil</label>
                             <input class="input @error('perihal_text') border-danger bg-danger-light @enderror"
-                                type="text" name="perihal_text"
-                                value="{{ old('perihal_text', $outgoingLetter?->perihal_text) }}"
+                                type="text" name="perihal_text_insidentil" id="perihal_text_insidentil"
+                                value="{{ old('perihal_text_insidentil', $selectedPerihalType === 'insidentil' ? old('perihal_text', $outgoingLetter?->perihal_text) : '') }}"
                                 placeholder="Perihal insidentil...">
                             @error('perihal_text')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
@@ -300,6 +303,9 @@
             const recipientOtherInput = document.getElementById('recipient_other');
             const perihalSelect = document.getElementById('perihal_type');
             const perihalFields = document.querySelectorAll('.perihal-field');
+            const perihalTextUnifiedInput = document.getElementById('perihal_text_unified');
+            const perihalRutinitasInput = document.getElementById('perihal_text_rutinitas');
+            const perihalInsidentilInput = document.getElementById('perihal_text_insidentil');
             const incomingLetterSelect = document.getElementById('perihal_incoming_letter_id');
             const subjectInput = document.getElementById('subject');
             const summaryInput = document.getElementById('summary');
@@ -482,6 +488,22 @@
                 if (selected === 'tanggapan_surat_masuk') {
                     consumeIncomingLetterData(false);
                 }
+
+                syncPerihalTextUnified();
+            }
+
+            function syncPerihalTextUnified() {
+                if (!perihalTextUnifiedInput) return;
+                const selected = perihalSelect ? perihalSelect.value : '';
+                let value = '';
+
+                if (selected === 'rutinitas' && perihalRutinitasInput) {
+                    value = perihalRutinitasInput.value || '';
+                } else if (selected === 'insidentil' && perihalInsidentilInput) {
+                    value = perihalInsidentilInput.value || '';
+                }
+
+                perihalTextUnifiedInput.value = value;
             }
 
             if (recipientSelect) {
@@ -492,6 +514,13 @@
             if (perihalSelect) {
                 perihalSelect.addEventListener('change', togglePerihalFields);
                 togglePerihalFields();
+            }
+
+            if (perihalRutinitasInput) {
+                perihalRutinitasInput.addEventListener('input', syncPerihalTextUnified);
+            }
+            if (perihalInsidentilInput) {
+                perihalInsidentilInput.addEventListener('input', syncPerihalTextUnified);
             }
 
             if (incomingLetterSelect) {
@@ -543,11 +572,20 @@
                         errors.perihal_incoming_letter_id = requiredMessage;
                     }
                     if (perihalType === 'rutinitas' || perihalType === 'insidentil') {
-                        const perihalText = $form.find(
-                            `.perihal-field[data-perihal="${perihalType}"] [name="perihal_text"]`
-                        ).val();
+                        const inputName = perihalType === 'rutinitas' ? 'perihal_text_rutinitas' :
+                            'perihal_text_insidentil';
+                        const perihalText = ($form.find(`[name="${inputName}"]`).val() || '').trim();
+                        const unifiedField = $form.find('[name="perihal_text"]');
+                        if (unifiedField.length > 0) {
+                            unifiedField.val(perihalText);
+                        }
                         if (!perihalText) {
                             errors.perihal_text = requiredMessage;
+                        }
+                    } else {
+                        const unifiedField = $form.find('[name="perihal_text"]');
+                        if (unifiedField.length > 0) {
+                            unifiedField.val('');
                         }
                     }
 

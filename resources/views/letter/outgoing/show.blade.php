@@ -134,8 +134,25 @@
             }) &&
             $corpPositionName !== '' &&
             \Illuminate\Support\Str::contains($corpPositionName, 'staff');
+        $isRequesterCreator = $user && (int) $outgoingLetter->created_by === (int) $user->id;
         $canFinalUpload = $status === 'waiting_final_upload' && ($isAdmin || $isRequesterDirectorateMakerStaff);
         $canVerify = $status === 'waiting_verification' && ($isAdmin || $isCorpSecretaryChecker);
+        $canCancelRequest =
+            in_array(
+                $status,
+                [
+                    'draft',
+                    'returned',
+                    'waiting_dir_approval',
+                    'compliance_review',
+                    'waiting_compliance_approval',
+                    'waiting_verification',
+                    'waiting_final_upload',
+                ],
+                true,
+            ) &&
+            ($isAdmin || ($isRequesterDirectorateMakerStaff && $isRequesterCreator));
+        $canCancelApproval = $status === 'waiting_cancel_approval' && ($isAdmin || ($isRequesterDirectorate && $isChecker));
 
         $isResponseLetterFlow = (string) $outgoingLetter->perihal_type === 'tanggapan_surat_masuk';
         if ($isResponseLetterFlow) {
@@ -147,8 +164,10 @@
                 $statusSteps['waiting_compliance_approval'] = 'Approval EO dan DD Kepatuhan';
             }
             $statusSteps['waiting_final_upload'] = 'Final Upload';
+            $statusSteps['waiting_cancel_approval'] = 'Approval Pembatalan EO Direktorat';
             $statusSteps['verified'] = 'Done';
             $statusSteps['returned'] = 'Revisi';
+            $statusSteps['cancelled'] = 'Cancelled';
             if ($status === 'compliance_review') {
                 $statusSteps['compliance_review'] = 'Review Kepatuhan (Legacy)';
             }
@@ -163,8 +182,10 @@
                 'waiting_compliance_approval' => 'Approval EO dan DD Kepatuhan',
                 'waiting_verification' => 'Verifikasi EO Corp Affair',
                 'waiting_final_upload' => 'Final Upload',
+                'waiting_cancel_approval' => 'Approval Pembatalan EO Direktorat',
                 'verified' => 'Done',
                 'returned' => 'Revisi',
+                'cancelled' => 'Cancelled',
             ];
         }
     @endphp
@@ -233,6 +254,30 @@
                     <div class="flex justify-between items-center">
                         <span class="text-gray-600">Status:</span>
                         <span class="badge badge-light">{{ $outgoingLetter->display_status_label }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600">Alasan Pembatalan:</span>
+                        <span class="font-medium">{{ $outgoingLetter->cancel_reason ?? '-' }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600">Diajukan Pembatalan Oleh:</span>
+                        <span class="font-medium">{{ $outgoingLetter->cancelRequestedBy?->name ?? '-' }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600">Tanggal Pengajuan Pembatalan:</span>
+                        <span class="font-medium">
+                            {{ $outgoingLetter->cancel_requested_at ? $outgoingLetter->cancel_requested_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s') : '-' }}
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600">Disetujui Pembatalan Oleh:</span>
+                        <span class="font-medium">{{ $outgoingLetter->cancelledBy?->name ?? '-' }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600">Tanggal Pembatalan:</span>
+                        <span class="font-medium">
+                            {{ $outgoingLetter->cancelled_at ? $outgoingLetter->cancelled_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s') : '-' }}
+                        </span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-gray-600">Draft Surat:</span>
@@ -352,6 +397,32 @@
             </div>
         @endif
 
+        @canany(['corsec.create', 'corsec.update'])
+            @if ($canCancelRequest)
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Ajukan Pembatalan Surat</h3>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ route('letter.outgoing.cancel.request', $outgoingLetter) }}"
+                            class="grid gap-4 js-ajax-form" data-form-type="outgoing-cancel-request">
+                            @csrf
+                            <div class="text-sm text-gray-500">
+                                Permintaan pembatalan akan diproses oleh EO Direktorat.
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="form-label">Alasan Pembatalan <span class="text-danger">*</span></label>
+                                <textarea class="textarea w-full" name="note" rows="3" placeholder="Tuliskan alasan pembatalan..." required></textarea>
+                            </div>
+                            <div class="flex justify-end">
+                                <button class="btn btn-warning" type="submit">Ajukan Approval EO</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            @endif
+        @endcanany
+
         @if ($approvals->count() > 0)
             <div class="card">
                 <div class="card-header">
@@ -436,7 +507,25 @@
                     <h3 class="card-title">Approval</h3>
                 </div>
                 <div class="card-body">
-                    @if ($status === 'waiting_dir_approval' && ($canDirCheckerApproval || $canDirApproverApproval))
+                    @if ($canCancelApproval)
+                        <form method="POST" action="{{ route('letter.outgoing.cancel.approval', $outgoingLetter) }}"
+                            class="grid gap-4 js-ajax-form" data-form-type="outgoing-cancel-approval">
+                            @csrf
+                            <div class="text-sm text-gray-500">
+                                Approval pembatalan oleh EO Direktorat
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="form-label">Catatan (wajib saat reject)</label>
+                                <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan..."></textarea>
+                            </div>
+                            <div class="flex flex-wrap gap-2 justify-end">
+                                <button class="btn btn-sm btn-danger" type="submit" name="action"
+                                    value="reject">Reject Pembatalan</button>
+                                <button class="btn btn-sm btn-success" type="submit" name="action"
+                                    value="approve">Approve Pembatalan</button>
+                            </div>
+                        </form>
+                    @elseif ($status === 'waiting_dir_approval' && ($canDirCheckerApproval || $canDirApproverApproval))
                         <form method="POST" action="{{ route('letter.outgoing.approval.action', $outgoingLetter) }}"
                             class="grid gap-4 js-ajax-form" data-form-type="outgoing-approval">
                             @csrf
@@ -553,6 +642,13 @@
                         }
                     } else if (formType === 'outgoing-compliance') {
                         errors = validateSimpleRequired($form, ['compliance_file']);
+                    } else if (formType === 'outgoing-cancel-request') {
+                        errors = validateSimpleRequired($form, ['note']);
+                    } else if (formType === 'outgoing-cancel-approval') {
+                        const action = submitter && submitter.name === 'action' ? submitter.value : 'approve';
+                        if ((action === 'reject' || action === 'return') && !$form.find('[name="note"]').val()) {
+                            errors.note = 'Field ini tidak boleh kosong.';
+                        }
                     }
 
                     if (Object.keys(errors).length > 0) {

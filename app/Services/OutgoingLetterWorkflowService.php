@@ -63,6 +63,182 @@ class OutgoingLetterWorkflowService
         });
     }
 
+    public function requestCancellation(OutgoingLetter $letter, User $actor, string $reason): void
+    {
+        DB::transaction(function () use ($letter, $actor, $reason) {
+            $reason = trim($reason);
+            if ($reason === '') {
+                abort(422, 'Alasan pembatalan wajib diisi.');
+            }
+
+            if ($letter->status === OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL) {
+                abort(422, 'Permintaan pembatalan sudah diajukan.');
+            }
+
+            if ($letter->status === OutgoingLetter::STATUS_CANCELLED) {
+                abort(422, 'Surat keluar sudah dibatalkan.');
+            }
+
+            if (!in_array((string) $letter->status, $this->cancellableRequestStatuses(), true)) {
+                abort(422, 'Permintaan pembatalan tidak tersedia pada status ini.');
+            }
+
+            if (!$this->canRequestCancellation($letter, $actor)) {
+                abort(403, 'Pembatalan hanya dapat diajukan oleh maker staff pembuat surat pada direktorat terkait.');
+            }
+
+            $currentStatus = (string) $letter->status;
+
+            $letter->update([
+                'status' => OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL,
+                'cancel_previous_status' => $currentStatus,
+                'cancel_reason' => $reason,
+                'cancel_requested_at' => now(),
+                'cancel_requested_by' => $actor->id,
+                'cancelled_at' => null,
+                'cancelled_by' => null,
+                'updated_by' => $actor->id,
+            ]);
+
+            Approval::create([
+                'approvable_type' => OutgoingLetter::class,
+                'approvable_id' => $letter->id,
+                'status' => 'pending',
+                'note' => $this->buildApprovalNote('Menunggu approval pembatalan EO Direktorat', $reason),
+            ]);
+
+            $checkerIds = $this->getDirectorateCheckerIds((int) $letter->requester_directorate_id);
+            if ($checkerIds->isNotEmpty()) {
+                $this->notifyUsers($checkerIds, 'outgoing_letter_cancel_approval', [
+                    'title' => 'Approval Pembatalan Surat Keluar',
+                    'message' => 'Surat keluar menunggu approval pembatalan EO Direktorat.',
+                    'outgoing_letter_id' => $letter->id,
+                    'registration_no' => $letter->registration_no,
+                    'subject' => $letter->subject,
+                    'status' => $letter->status,
+                    'target_directorate_id' => $letter->requester_directorate_id,
+                    'cancel_reason' => $reason,
+                    'created_by' => [
+                        'id' => $actor->id,
+                        'name' => $actor->name,
+                    ],
+                ]);
+            }
+
+            $this->notifyOutgoingDecision(
+                $letter,
+                $actor,
+                'Permintaan pembatalan surat keluar diajukan. Menunggu approval EO Direktorat.'
+            );
+
+            $this->addOutgoingComment($letter, $actor, 'REQUEST PEMBATALAN', $reason);
+        });
+    }
+
+    public function cancellationApproval(OutgoingLetter $letter, User $actor, string $action, ?string $note): void
+    {
+        DB::transaction(function () use ($letter, $actor, $action, $note) {
+            if ($letter->status !== OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL) {
+                abort(403, 'Approval pembatalan hanya tersedia pada status menunggu approval pembatalan.');
+            }
+
+            $normalizedAction = Str::lower(trim($action));
+            if (!in_array($normalizedAction, ['approve', 'reject', 'return'], true)) {
+                abort(422, 'Aksi approval pembatalan tidak valid.');
+            }
+
+            if (!$this->canApproveCancellation($letter, $actor)) {
+                abort(403, 'Approval pembatalan hanya untuk EO Direktorat pada direktorat pemohon.');
+            }
+
+            $approval = $this->latestPendingApproval($letter);
+
+            if ($normalizedAction === 'approve') {
+                $this->closeOrCreateApproval(
+                    $letter,
+                    $approval,
+                    'approved',
+                    'EO Direktorat Approved Pembatalan',
+                    $note,
+                    $actor
+                );
+
+                $this->closePendingApprovalsAfterCancellation($letter, $actor);
+
+                $letter->update([
+                    'status' => OutgoingLetter::STATUS_CANCELLED,
+                    'cancelled_at' => now(),
+                    'cancelled_by' => $actor->id,
+                    'authorized_status' => 'cancelled',
+                    'authorized_at' => now(),
+                    'authorized_by' => $actor->id,
+                    'updated_by' => $actor->id,
+                ]);
+
+                if (
+                    $letter->perihal_type === 'tanggapan_surat_masuk' &&
+                    $letter->perihal_incoming_letter_id
+                ) {
+                    $incomingLetter = IncomingLetter::query()->find($letter->perihal_incoming_letter_id);
+                    if ($incomingLetter && $incomingLetter->followup_action === 'response_letter') {
+                        $hasOtherActiveResponse = OutgoingLetter::query()
+                            ->where('perihal_type', 'tanggapan_surat_masuk')
+                            ->where('perihal_incoming_letter_id', $incomingLetter->id)
+                            ->where('id', '!=', $letter->id)
+                            ->where('status', '!=', OutgoingLetter::STATUS_CANCELLED)
+                            ->exists();
+
+                        if (!$hasOtherActiveResponse) {
+                            $incomingLetter->update([
+                                'status' => IncomingLetter::STATUS_WAITING_RESPONSE_LETTER,
+                                'updated_by' => $actor->id,
+                            ]);
+                        }
+                    }
+                }
+
+                $this->notifyOutgoingDecision(
+                    $letter,
+                    $actor,
+                    'Permintaan pembatalan surat keluar disetujui EO Direktorat.'
+                );
+
+                $this->addOutgoingComment($letter, $actor, 'APPROVE PEMBATALAN', $note);
+                return;
+            }
+
+            $this->closeOrCreateApproval(
+                $letter,
+                $approval,
+                'returned',
+                'EO Direktorat Reject Pembatalan',
+                $note,
+                $actor
+            );
+
+            $restoreStatus = $this->resolveCancellationRestoreStatus($letter->cancel_previous_status);
+
+            $letter->update([
+                'status' => $restoreStatus,
+                'cancel_previous_status' => null,
+                'cancel_reason' => null,
+                'cancel_requested_at' => null,
+                'cancel_requested_by' => null,
+                'cancelled_at' => null,
+                'cancelled_by' => null,
+                'updated_by' => $actor->id,
+            ]);
+
+            $this->notifyOutgoingDecision(
+                $letter,
+                $actor,
+                'Permintaan pembatalan surat keluar ditolak EO Direktorat.'
+            );
+
+            $this->addOutgoingComment($letter, $actor, 'REJECT PEMBATALAN', $note);
+        });
+    }
+
     public function approvalAction(OutgoingLetter $letter, User $actor, string $action, ?string $note): void
     {
         DB::transaction(function () use ($letter, $actor, $action, $note) {
@@ -577,6 +753,20 @@ class OutgoingLetterWorkflowService
         ]);
     }
 
+    private function closePendingApprovalsAfterCancellation(OutgoingLetter $letter, User $actor): void
+    {
+        Approval::query()
+            ->where('approvable_type', OutgoingLetter::class)
+            ->where('approvable_id', $letter->id)
+            ->where('status', 'pending')
+            ->update([
+                'status' => 'returned',
+                'note' => 'Auto close karena pembatalan surat disetujui EO Direktorat',
+                'acted_by' => $actor->id,
+                'acted_at' => now(),
+            ]);
+    }
+
     private function approvalExistsByNotePrefix(OutgoingLetter $letter, string $prefix): bool
     {
         return Approval::query()
@@ -695,6 +885,55 @@ class OutgoingLetterWorkflowService
         $positionName = Str::lower((string) ($user->position?->name ?? ''));
 
         return $positionName !== '' && Str::contains($positionName, 'staff');
+    }
+
+    private function canRequestCancellation(OutgoingLetter $letter, User $user): bool
+    {
+        if ($user->hasRole('administrator')) {
+            return true;
+        }
+
+        if ((int) $letter->created_by !== (int) $user->id) {
+            return false;
+        }
+
+        return $this->canUploadFinal($letter, $user);
+    }
+
+    private function canApproveCancellation(OutgoingLetter $letter, User $user): bool
+    {
+        if ($user->hasRole('administrator')) {
+            return true;
+        }
+
+        if ((int) $letter->requester_directorate_id !== (int) $user->directorate_id) {
+            return false;
+        }
+
+        return $user->hasRole('checker');
+    }
+
+    private function cancellableRequestStatuses(): array
+    {
+        return [
+            OutgoingLetter::STATUS_DRAFT,
+            OutgoingLetter::STATUS_RETURNED,
+            OutgoingLetter::STATUS_WAITING_DIR_APPROVAL,
+            OutgoingLetter::STATUS_COMPLIANCE_REVIEW,
+            OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL,
+            OutgoingLetter::STATUS_WAITING_VERIFICATION,
+            OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD,
+        ];
+    }
+
+    private function resolveCancellationRestoreStatus(?string $status): string
+    {
+        $allowed = $this->cancellableRequestStatuses();
+        if (in_array((string) $status, $allowed, true)) {
+            return (string) $status;
+        }
+
+        return OutgoingLetter::STATUS_RETURNED;
     }
 
     private function canSubmitComplianceReview(User $user): bool

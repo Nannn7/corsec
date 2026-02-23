@@ -61,6 +61,8 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/{outgoingLetter}/edit', [OutgoingLetterController::class, 'edit'])->middleware('permission:corsec.update')->name('edit');
         Route::put('/{outgoingLetter}', [OutgoingLetterController::class, 'update'])->middleware('permission:corsec.update')->name('update');
         Route::post('/{outgoingLetter}/submit', [OutgoingLetterController::class, 'submit'])->middleware('permission:corsec.update')->name('submit');
+        Route::post('/{outgoingLetter}/cancel-request', [OutgoingLetterController::class, 'cancelRequest'])->middleware('permission:corsec.create|corsec.update')->name('cancel.request');
+        Route::post('/{outgoingLetter}/cancel-approval', [OutgoingLetterController::class, 'cancelApproval'])->middleware('permission:corsec.authorize')->name('cancel.approval');
         Route::post('/{outgoingLetter}/approval', [OutgoingLetterController::class, 'approvalAction'])->middleware('permission:corsec.authorize')->name('approval.action');
         Route::post('/{outgoingLetter}/compliance-review', [OutgoingLetterController::class, 'complianceReview'])->middleware('permission:corsec.update')->name('compliance.review');
         Route::post('/{outgoingLetter}/upload-final', [OutgoingLetterController::class, 'uploadFinal'])->middleware('permission:corsec.create|corsec.update')->name('upload_final');

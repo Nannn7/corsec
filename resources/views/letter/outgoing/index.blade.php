@@ -169,6 +169,68 @@
                 }
             })
         }
+
+        function cancelRequestData(rowKey) {
+            const element = document.querySelector('#outgoing-letter-table');
+            const baseUrl = element.getAttribute('data-base-url');
+
+            Swal.fire({
+                title: 'Ajukan Pembatalan Surat?',
+                width: 'min(920px, 95vw)',
+                padding: '1.5rem 1.75rem 1.25rem',
+                html: `
+                    <div class="text-left">
+                        <label for="cancel_reason" class="mb-2 block text-sm text-gray-700">Alasan pembatalan <span class="text-danger">*</span></label>
+                        <textarea id="cancel_reason" class="swal2-textarea !mt-0 !w-full !max-w-full" rows="4" style="width: 90%; min-height: 110px; max-width: 100%; resize: none;" placeholder="Contoh: Data surat perlu diganti total..."></textarea>
+                    </div>
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Ajukan Approval EO',
+                cancelButtonText: 'Batal',
+                focusConfirm: false,
+                didOpen: () => {
+                    const reasonEl = document.getElementById('cancel_reason');
+                    if (reasonEl) {
+                        reasonEl.focus();
+                    }
+                },
+                preConfirm: () => {
+                    const reasonEl = document.getElementById('cancel_reason');
+                    const reason = reasonEl ? reasonEl.value.trim() : '';
+                    if (!reason) {
+                        Swal.showValidationMessage('Alasan pembatalan wajib diisi.');
+                        return false;
+                    }
+                    return reason;
+                }
+            }).then((result) => {
+                if (!result.isConfirmed) return;
+
+                $.ajaxSetup({
+                    headers: {
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                });
+
+                $.ajax(`${baseUrl}/${rowKey}/cancel-request`, {
+                    type: 'POST',
+                    data: {
+                        note: result.value
+                    }
+                }).then((response) => {
+                    Swal.fire('Berhasil', response.message || 'Permintaan pembatalan berhasil diajukan.',
+                            'success')
+                        .then(() => window.location.reload());
+                }).catch((error) => {
+                    const message = error?.responseJSON?.message ||
+                        'Terjadi kesalahan saat mengajukan pembatalan.';
+                    Swal.fire('Error!', message, 'error');
+                });
+            });
+        }
     </script>
 
     <script type="module">
@@ -179,6 +241,14 @@
         const apiUrl = element.getAttribute('data-api-url');
         const baseUrl = element.getAttribute('data-base-url');
         const isAdmin = @json(auth()->user()?->hasRole('administrator'));
+        const hasMakerRole = @json(auth()->user()?->hasRole('maker'));
+        const isStaffPosition = @json(
+            \Illuminate\Support\Str::contains(
+                \Illuminate\Support\Str::lower((string) (auth()->user()?->position?->name ?? '')),
+                'staff'));
+        const currentUserId = @json((int) (auth()->id() ?? 0));
+        const currentUserDirectorateId = @json((int) (auth()->user()?->directorate_id ?? 0));
+        const canCreateOrUpdate = @json((bool) (auth()->user()?->can('corsec.create') || auth()->user()?->can('corsec.update')));
 
         const statusBadge = (status) => {
             const val = (status ?? '').toString().toLowerCase();
@@ -188,8 +258,10 @@
             if (val === 'waiting_compliance_approval') normalized = 'waiting_compliance_approval';
             if (val === 'waiting_verification') normalized = 'waiting_verification';
             if (val === 'waiting_final_upload' || val === 'final_uploaded') normalized = 'waiting_final_upload';
+            if (val === 'waiting_cancel_approval') normalized = 'waiting_cancel_approval';
             if (val === 'verified') normalized = 'done';
             if (val === 'returned') normalized = 'revisi';
+            if (val === 'cancelled') normalized = 'cancelled';
 
             const map = {
                 draft: ['badge-light', 'Draft'],
@@ -198,8 +270,10 @@
                 waiting_compliance_approval: ['badge-warning', 'Approval EO dan DD Kepatuhan'],
                 waiting_verification: ['badge-warning', 'Verifikasi EO Corp Affair'],
                 waiting_final_upload: ['badge-primary', 'Final Upload'],
+                waiting_cancel_approval: ['badge-warning', 'Approval Pembatalan EO Direktorat'],
                 done: ['badge-success', 'Done'],
                 revisi: ['badge-danger', 'Revisi'],
+                cancelled: ['badge-secondary', 'Cancelled'],
             };
             const [cls, text] = map[normalized] ?? ['badge-light', status ?? '-'];
             return `<span class="badge ${cls}">${text}</span>`;
@@ -305,8 +379,25 @@
                         const status = (data.status ?? '').toString().toLowerCase();
                         const editableStatuses = ['draft', 'returned'];
                         const deletableStatuses = ['draft', 'returned'];
+                        const cancellableStatuses = [
+                            'draft',
+                            'returned',
+                            'waiting_dir_approval',
+                            'compliance_review',
+                            'waiting_compliance_approval',
+                            'waiting_verification',
+                            'waiting_final_upload'
+                        ];
                         const canEditStatus = editableStatuses.includes(status);
                         const canDeleteStatus = isAdmin || deletableStatuses.includes(status);
+                        const isRequesterMakerStaff = isAdmin || (
+                            hasMakerRole &&
+                            isStaffPosition &&
+                            Number(data.created_by ?? 0) === Number(currentUserId) &&
+                            Number(data.requester_directorate_id ?? 0) === Number(currentUserDirectorateId)
+                        );
+                        const canCancelRequest = canCreateOrUpdate && isRequesterMakerStaff && cancellableStatuses
+                            .includes(status);
                         const rowKey = data.uuid ?? data.id;
                         let html = `<div class="flex flex-nowrap justify-center">`;
 
@@ -331,6 +422,12 @@
                                 </a>`;
                             }
                         @endcan
+
+                        if (canCancelRequest) {
+                            html += `<a onclick="cancelRequestData('${rowKey}')" class="btn btn-sm btn-icon btn-clear btn-warning" title="Ajukan Pembatalan">
+                                <i class="ki-outline ki-cross-circle"></i>
+                            </a>`;
+                        }
 
                         html += `</div>`;
                         return html;

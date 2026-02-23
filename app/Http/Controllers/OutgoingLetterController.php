@@ -318,6 +318,7 @@ class OutgoingLetterController extends Controller
     public function store(Request $request)
     {
         $this->authorizeCreate();
+        $this->normalizePerihalText($request);
 
         $request->validate([
             'order_date' => ['required', 'date'],
@@ -435,6 +436,8 @@ class OutgoingLetterController extends Controller
         $outgoingLetter->load([
             'comments.createdBy',
             'letterType',
+            'cancelRequestedBy:id,name',
+            'cancelledBy:id,name',
         ]);
 
         $approvals = Approval::query()
@@ -466,6 +469,7 @@ class OutgoingLetterController extends Controller
     public function update(Request $request, OutgoingLetter $outgoingLetter)
     {
         $this->authorizeUpdate();
+        $this->normalizePerihalText($request);
         if (!in_array($outgoingLetter->status, [OutgoingLetter::STATUS_DRAFT, OutgoingLetter::STATUS_RETURNED], true)) {
             abort(403, 'Surat keluar tidak dapat diubah pada status ini.');
         }
@@ -558,6 +562,64 @@ class OutgoingLetterController extends Controller
         $this->authorizeUpdate();
         $this->workflow->submit($outgoingLetter, Auth::user());
         return back()->with('success', 'Surat keluar diajukan untuk approval direktorat.');
+    }
+
+    public function cancelRequest(Request $request, OutgoingLetter $outgoingLetter)
+    {
+        $user = Auth::user();
+        if (!$user) {
+            abort(403, 'User tidak ditemukan.');
+        }
+
+        $validated = $request->validate([
+            'note' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $this->workflow->requestCancellation($outgoingLetter, $user, (string) $validated['note']);
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Permintaan pembatalan berhasil diajukan ke EO Direktorat.',
+            ]);
+        }
+
+        return back()->with('success', 'Permintaan pembatalan berhasil diajukan ke EO Direktorat.');
+    }
+
+    public function cancelApproval(Request $request, OutgoingLetter $outgoingLetter)
+    {
+        $user = Auth::user();
+        if (!$user) {
+            abort(403, 'User tidak ditemukan.');
+        }
+
+        $validated = $request->validate([
+            'action' => ['required', 'in:approve,reject,return'],
+            'note' => [
+                'nullable',
+                'string',
+                Rule::requiredIf(function () use ($request) {
+                    return in_array((string) $request->input('action'), ['reject', 'return'], true);
+                }),
+            ],
+        ]);
+
+        $this->workflow->cancellationApproval(
+            $outgoingLetter,
+            $user,
+            (string) $validated['action'],
+            $validated['note'] ?? null
+        );
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Approval pembatalan berhasil diproses.',
+            ]);
+        }
+
+        return back()->with('success', 'Approval pembatalan berhasil diproses.');
     }
 
     public function approvalAction(Request $request, OutgoingLetter $outgoingLetter)
@@ -724,7 +786,9 @@ class OutgoingLetterController extends Controller
                     $eligibleQuery
                         ->where('followup_action', 'response_letter')
                         ->where('status', IncomingLetter::STATUS_WAITING_RESPONSE_LETTER)
-                        ->whereDoesntHave('responseOutgoingLetters');
+                        ->whereDoesntHave('responseOutgoingLetters', function ($outgoingQuery) {
+                            $outgoingQuery->where('status', '!=', OutgoingLetter::STATUS_CANCELLED);
+                        });
                 });
                 if ($selectedIncomingLetterId) {
                     $query->orWhere('id', $selectedIncomingLetterId);
@@ -762,13 +826,35 @@ class OutgoingLetterController extends Controller
     {
         $query = OutgoingLetter::query()
             ->where('perihal_type', 'tanggapan_surat_masuk')
-            ->where('perihal_incoming_letter_id', $incomingLetterId);
+            ->where('perihal_incoming_letter_id', $incomingLetterId)
+            ->where('status', '!=', OutgoingLetter::STATUS_CANCELLED);
 
         if ($ignoreOutgoingLetterId) {
             $query->where('id', '!=', $ignoreOutgoingLetterId);
         }
 
         return $query->exists();
+    }
+
+    private function normalizePerihalText(Request $request): void
+    {
+        $perihalType = (string) $request->input('perihal_type', '');
+        $perihalText = trim((string) $request->input('perihal_text', ''));
+
+        if ($perihalText !== '') {
+            $request->merge(['perihal_text' => $perihalText]);
+            return;
+        }
+
+        if ($perihalType === 'rutinitas') {
+            $perihalText = trim((string) $request->input('perihal_text_rutinitas', ''));
+        } elseif ($perihalType === 'insidentil') {
+            $perihalText = trim((string) $request->input('perihal_text_insidentil', ''));
+        } else {
+            $perihalText = '';
+        }
+
+        $request->merge(['perihal_text' => $perihalText]);
     }
 
     private function generateRegistrationNoPreview(int $letterTypeId, ?string $orderDate): string
