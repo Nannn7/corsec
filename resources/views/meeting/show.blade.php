@@ -6,7 +6,7 @@
 
 @section('content')
     @php
-                
+
         $user = auth()->user();
         $status = (string) ($meeting->status ?? '');
 
@@ -22,20 +22,28 @@
         $isCorsecDirectorate =
             $user &&
             (($corpCode !== '' && $actorDirectorateCode === $corpCode) ||
-                ($actorDirectorateName !== '' && \Illuminate\Support\Str::contains($actorDirectorateName, 'corporate secretary')));
+                ($actorDirectorateName !== '' &&
+                    \Illuminate\Support\Str::contains($actorDirectorateName, 'corporate secretary')));
 
-        $participantDirectorateIds = $meeting->participants->pluck('directorate_id')->filter()->map(fn($id) => (int) $id);
+        $participantDirectorateIds = $meeting->participants
+            ->pluck('directorate_id')
+            ->filter()
+            ->map(fn($id) => (int) $id);
         $agendaDirectorateIds = $meeting->agendas->pluck('owner_directorate_id')->filter()->map(fn($id) => (int) $id);
-        $decisionDirectorateIds = $meeting->decisions->pluck('owner_directorate_id')->filter()->map(fn($id) => (int) $id);
+        $decisionDirectorateIds = $meeting->decisions
+            ->pluck('owner_directorate_id')
+            ->filter()
+            ->map(fn($id) => (int) $id);
         $targetDirectorateIds = $participantDirectorateIds
             ->merge($agendaDirectorateIds)
             ->merge($decisionDirectorateIds)
             ->unique()
             ->values();
 
-        $isAssignedUser = $meeting->participants->contains(function ($participant) use ($actorUserId) {
-            return (int) ($participant->user_id ?? 0) === $actorUserId;
-        }) ||
+        $isAssignedUser =
+            $meeting->participants->contains(function ($participant) use ($actorUserId) {
+                return (int) ($participant->user_id ?? 0) === $actorUserId;
+            }) ||
             $meeting->agendas->contains(function ($agenda) use ($actorUserId) {
                 return (int) ($agenda->pic_user_id ?? 0) === $actorUserId;
             }) ||
@@ -43,7 +51,10 @@
                 return (int) ($decision->pic_user_id ?? 0) === $actorUserId;
             });
 
-        $canDirectorateActor = $isAdmin || $isAssignedUser || ($actorDirectorateId > 0 && $targetDirectorateIds->contains($actorDirectorateId));
+        $canDirectorateActor =
+            $isAdmin ||
+            $isAssignedUser ||
+            ($actorDirectorateId > 0 && $targetDirectorateIds->contains($actorDirectorateId));
 
         $canEdit =
             ($isAdmin || (int) ($meeting->created_by ?? 0) === $actorUserId) &&
@@ -53,27 +64,43 @@
             ($isAdmin || (int) ($meeting->created_by ?? 0) === $actorUserId) &&
             in_array($status, ['draft', 'returned_by_corsec', 'returned_by_direktorat'], true);
 
+        $corsecActionNotePrefixes = [
+            'EO Corp Affair Approved',
+            'EO Corp Affair Returned',
+            // backward-compat for historical notes before label simplification
+            'EO Corp Affair + Kepala Corsec Approved',
+            'EO Corp Affair + Kepala Corsec Returned',
+        ];
         $userHasCorsecAction =
             $user &&
-            $approvals
-                ->where('acted_by', $user->id)
-                ->contains(function ($approval) {
-                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Corp Affair + Kepala Corsec Approved') ||
-                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Corp Affair + Kepala Corsec Returned');
-                });
+            $approvals->where('acted_by', $user->id)->contains(function ($approval) use ($corsecActionNotePrefixes) {
+                $note = (string) $approval->note;
+                foreach ($corsecActionNotePrefixes as $prefix) {
+                    if (\Illuminate\Support\Str::startsWith($note, $prefix)) {
+                        return true;
+                    }
+                }
+                return false;
+            });
 
         $canCorsecApproval =
             $status === 'waiting_corsec_approval' &&
             ($isAdmin || ($isChecker && $isCorsecDirectorate)) &&
             !$userHasCorsecAction;
 
-        $canMarkPendingDirectorate = $canDirectorateActor && in_array($status, ['jadwal_terkirim', 'returned_by_direktorat'], true);
-        $canDirectorateSubmit = $canDirectorateActor && in_array($status, ['jadwal_terkirim', 'pending_direktorat', 'returned_by_direktorat'], true);
+        $canMarkPendingDirectorate =
+            $canDirectorateActor && in_array($status, ['jadwal_terkirim', 'returned_by_direktorat'], true);
+        $canDirectorateSubmit =
+            $canDirectorateActor &&
+            in_array($status, ['jadwal_terkirim', 'pending_direktorat', 'returned_by_direktorat'], true);
 
         $latestPendingDirectorateApproval = $approvals
             ->where('status', 'pending')
             ->filter(function ($approval) {
-                return \Illuminate\Support\Str::contains(\Illuminate\Support\Str::lower((string) $approval->note), 'direktorat');
+                return \Illuminate\Support\Str::contains(
+                    \Illuminate\Support\Str::lower((string) $approval->note),
+                    'direktorat',
+                );
             })
             ->sortByDesc('id')
             ->first();
@@ -133,10 +160,16 @@
 
         $canManageMinutes = $isAdmin || $isCorsecDirectorate || (int) ($meeting->created_by ?? 0) === $actorUserId;
         $canSaveMinutes = $canManageMinutes && in_array($status, ['data_terkirim', 'proses_pembuatan_notulen'], true);
-        $canFinalizeMinutes = $canManageMinutes && in_array($status, ['proses_pembuatan_notulen', 'proses_sirkulasi_tandatangan'], true);
+        $canFinalizeMinutes =
+            $canManageMinutes && in_array($status, ['proses_pembuatan_notulen', 'proses_sirkulasi_tandatangan'], true);
         $canInputFollowup = in_array($status, ['notulen_final', 'proses_tindaklanjut_hasil_rapat'], true);
 
-        $canUpdateDecision = function ($decision) use ($isAdmin, $actorUserId, $actorDirectorateId, $canDirectorateActor) {
+        $canUpdateDecision = function ($decision) use (
+            $isAdmin,
+            $actorUserId,
+            $actorDirectorateId,
+            $canDirectorateActor,
+        ) {
             if ($isAdmin) {
                 return true;
             }
@@ -151,7 +184,8 @@
             return $canDirectorateActor;
         };
 
-        $allDecisionsDone = $meeting->decisions->count() > 0 &&
+        $allDecisionsDone =
+            $meeting->decisions->count() > 0 &&
             $meeting->decisions->every(function ($decision) {
                 return in_array((string) ($decision->status ?? ''), ['done', 'dropped'], true);
             });
@@ -165,7 +199,10 @@
             'waiting_corsec_approval', 'waiting_direktorat_approval' => 'badge-warning',
             'returned_by_corsec', 'returned_by_direktorat' => 'badge-danger',
             'jadwal_terkirim', 'pending_direktorat', 'data_terkirim' => 'badge-info',
-            'proses_pembuatan_notulen', 'proses_sirkulasi_tandatangan', 'proses_tindaklanjut_hasil_rapat' => 'badge-primary',
+            'proses_pembuatan_notulen',
+            'proses_sirkulasi_tandatangan',
+            'proses_tindaklanjut_hasil_rapat'
+                => 'badge-primary',
             'notulen_final', 'done_tindaklanjut_hasil_rapat' => 'badge-success',
             default => 'badge-light',
         };
@@ -187,7 +224,7 @@
 
         $statusSteps = [
             'draft' => 'Draft Jadwal Rapat',
-            'waiting_corsec_approval' => 'Approval EO Corp Affair + Kepala Corsec',
+            'waiting_corsec_approval' => 'Approval EO Corp Affair',
             'jadwal_terkirim' => 'Jadwal Terkirim',
             'pending_direktorat' => 'Pending Direktorat',
             'waiting_direktorat_approval' => 'Approval EO + DD Direktorat',
@@ -223,7 +260,13 @@
                 ->all();
         }
         if (count($minutesDecisionRows) === 0) {
-            $minutesDecisionRows[] = ['id' => '', 'decision_text' => '', 'owner_directorate_id' => '', 'pic_user_id' => '', 'target_date' => ''];
+            $minutesDecisionRows[] = [
+                'id' => '',
+                'decision_text' => '',
+                'owner_directorate_id' => '',
+                'pic_user_id' => '',
+                'target_date' => '',
+            ];
         }
 
         $decisionUpdates = $meeting->decisions
@@ -282,7 +325,8 @@
                     <div class="grid gap-4">
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600">Kategori:</span>
-                            <span class="font-medium">{{ $typeOptions[$meeting->meeting_type] ?? $meeting->meeting_type ?? '-' }}</span>
+                            <span
+                                class="font-medium">{{ $typeOptions[$meeting->meeting_type] ?? ($meeting->meeting_type ?? '-') }}</span>
                         </div>
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600">Judul:</span>
@@ -290,7 +334,8 @@
                         </div>
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600">Tanggal/Jam:</span>
-                            <span class="font-medium">{{ $meeting->meeting_at ? $meeting->meeting_at->format('d/m/Y H:i') : '-' }}</span>
+                            <span
+                                class="font-medium">{{ $meeting->meeting_at ? $meeting->meeting_at->format('d/m/Y H:i') : '-' }}</span>
                         </div>
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600">Lokasi:</span>
@@ -302,7 +347,8 @@
                         </div>
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600">Status:</span>
-                            <span class="badge {{ $statusBadgeClass }}">{{ $statusLabels[$status] ?? $status ?? '-' }}</span>
+                            <span
+                                class="badge {{ $statusBadgeClass }}">{{ $statusLabels[$status] ?? ($status ?? '-') }}</span>
                         </div>
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600">Pembuat:</span>
@@ -310,7 +356,8 @@
                         </div>
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600">Update Terakhir:</span>
-                            <span class="font-medium">{{ $meeting->updated_at ? $meeting->updated_at->format('d/m/Y H:i') : '-' }}</span>
+                            <span
+                                class="font-medium">{{ $meeting->updated_at ? $meeting->updated_at->format('d/m/Y H:i') : '-' }}</span>
                         </div>
                     </div>
                 </div>
@@ -323,11 +370,9 @@
                 <div class="card-body">
                     <div class="flex flex-wrap gap-2">
                         @foreach ($statusSteps as $key => $label)
-                            <span class="badge {{ $status === $key ? 'badge-success' : 'badge-light' }}">{{ $label }}</span>
+                            <span
+                                class="badge {{ $status === $key ? 'badge-success' : 'badge-light' }}">{{ $label }}</span>
                         @endforeach
-                    </div>
-                    <div class="mt-4 text-sm text-gray-600">
-                        Flow C.1-C.4: Jadwal Rapat -> Persiapan Direktorat -> Notulen -> Tindaklanjut.
                     </div>
                 </div>
             </div>
@@ -440,7 +485,8 @@
                                             @endif
                                         </td>
                                         <td>{{ $material->uploader?->name ?? '-' }}</td>
-                                        <td>{{ $material->uploaded_at ? $material->uploaded_at->format('d/m/Y H:i') : '-' }}</td>
+                                        <td>{{ $material->uploaded_at ? $material->uploaded_at->format('d/m/Y H:i') : '-' }}
+                                        </td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -462,8 +508,7 @@
                         @csrf
                         <div class="flex flex-col">
                             <label class="form-label">Catatan (opsional)</label>
-                            <textarea class="textarea w-full" name="note" rows="3"
-                                placeholder="Catatan untuk EO Corp Affair + Kepala Corsec">{{ old('note') }}</textarea>
+                            <textarea class="textarea w-full" name="note" rows="3" placeholder="Catatan untuk EO Corp Affair">{{ old('note') }}</textarea>
                         </div>
                         <div class="flex justify-end">
                             <button type="submit" class="btn btn-primary">Submit Approval</button>
@@ -477,7 +522,7 @@
             @if ($canCorsecApproval)
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">Approval EO Corp Affair + Kepala Corsec</h3>
+                        <h3 class="card-title">Approval EO Corp Affair</h3>
                     </div>
                     <div class="card-body">
                         <form method="POST" action="{{ route('meeting.corsec.approval', $meeting) }}" class="grid gap-4">
@@ -488,7 +533,8 @@
                             </div>
                             <div class="flex justify-end gap-2">
                                 <button type="submit" class="btn btn-danger" name="action" value="return">Return</button>
-                                <button type="submit" class="btn btn-success" name="action" value="approve">Approve</button>
+                                <button type="submit" class="btn btn-success" name="action"
+                                    value="approve">Approve</button>
                             </div>
                         </form>
                     </div>
@@ -507,7 +553,8 @@
                             <form method="POST" action="{{ route('meeting.mark.pending.directorate', $meeting) }}">
                                 @csrf
                                 <div class="flex justify-end">
-                                    <button type="submit" class="btn btn-light-primary">Set Status Pending Direktorat</button>
+                                    <button type="submit" class="btn btn-light-primary">Set Status Pending
+                                        Direktorat</button>
                                 </div>
                             </form>
                         @endif
@@ -537,8 +584,7 @@
 
                             <div class="flex flex-col">
                                 <label class="form-label">Catatan Direktorat (Opsional)</label>
-                                <textarea class="textarea w-full" name="note" rows="3"
-                                    placeholder="Catatan progres persiapan rapat...">{{ old('note') }}</textarea>
+                                <textarea class="textarea w-full" name="note" rows="3" placeholder="Catatan progres persiapan rapat...">{{ old('note') }}</textarea>
                             </div>
 
                             <div class="border border-gray-200 rounded-xl p-4 grid gap-4">
@@ -554,7 +600,8 @@
                                             <div class="grid gap-3 md:grid-cols-2">
                                                 <div class="flex flex-col md:col-span-2">
                                                     <label class="form-label">Agenda Tambahan</label>
-                                                    <input class="input" type="text" name="additional_agendas[{{ $index }}][title]"
+                                                    <input class="input" type="text"
+                                                        name="additional_agendas[{{ $index }}][title]"
                                                         value="{{ old('additional_agendas.' . $index . '.title', $agenda['title'] ?? '') }}">
                                                 </div>
                                                 <div class="flex flex-col md:col-span-2">
@@ -576,7 +623,8 @@
                                                 </div>
                                                 <div class="flex flex-col">
                                                     <label class="form-label">PIC User</label>
-                                                    <select class="select" name="additional_agendas[{{ $index }}][pic_user_id]">
+                                                    <select class="select"
+                                                        name="additional_agendas[{{ $index }}][pic_user_id]">
                                                         <option value="">- Pilih User -</option>
                                                         @foreach ($users as $optionUser)
                                                             <option value="{{ $optionUser->id }}"
@@ -591,7 +639,8 @@
                                                 </div>
                                             </div>
                                             <div class="flex justify-end mt-2">
-                                                <button type="button" class="btn btn-xs btn-danger remove-prep-agenda-row">Hapus</button>
+                                                <button type="button"
+                                                    class="btn btn-xs btn-danger remove-prep-agenda-row">Hapus</button>
                                             </div>
                                         </div>
                                     @endforeach
@@ -614,7 +663,8 @@
                         <h3 class="card-title">Approval EO + DD Direktorat</h3>
                     </div>
                     <div class="card-body">
-                        <form method="POST" action="{{ route('meeting.directorate.approval', $meeting) }}" class="grid gap-4">
+                        <form method="POST" action="{{ route('meeting.directorate.approval', $meeting) }}"
+                            class="grid gap-4">
                             @csrf
                             <div class="text-sm text-gray-600">
                                 {{ $canDirectorateCheckerApproval ? 'Tahap approval EO Direktorat.' : 'Tahap approval DD Direktorat.' }}
@@ -625,7 +675,8 @@
                             </div>
                             <div class="flex justify-end gap-2">
                                 <button type="submit" class="btn btn-danger" name="action" value="return">Return</button>
-                                <button type="submit" class="btn btn-success" name="action" value="approve">Approve</button>
+                                <button type="submit" class="btn btn-success" name="action"
+                                    value="approve">Approve</button>
                             </div>
                         </form>
                     </div>
@@ -640,14 +691,13 @@
                         <h3 class="card-title">Input Notulen Rapat + Tindaklanjut</h3>
                     </div>
                     <div class="card-body">
-                        <form method="POST" action="{{ route('meeting.minutes.save', $meeting) }}" enctype="multipart/form-data"
-                            class="grid gap-4" id="minutes-form">
+                        <form method="POST" action="{{ route('meeting.minutes.save', $meeting) }}"
+                            enctype="multipart/form-data" class="grid gap-4" id="minutes-form">
                             @csrf
 
                             <div class="flex flex-col">
                                 <label class="form-label">Notulen Rapat <span class="text-danger">*</span></label>
-                                <textarea class="textarea w-full" name="minutes_text" rows="6"
-                                    placeholder="Ringkasan notulen rapat...">{{ old('minutes_text', $minutes?->minutes_text) }}</textarea>
+                                <textarea class="textarea w-full" name="minutes_text" rows="6" placeholder="Ringkasan notulen rapat...">{{ old('minutes_text', $minutes?->minutes_text) }}</textarea>
                             </div>
 
                             <div class="flex flex-col">
@@ -670,12 +720,14 @@
                                                 value="{{ old('decisions.' . $index . '.id', $decision['id'] ?? '') }}">
                                             <div class="grid gap-3 md:grid-cols-2">
                                                 <div class="flex flex-col md:col-span-2">
-                                                    <label class="form-label">Item Tindaklanjut <span class="text-danger">*</span></label>
+                                                    <label class="form-label">Item Tindaklanjut <span
+                                                            class="text-danger">*</span></label>
                                                     <textarea class="textarea w-full" rows="2" name="decisions[{{ $index }}][decision_text]">{{ old('decisions.' . $index . '.decision_text', $decision['decision_text'] ?? '') }}</textarea>
                                                 </div>
                                                 <div class="flex flex-col">
                                                     <label class="form-label">PIC Direktorat</label>
-                                                    <select class="select" name="decisions[{{ $index }}][owner_directorate_id]">
+                                                    <select class="select"
+                                                        name="decisions[{{ $index }}][owner_directorate_id]">
                                                         <option value="">- Pilih Direktorat -</option>
                                                         @foreach ($directorates as $directorate)
                                                             <option value="{{ $directorate->id }}"
@@ -687,7 +739,8 @@
                                                 </div>
                                                 <div class="flex flex-col">
                                                     <label class="form-label">PIC User</label>
-                                                    <select class="select" name="decisions[{{ $index }}][pic_user_id]">
+                                                    <select class="select"
+                                                        name="decisions[{{ $index }}][pic_user_id]">
                                                         <option value="">- Pilih User -</option>
                                                         @foreach ($users as $optionUser)
                                                             <option value="{{ $optionUser->id }}"
@@ -701,13 +754,16 @@
                                                     </select>
                                                 </div>
                                                 <div class="flex flex-col md:col-span-2">
-                                                    <label class="form-label">Target Penyelesaian <span class="text-danger">*</span></label>
-                                                    <input class="input" type="date" name="decisions[{{ $index }}][target_date]"
+                                                    <label class="form-label">Target Penyelesaian <span
+                                                            class="text-danger">*</span></label>
+                                                    <input class="input" type="date"
+                                                        name="decisions[{{ $index }}][target_date]"
                                                         value="{{ old('decisions.' . $index . '.target_date', $decision['target_date'] ?? '') }}">
                                                 </div>
                                             </div>
                                             <div class="flex justify-end mt-2">
-                                                <button type="button" class="btn btn-xs btn-danger remove-decision-row">Hapus</button>
+                                                <button type="button"
+                                                    class="btn btn-xs btn-danger remove-decision-row">Hapus</button>
                                             </div>
                                         </div>
                                     @endforeach
@@ -716,13 +772,12 @@
 
                             <div class="flex flex-col">
                                 <label class="form-label">Catatan (Opsional)</label>
-                                <textarea class="textarea w-full" name="note" rows="3"
-                                    placeholder="Catatan notulen untuk tim...">{{ old('note') }}</textarea>
+                                <textarea class="textarea w-full" name="note" rows="3" placeholder="Catatan notulen untuk tim...">{{ old('note') }}</textarea>
                             </div>
 
                             <label class="flex items-center gap-2 text-sm">
-                                <input class="checkbox checkbox-sm" type="checkbox" name="submit_for_signature" value="1"
-                                    {{ old('submit_for_signature') ? 'checked' : '' }}>
+                                <input class="checkbox checkbox-sm" type="checkbox" name="submit_for_signature"
+                                    value="1" {{ old('submit_for_signature') ? 'checked' : '' }}>
                                 <span>Langsung submit untuk sirkulasi tandatangan</span>
                             </label>
 
@@ -752,8 +807,7 @@
                             </div>
                             <div class="flex flex-col">
                                 <label class="form-label">Catatan (Opsional)</label>
-                                <textarea class="textarea w-full" name="note" rows="3"
-                                    placeholder="Catatan finalisasi notulen...">{{ old('note') }}</textarea>
+                                <textarea class="textarea w-full" name="note" rows="3" placeholder="Catatan finalisasi notulen...">{{ old('note') }}</textarea>
                             </div>
                             <div class="flex justify-end">
                                 <button type="submit" class="btn btn-primary">Upload Notulen Final</button>
@@ -839,14 +893,17 @@
                                 @foreach ($meeting->decisions as $index => $decision)
                                     @php
                                         $latestUpdate = $decision->updates->sortByDesc('id')->first();
-                                        $progressValue = $latestUpdate?->progress_percent ?? ((string) $decision->status === 'done' ? 100 : 0);
+                                        $progressValue =
+                                            $latestUpdate?->progress_percent ??
+                                            ((string) $decision->status === 'done' ? 100 : 0);
                                     @endphp
                                     <tr>
                                         <td>{{ $index + 1 }}</td>
                                         <td>{{ $decision->decision_text }}</td>
                                         <td>{{ $decision->ownerDirectorate?->name ?? '-' }}</td>
                                         <td>{{ $decision->picUser?->name ?? '-' }}</td>
-                                        <td>{{ $decision->target_date ? $decision->target_date->format('d/m/Y') : '-' }}</td>
+                                        <td>{{ $decision->target_date ? $decision->target_date->format('d/m/Y') : '-' }}
+                                        </td>
                                         <td>{{ $progressValue }}%</td>
                                         <td>
                                             <span
@@ -873,7 +930,9 @@
                         @foreach ($meeting->decisions as $decision)
                             @php
                                 $decisionStatus = (string) ($decision->status ?? '');
-                                $canUpdateThisDecision = $canUpdateDecision($decision) && !in_array($decisionStatus, ['done', 'dropped'], true);
+                                $canUpdateThisDecision =
+                                    $canUpdateDecision($decision) &&
+                                    !in_array($decisionStatus, ['done', 'dropped'], true);
                             @endphp
                             @if ($canUpdateThisDecision)
                                 <form method="POST" action="{{ route('meeting.decision.update', [$meeting, $decision]) }}"
@@ -896,33 +955,35 @@
                                         </div>
                                         <div class="flex flex-col js-progress-wrap">
                                             <label class="form-label">Progress (%)</label>
-                                            <input class="input" type="number" min="0" max="100" name="progress_percent"
-                                                value="0">
+                                            <input class="input" type="number" min="0" max="100"
+                                                name="progress_percent" value="0">
                                         </div>
                                         <div class="flex flex-col">
-                                            <label class="form-label">Tanggal Realisasi <span class="text-danger">*</span></label>
-                                            <input class="input" type="date" name="happened_at" value="{{ now()->format('Y-m-d') }}"
-                                                required>
+                                            <label class="form-label">Tanggal Realisasi <span
+                                                    class="text-danger">*</span></label>
+                                            <input class="input" type="date" name="happened_at"
+                                                value="{{ now()->format('Y-m-d') }}" required>
                                         </div>
                                         <div class="flex flex-col">
-                                            <label class="form-label">Sesuai Target? <span class="text-danger">*</span></label>
+                                            <label class="form-label">Sesuai Target? <span
+                                                    class="text-danger">*</span></label>
                                             <select class="select js-on-target" name="is_on_target" required>
                                                 <option value="1">Ya</option>
                                                 <option value="0">Tidak</option>
                                             </select>
                                         </div>
                                         <div class="flex flex-col md:col-span-2 js-reason-wrap hidden">
-                                            <label class="form-label">Alasan Tidak Sesuai Target <span class="text-danger">*</span></label>
-                                            <textarea class="textarea w-full" name="reason" rows="2"
-                                                placeholder="Wajib diisi jika tidak sesuai target"></textarea>
+                                            <label class="form-label">Alasan Tidak Sesuai Target <span
+                                                    class="text-danger">*</span></label>
+                                            <textarea class="textarea w-full" name="reason" rows="2" placeholder="Wajib diisi jika tidak sesuai target"></textarea>
                                         </div>
                                         <div class="flex flex-col md:col-span-2">
                                             <label class="form-label">Catatan</label>
-                                            <textarea class="textarea w-full" name="note" rows="2"
-                                                placeholder="Catatan update progress"></textarea>
+                                            <textarea class="textarea w-full" name="note" rows="2" placeholder="Catatan update progress"></textarea>
                                         </div>
                                         <div class="flex flex-col md:col-span-2">
-                                            <label class="form-label">Bukti Progress <span class="text-danger">*</span></label>
+                                            <label class="form-label">Bukti Progress <span
+                                                    class="text-danger">*</span></label>
                                             <input class="file-input" type="file" name="evidence_files[]"
                                                 accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx" multiple required>
                                         </div>
@@ -1045,7 +1106,8 @@
                                         <td>
                                             {{ $approval->actor?->name ?? '-' }}
                                             @if ($approval->actor?->directorate?->name)
-                                                <span class="text-xs text-gray-500">({{ $approval->actor->directorate->name }})</span>
+                                                <span
+                                                    class="text-xs text-gray-500">({{ $approval->actor->directorate->name }})</span>
                                             @endif
                                         </td>
                                         <td>{{ $approval->note ?? '-' }}</td>
@@ -1084,7 +1146,8 @@
                                     <tr>
                                         <td>{{ $comment->body ?? '-' }}</td>
                                         <td>{{ $comment->createdBy?->name ?? '-' }}</td>
-                                        <td>{{ $comment->created_at ? $comment->created_at->format('d/m/Y H:i') : '-' }}</td>
+                                        <td>{{ $comment->created_at ? $comment->created_at->format('d/m/Y H:i') : '-' }}
+                                        </td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -1099,17 +1162,23 @@
 @endsection
 
 @push('scripts')
+    @php
+        $directorateJsOptions = $directorates->map(fn($d) => ['id' => $d->id, 'name' => $d->name])->values();
+
+        $userJsOptions = $users
+            ->map(function ($u) {
+                return [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'directorate' => $u->directorate?->name,
+                ];
+            })
+            ->values();
+    @endphp
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const directorateOptions = @json($directorates->map(fn($d) => ['id' => $d->id, 'name' => $d->name])->values());
-            const userOptions = @json(
-                $users->map(function ($u) {
-                    return [
-                        'id' => $u->id,
-                        'name' => $u->name,
-                        'directorate' => $u->directorate?->name,
-                    ];
-                })->values());
+            const directorateOptions = @json($directorateJsOptions);
+            const userOptions = @json($userJsOptions);
 
             const buildDirectorateOptions = () => {
                 let html = '<option value="">- Pilih Direktorat -</option>';
@@ -1134,7 +1203,8 @@
                 const renumberPrepAgendaRows = () => {
                     prepAgendaRows.querySelectorAll('.prep-agenda-row').forEach((row, index) => {
                         row.querySelectorAll('[name]').forEach((input) => {
-                            input.name = input.name.replace(/additional_agendas\[\d+\]/, `additional_agendas[${index}]`);
+                            input.name = input.name.replace(/additional_agendas\[\d+\]/,
+                                `additional_agendas[${index}]`);
                         });
                     });
                 };
@@ -1192,7 +1262,8 @@
                 const renumberDecisionRows = () => {
                     decisionRows.querySelectorAll('.decision-row').forEach((row, index) => {
                         row.querySelectorAll('[name]').forEach((input) => {
-                            input.name = input.name.replace(/decisions\[\d+\]/, `decisions[${index}]`);
+                            input.name = input.name.replace(/decisions\[\d+\]/,
+                                `decisions[${index}]`);
                         });
                     });
                 };
@@ -1253,7 +1324,8 @@
                 const reasonWrap = form.querySelector('.js-reason-wrap');
                 const reasonInput = form.querySelector('[name="reason"]');
 
-                if (!updateType || !progressWrap || !progressInput || !onTargetSelect || !reasonWrap || !reasonInput) {
+                if (!updateType || !progressWrap || !progressInput || !onTargetSelect || !reasonWrap || !
+                    reasonInput) {
                     return;
                 }
 
