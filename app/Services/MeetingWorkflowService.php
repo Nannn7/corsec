@@ -33,7 +33,7 @@ class MeetingWorkflowService
                 'approvable_type' => Meeting::class,
                 'approvable_id' => $meeting->id,
                 'status' => 'pending',
-                'note' => $this->buildApprovalNote('Menunggu approval EO Corp Affair + Kepala Corsec', $note),
+                'note' => $this->buildApprovalNote('Menunggu approval EO Corp Affair', $note),
             ]);
 
             $approvalUserIds = $this->getCorpSecretaryApprovalUserIds();
@@ -44,7 +44,7 @@ class MeetingWorkflowService
                     $meeting,
                     $actor,
                     'Approval Jadwal Rapat',
-                    'Jadwal rapat menunggu approval EO Corp Affair + Kepala Corsec.'
+                    'Jadwal rapat menunggu approval EO Corp Affair.'
                 )
             );
         });
@@ -65,7 +65,7 @@ class MeetingWorkflowService
             if ($action === 'approve') {
                 $pending->update([
                     'status' => 'approved',
-                    'note' => $this->buildApprovalNote('EO Corp Affair + Kepala Corsec Approved', $note),
+                    'note' => $this->buildApprovalNote('EO Corp Affair Approved', $note),
                     'acted_by' => $actor->id,
                     'acted_at' => now(),
                 ]);
@@ -86,7 +86,7 @@ class MeetingWorkflowService
                         $meeting,
                         $actor,
                         'Approval Corsec',
-                        'Rencana rapat disetujui EO Corp Affair + Kepala Corsec.'
+                        'Rencana rapat disetujui EO Corp Affair.'
                     )
                 );
 
@@ -95,7 +95,7 @@ class MeetingWorkflowService
 
             $pending->update([
                 'status' => 'returned',
-                'note' => $this->buildApprovalNote('EO Corp Affair + Kepala Corsec Returned', $note),
+                'note' => $this->buildApprovalNote('EO Corp Affair Returned', $note),
                 'acted_by' => $actor->id,
                 'acted_at' => now(),
             ]);
@@ -108,7 +108,7 @@ class MeetingWorkflowService
                 'updated_by' => $actor->id,
             ]);
 
-            $this->addComment($meeting, $actor, '[RETURN EO + KEPALA CORSEC]', $note);
+            $this->addComment($meeting, $actor, '[RETURN EO CORP AFFAIR]', $note);
             $this->notifyUsers(
                 [$meeting->created_by],
                 'meeting_corsec_action',
@@ -116,7 +116,7 @@ class MeetingWorkflowService
                     $meeting,
                     $actor,
                     'Approval Corsec',
-                    'Rencana rapat dikembalikan EO Corp Affair + Kepala Corsec.'
+                    'Rencana rapat dikembalikan EO Corp Affair.'
                 )
             );
         });
@@ -527,7 +527,7 @@ class MeetingWorkflowService
         $isCorpSecretary = (int) ($actor->directorate_id ?? 0) === (int) $directorateId;
 
         if (!$isChecker || !$isCorpSecretary) {
-            abort(403, 'Approval EO/Kepala Corsec hanya untuk role checker di direktorat Corporate Secretary.');
+            abort(403, 'Approval EO Corp Affair hanya untuk role checker di direktorat Corporate Secretary.');
         }
     }
 

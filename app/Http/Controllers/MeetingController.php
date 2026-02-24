@@ -294,7 +294,7 @@ class MeetingController extends Controller
         return $this->successRedirectResponse(
             $request,
             route('meeting.show', $meeting),
-            'Approval EO + Kepala Corsec berhasil diproses.'
+            'Approval EO Corp Affair berhasil diproses.'
         );
     }
 

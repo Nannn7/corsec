@@ -78,8 +78,8 @@ class Meeting extends Model
     {
         return [
             self::STATUS_DRAFT => 'Draft',
-            self::STATUS_WAITING_CORSEC_APPROVAL => 'Menunggu Approval EO + Kepala Corsec',
-            self::STATUS_RETURNED_BY_CORSEC => 'Returned EO + Kepala Corsec',
+            self::STATUS_WAITING_CORSEC_APPROVAL => 'Menunggu Approval EO Corp Affair',
+            self::STATUS_RETURNED_BY_CORSEC => 'Returned EO Corp Affair',
             self::STATUS_JADWAL_TERKIRIM => 'Jadwal Terkirim',
             self::STATUS_PENDING_DIREKTORAT => 'Pending Direktorat',
             self::STATUS_WAITING_DIREKTORAT_APPROVAL => 'Menunggu Approval EO + DD Direktorat',
