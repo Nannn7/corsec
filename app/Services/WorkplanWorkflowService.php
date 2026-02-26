@@ -124,9 +124,9 @@ class WorkplanWorkflowService
         });
     }
 
-    public function handleDirectorateApproval(WorkProgram $program, User $actor, string $action, ?string $note = null): void
+    public function handleDirectorateApproval(WorkProgram $program, User $actor, string $action, ?string $note = null): string
     {
-        DB::transaction(function () use ($program, $actor, $action, $note) {
+        return DB::transaction(function () use ($program, $actor, $action, $note) {
             $program = WorkProgram::query()->lockForUpdate()->findOrFail($program->id);
 
             if ($program->status !== WorkProgram::STATUS_WAITING_DIR_APPROVAL) {
@@ -170,7 +170,7 @@ class WorkplanWorkflowService
 
                     $this->notifyProgramOwner($program, $actor, 'Approval EO direktorat untuk program kerja sudah disetujui.');
                     $this->notifyDirectorateApprover($program, $actor, 'workplan_dd_approval', 'Workplan menunggu approval DD direktorat.');
-                    return;
+                    return 'Approval EO Direktorat disetujui. Menunggu approval DD Direktorat.';
                 }
 
                 if ((!$requiresCheckerApproval || $checkerApproved) && ($isApproverDeputyDirector || $isAdmin)) {
@@ -198,7 +198,7 @@ class WorkplanWorkflowService
                     ]);
 
                     $this->notifyProgramOwner($program, $actor, 'Approval DD direktorat untuk program kerja sudah disetujui.');
-                    return;
+                    return 'Approval DD Direktorat disetujui.';
                 }
 
                 abort(403, 'Tahap approval tidak sesuai role user.');
@@ -254,6 +254,10 @@ class WorkplanWorkflowService
             }
 
             $this->notifyProgramOwner($program, $actor, 'Program kerja dikembalikan untuk diperbaiki.');
+
+            return ($requiresCheckerApproval && !$checkerApproved)
+                ? 'Approval EO Direktorat dikembalikan.'
+                : 'Approval DD Direktorat dikembalikan.';
         });
     }
 

@@ -581,14 +581,14 @@ class WorkplanController extends Controller
             'note' => ['nullable', 'string'],
         ]);
 
-        $this->workflow->handleDirectorateApproval(
+        $successMessage = $this->workflow->handleDirectorateApproval(
             $workplan,
             Auth::user(),
             (string) $request->input('action'),
             $request->input('note')
         );
 
-        return $this->successRedirectResponse($request, route('workplan.show', $workplan), 'Approval program kerja berhasil diproses.');
+        return $this->successRedirectResponse($request, route('workplan.show', $workplan), $successMessage);
     }
 
     public function submitProgress(Request $request, WorkProgram $workplan, WorkProgramItem $item)

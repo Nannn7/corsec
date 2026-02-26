@@ -5,6 +5,7 @@ namespace Modules\Corsec\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -647,8 +648,16 @@ class OutgoingLetterController extends Controller
             abort(403, 'User tidak ditemukan.');
         }
 
-        $this->workflow->approvalAction($outgoingLetter, $user, (string) $request->string('action'), $request->note);
-        return back()->with('success', 'Approval diproses.');
+        $successMessage = $this->workflow->approvalAction($outgoingLetter, $user, (string) $request->string('action'), $request->note);
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => $successMessage,
+            ]);
+        }
+
+        return back()->with('success', $successMessage);
     }
 
     public function complianceReview(Request $request, OutgoingLetter $outgoingLetter)
@@ -866,17 +875,27 @@ class OutgoingLetterController extends Controller
 
     private function generateRegistrationNoForPersist(int $id, int $letterTypeId, ?string $orderDate): string
     {
-        $datePart = now()->format('Ymd');
-        if ($orderDate) {
-            $timestamp = strtotime($orderDate);
-            if ($timestamp !== false) {
-                $datePart = date('Ymd', $timestamp);
-            }
+        $orderDateContext = $this->resolveRegistrationDate($orderDate);
+        $template = $this->resolveOutgoingRegistrationTemplate($letterTypeId);
+
+        if (($template['layout'] ?? 'legacy') === 'legacy') {
+            $datePart = $orderDateContext->format('Ymd');
+            $letterTypeCode = $this->resolveLetterTypeCode($letterTypeId);
+
+            return 'OUT-' . $letterTypeCode . '-' . $datePart . '-' . str_pad((string) $id, 6, '0', STR_PAD_LEFT);
         }
 
-        $letterTypeCode = $this->resolveLetterTypeCode($letterTypeId);
+        $year = $orderDateContext->format('Y');
+        $romanMonth = $this->toRomanMonth((int) $orderDateContext->format('n'));
+        $sequence = $this->nextRegistrationSequence($letterTypeId, $template, $year);
+        $registrationNo = $this->formatRegistrationNoFromTemplate($sequence, $template, $romanMonth, $year);
 
-        return 'OUT-' . $letterTypeCode . '-' . $datePart . '-' . str_pad((string) $id, 6, '0', STR_PAD_LEFT);
+        while (OutgoingLetter::withTrashed()->where('registration_no', $registrationNo)->exists()) {
+            $sequence++;
+            $registrationNo = $this->formatRegistrationNoFromTemplate($sequence, $template, $romanMonth, $year);
+        }
+
+        return $registrationNo;
     }
 
     private function resolveLetterTypeCode(int $letterTypeId): string
@@ -885,6 +904,158 @@ class OutgoingLetterController extends Controller
         $normalized = Str::upper(preg_replace('/[^A-Za-z0-9]/', '', (string) $code));
 
         return $normalized !== '' ? $normalized : 'GEN';
+    }
+
+    private function resolveRegistrationDate(?string $orderDate): Carbon
+    {
+        if ($orderDate) {
+            try {
+                return Carbon::parse($orderDate);
+            } catch (Exception) {
+                // fallback to now()
+            }
+        }
+
+        return now();
+    }
+
+    private function resolveOutgoingRegistrationTemplate(int $letterTypeId): array
+    {
+        $letterType = LetterType::query()
+            ->select(['id', 'code', 'name'])
+            ->find($letterTypeId);
+
+        if (!$letterType) {
+            return ['layout' => 'legacy'];
+        }
+
+        $nameKey = $this->normalizeLetterTypeName((string) $letterType->name);
+        $codeKey = trim((string) $letterType->code);
+
+        $templatesByName = [
+            'SURAT KUASA' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'KUASA', 'unit' => 'DIRUT', 'pad' => 3],
+            'PKS' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'PKS', 'unit' => 'DIRUT', 'pad' => 3],
+            'NDA' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'NDA', 'unit' => 'DIRUT', 'pad' => 3],
+            'SURAT KELUAR DIRUT' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'SK', 'unit' => 'DIRUT', 'pad' => 4],
+            'SK DIT CORSEC' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'SK', 'unit' => 'DIT-CORSEC', 'pad' => 4],
+            'SK CORP AFFAIRS' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'SK', 'unit' => 'SUBDIT-CORP.AFFAIRS', 'pad' => 4],
+            'MI SUBDIT CORP AFFAIRS' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'MI', 'unit' => 'SUBDIT-CORP.AFFAIRS', 'pad' => 4],
+            'MI DIT CORSEC' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'MI', 'unit' => 'DIT-CORSEC', 'pad' => 4],
+            'MAK SUBDIT CORSEC' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'MAK', 'unit' => 'SUBDIT-CORP.AFFAIRS', 'pad' => 4],
+            'KEPUTUSAN DIREKSI' => ['layout' => 'sequence_prefix_month_year', 'prefix' => 'KEP-DIR', 'pad' => 3],
+            'MAK DIRUT' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'MAK', 'unit' => 'DIRUT', 'pad' => 4],
+        ];
+
+        $templatesByCode = [
+            '006' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'KUASA', 'unit' => 'DIRUT', 'pad' => 3],
+            '007' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'PKS', 'unit' => 'DIRUT', 'pad' => 3],
+            '008' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'NDA', 'unit' => 'DIRUT', 'pad' => 3],
+            '001' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'SK', 'unit' => 'DIRUT', 'pad' => 4],
+            '002' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'SK', 'unit' => 'DIT-CORSEC', 'pad' => 4],
+            '003' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'SK', 'unit' => 'SUBDIT-CORP.AFFAIRS', 'pad' => 4],
+            '004' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'MI', 'unit' => 'SUBDIT-CORP.AFFAIRS', 'pad' => 4],
+            '005' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'MI', 'unit' => 'DIT-CORSEC', 'pad' => 4],
+            '011' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'MAK', 'unit' => 'SUBDIT-CORP.AFFAIRS', 'pad' => 4],
+            '009' => ['layout' => 'sequence_prefix_month_year', 'prefix' => 'KEP-DIR', 'pad' => 3],
+            '010' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'MAK', 'unit' => 'DIRUT', 'pad' => 4],
+        ];
+
+        if (isset($templatesByName[$nameKey])) {
+            return $templatesByName[$nameKey];
+        }
+
+        return $templatesByCode[$codeKey] ?? ['layout' => 'legacy'];
+    }
+
+    private function normalizeLetterTypeName(string $name): string
+    {
+        $normalized = Str::upper(trim($name));
+        $normalized = preg_replace('/[^A-Z0-9]+/', ' ', $normalized);
+
+        return trim(preg_replace('/\s+/', ' ', (string) $normalized));
+    }
+
+    private function toRomanMonth(int $month): string
+    {
+        $romans = [
+            1 => 'I',
+            2 => 'II',
+            3 => 'III',
+            4 => 'IV',
+            5 => 'V',
+            6 => 'VI',
+            7 => 'VII',
+            8 => 'VIII',
+            9 => 'IX',
+            10 => 'X',
+            11 => 'XI',
+            12 => 'XII',
+        ];
+
+        return $romans[$month] ?? 'I';
+    }
+
+    private function nextRegistrationSequence(int $letterTypeId, array $template, string $year): int
+    {
+        $numbers = OutgoingLetter::withTrashed()
+            ->where('letter_type_id', $letterTypeId)
+            ->whereNotNull('registration_no')
+            ->where('registration_no', 'like', "%/{$year}")
+            ->pluck('registration_no');
+
+        $maxSequence = 0;
+        foreach ($numbers as $registrationNo) {
+            $sequence = $this->extractSequenceFromRegistrationNo((string) $registrationNo, $template, $year);
+            if ($sequence > $maxSequence) {
+                $maxSequence = $sequence;
+            }
+        }
+
+        return $maxSequence + 1;
+    }
+
+    private function extractSequenceFromRegistrationNo(string $registrationNo, array $template, string $year): int
+    {
+        $layout = (string) ($template['layout'] ?? '');
+        $prefix = preg_quote((string) ($template['prefix'] ?? ''), '/');
+
+        if ($layout === 'prefix_sequence_unit_month_year') {
+            $unit = preg_quote((string) ($template['unit'] ?? ''), '/');
+            $pattern = '/^' . $prefix . '\/(\d+)\/' . $unit . '\/[IVXLCDM]+\/' . preg_quote($year, '/') . '$/';
+        } elseif ($layout === 'sequence_prefix_month_year') {
+            $pattern = '/^(\d+)\/' . $prefix . '\/[IVXLCDM]+\/' . preg_quote($year, '/') . '$/';
+        } else {
+            return 0;
+        }
+
+        if (!preg_match($pattern, $registrationNo, $matches)) {
+            return 0;
+        }
+
+        return (int) ($matches[1] ?? 0);
+    }
+
+    private function formatRegistrationNoFromTemplate(
+        int $sequence,
+        array $template,
+        string $romanMonth,
+        string $year
+    ): string {
+        $layout = (string) ($template['layout'] ?? '');
+        $pad = max(1, (int) ($template['pad'] ?? 1));
+        $sequencePart = str_pad((string) $sequence, $pad, '0', STR_PAD_LEFT);
+        $prefix = (string) ($template['prefix'] ?? '');
+
+        if ($layout === 'prefix_sequence_unit_month_year') {
+            $unit = (string) ($template['unit'] ?? '');
+            return "{$prefix}/{$sequencePart}/{$unit}/{$romanMonth}/{$year}";
+        }
+
+        if ($layout === 'sequence_prefix_month_year') {
+            return "{$sequencePart}/{$prefix}/{$romanMonth}/{$year}";
+        }
+
+        return $sequencePart;
     }
 
     private function authorizeRead(): void

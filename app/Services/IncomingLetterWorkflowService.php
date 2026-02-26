@@ -102,9 +102,9 @@ class IncomingLetterWorkflowService
         });
     }
 
-    public function handleApprovalAction(IncomingLetter $incomingLetter, User $actor, string $action, ?string $note): void
+    public function handleApprovalAction(IncomingLetter $incomingLetter, User $actor, string $action, ?string $note): string
     {
-        DB::transaction(function () use ($incomingLetter, $actor, $action, $note) {
+        return DB::transaction(function () use ($incomingLetter, $actor, $action, $note) {
             // close latest pending approval
             $approval = Approval::query()
                 ->where('approvable_type', IncomingLetter::class)
@@ -161,6 +161,10 @@ class IncomingLetterWorkflowService
                         ? 'Surat masuk disetujui EO Corp Affair.'
                         : 'Surat masuk dikembalikan EO Corp Affair.'
                 );
+
+                return $action === 'approve'
+                    ? 'Approval EO Corp Affair disetujui.'
+                    : 'Approval EO Corp Affair dikembalikan.';
             } elseif ($incomingLetter->status === IncomingLetter::STATUS_WAITING_DIR_APPROVAL) {
                 $decisionTargetId = $incomingLetter->followup_submitted_by
                     ?? $incomingLetter->updated_by
@@ -193,7 +197,7 @@ class IncomingLetterWorkflowService
                             'Approval Direktorat',
                             'Approval direktorat disetujui (EO Direktorat).'
                         );
-                        return;
+                        return 'Approval EO Direktorat disetujui. Menunggu approval DD Direktorat.';
                     }
 
                     if ($checkerApproved && ($isApprover || $isAdmin)) {
@@ -235,7 +239,9 @@ class IncomingLetterWorkflowService
                                 : 'Approval direktorat disetujui (DD Direktorat).'
                         );
 
-                        return;
+                        return $incomingLetter->followup_action === 'response_letter'
+                            ? 'Approval DD Direktorat disetujui. Lanjut proses melalui Surat Keluar.'
+                            : 'Approval DD Direktorat disetujui.';
                     }
                 }
 
@@ -276,6 +282,10 @@ class IncomingLetterWorkflowService
                         'Approval Direktorat',
                         'Approval direktorat dikembalikan.'
                     );
+
+                    return ($isChecker && !$checkerApproved)
+                        ? 'Approval EO Direktorat dikembalikan.'
+                        : 'Approval DD Direktorat dikembalikan.';
                 }
             }
 
@@ -287,6 +297,8 @@ class IncomingLetterWorkflowService
                     'created_by' => $actor->id,
                 ]);
             }
+
+            return 'Action approval berhasil diproses.';
         });
     }
 

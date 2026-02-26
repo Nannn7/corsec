@@ -676,13 +676,16 @@
                             'X-Requested-With': 'XMLHttpRequest',
                             'X-CSRF-TOKEN': $form.find('input[name="_token"]').val()
                         },
-                        success: function() {
+                        success: function(response) {
+                            const successMessage = response && typeof response.message === 'string' &&
+                                response.message.trim() !== '' ?
+                                response.message : 'Berhasil disimpan.';
                             if (window.toast && typeof window.toast.success === 'function') {
-                                window.toast.success('Berhasil disimpan.');
+                                window.toast.success(successMessage);
                                 setTimeout(() => window.location.reload(), 800);
                                 return;
                             }
-                            alert('Berhasil disimpan.');
+                            alert(successMessage);
                             window.location.reload();
                         },
                         error: function(xhr) {
