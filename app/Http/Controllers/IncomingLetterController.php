@@ -822,14 +822,21 @@ class IncomingLetterController extends Controller
             'note' => ['nullable', 'string'],
         ]);
 
-        $this->workflow->handleApprovalAction(
+        $successMessage = $this->workflow->handleApprovalAction(
             incomingLetter: $incomingLetter,
             actor: auth()->user(),
             action: $request->string('action')->toString(),
             note: $request->note
         );
 
-        return back()->with('success', 'Action approval berhasil diproses.');
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => $successMessage,
+            ]);
+        }
+
+        return back()->with('success', $successMessage);
     }
 
     // Staff Direktorat update tindak lanjut + upload bukti

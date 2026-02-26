@@ -239,22 +239,20 @@ class OutgoingLetterWorkflowService
         });
     }
 
-    public function approvalAction(OutgoingLetter $letter, User $actor, string $action, ?string $note): void
+    public function approvalAction(OutgoingLetter $letter, User $actor, string $action, ?string $note): string
     {
-        DB::transaction(function () use ($letter, $actor, $action, $note) {
+        return DB::transaction(function () use ($letter, $actor, $action, $note) {
             $normalizedAction = Str::lower(trim($action));
             if (!in_array($normalizedAction, ['approve', 'reject', 'return'], true)) {
                 abort(422, 'Aksi approval tidak valid.');
             }
 
             if ($letter->status === OutgoingLetter::STATUS_WAITING_DIR_APPROVAL) {
-                $this->handleDirectorateApproval($letter, $actor, $normalizedAction, $note);
-                return;
+                return $this->handleDirectorateApproval($letter, $actor, $normalizedAction, $note);
             }
 
             if ($letter->status === OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL) {
-                $this->handleComplianceApproval($letter, $actor, $normalizedAction, $note);
-                return;
+                return $this->handleComplianceApproval($letter, $actor, $normalizedAction, $note);
             }
 
             abort(403, 'Approval tidak tersedia pada status ini.');
@@ -453,7 +451,7 @@ class OutgoingLetterWorkflowService
         });
     }
 
-    private function handleDirectorateApproval(OutgoingLetter $letter, User $actor, string $action, ?string $note): void
+    private function handleDirectorateApproval(OutgoingLetter $letter, User $actor, string $action, ?string $note): string
     {
         if (!$actor->hasRole('administrator') && (int) $letter->requester_directorate_id !== (int) $actor->directorate_id) {
             abort(403, 'Approval direktorat hanya untuk direktorat pemohon.');
@@ -507,7 +505,7 @@ class OutgoingLetterWorkflowService
                     ]);
                 }
 
-                return;
+                return 'Approval EO Direktorat disetujui. Menunggu approval DD Direktorat.';
             }
 
             if (!$isApprover) {
@@ -566,6 +564,8 @@ class OutgoingLetterWorkflowService
                         ],
                     ]);
                 }
+
+                return 'Approval DD Direktorat disetujui. Lanjut approval EO dan DD Kepatuhan.';
             } else {
                 $this->notifyOutgoingDecision(
                     $letter,
@@ -574,9 +574,9 @@ class OutgoingLetterWorkflowService
                 );
 
                 $this->notifyFinalUploadRequired($letter, $actor);
-            }
 
-            return;
+                return 'Approval DD Direktorat disetujui. Menunggu final upload oleh staff direktorat terkait.';
+            }
         }
 
         $fallbackLabel = 'EO+DD Direktorat Returned';
@@ -603,9 +603,13 @@ class OutgoingLetterWorkflowService
         );
 
         $this->addOutgoingComment($letter, $actor, 'RETURN APPROVAL DIREKTORAT', $note);
+
+        return (!$checkerApproved && $actor->hasRole('checker'))
+            ? 'Approval EO Direktorat dikembalikan.'
+            : 'Approval DD Direktorat dikembalikan.';
     }
 
-    private function handleComplianceApproval(OutgoingLetter $letter, User $actor, string $action, ?string $note): void
+    private function handleComplianceApproval(OutgoingLetter $letter, User $actor, string $action, ?string $note): string
     {
         if (!$actor->hasRole('administrator') && !$this->isComplianceDirectorate($actor)) {
             abort(403, 'Approval kepatuhan hanya untuk Direktorat Kepatuhan.');
@@ -658,7 +662,7 @@ class OutgoingLetterWorkflowService
                     ]);
                 }
 
-                return;
+                return 'Approval EO Kepatuhan disetujui. Menunggu approval DD Kepatuhan.';
             }
 
             if (!$isApprover) {
@@ -687,7 +691,7 @@ class OutgoingLetterWorkflowService
 
             $this->notifyFinalUploadRequired($letter, $actor);
 
-            return;
+            return 'Approval DD Kepatuhan disetujui. Menunggu final upload oleh staff direktorat terkait.';
         }
 
         $fallbackLabel = 'EO+DD Kepatuhan Returned';
@@ -714,6 +718,10 @@ class OutgoingLetterWorkflowService
         );
 
         $this->addOutgoingComment($letter, $actor, 'RETURN APPROVAL KEPATUHAN', $note);
+
+        return (!$checkerApproved && $actor->hasRole('checker'))
+            ? 'Approval EO Kepatuhan dikembalikan.'
+            : 'Approval DD Kepatuhan dikembalikan.';
     }
 
     private function latestPendingApproval(OutgoingLetter $letter): ?Approval

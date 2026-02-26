@@ -16,7 +16,8 @@ class DashboardController extends Controller
      */
     public function index()
     {
-        if (Auth::user()->hasRole(['maker', 'checker', 'approver', 'administrator'])) {
+        $user = Auth::user();
+        if ($user && $user->hasRole(['maker', 'checker', 'approver', 'administrator'])) {
             $incomingOpen = IncomingLetter::query()
                 ->whereNotIn('status', [
                     IncomingLetter::STATUS_VERIFIED,
@@ -37,7 +38,7 @@ class DashboardController extends Controller
                 ->whereNull('cancelled_at')
                 ->count();
 
-            $meetingOpen = Meeting::query()
+            $meetingOpenQuery = Meeting::query()
                 ->where(function ($q) {
                     $q->whereNull('status')
                         ->orWhereNotIn('status', [
@@ -47,8 +48,35 @@ class DashboardController extends Controller
                             'verified',
                             Meeting::STATUS_DONE_TINDAKLANJUT_HASIL_RAPAT,
                         ]);
-                })
-                ->count();
+                });
+
+            $directorateId = (int) ($user->directorate_id ?? 0);
+            $meetingOpenQuery->where(function ($w) use ($user, $directorateId) {
+                $w->where('created_by', $user->id)
+                    ->orWhereHas('participants', function ($q) use ($user) {
+                        $q->where('user_id', (int) $user->id);
+                    })
+                    ->orWhereHas('agendas', function ($q) use ($user) {
+                        $q->where('pic_user_id', (int) $user->id);
+                    })
+                    ->orWhereHas('decisions', function ($q) use ($user) {
+                        $q->where('pic_user_id', (int) $user->id);
+                    });
+
+                if ($directorateId > 0) {
+                    $w->orWhereHas('participants', function ($q) use ($directorateId) {
+                        $q->where('directorate_id', $directorateId);
+                    })
+                        ->orWhereHas('agendas', function ($q) use ($directorateId) {
+                            $q->where('owner_directorate_id', $directorateId);
+                        })
+                        ->orWhereHas('decisions', function ($q) use ($directorateId) {
+                            $q->where('owner_directorate_id', $directorateId);
+                        });
+                }
+            });
+
+            $meetingOpen = $meetingOpenQuery->count();
 
             $workplanOpen = WorkProgramItem::query()
                 ->whereHas('program', function ($q) {
@@ -65,4 +93,5 @@ class DashboardController extends Controller
 
         abort(403, 'Sorry! You are not allowed to view corsec app.');
     }
+
 }

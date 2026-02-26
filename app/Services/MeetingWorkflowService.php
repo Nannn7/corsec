@@ -180,9 +180,9 @@ class MeetingWorkflowService
         });
     }
 
-    public function handleDirectorateApproval(Meeting $meeting, User $actor, string $action, ?string $note = null): void
+    public function handleDirectorateApproval(Meeting $meeting, User $actor, string $action, ?string $note = null): string
     {
-        DB::transaction(function () use ($meeting, $actor, $action, $note) {
+        return DB::transaction(function () use ($meeting, $actor, $action, $note) {
             $meeting = $this->lockMeeting($meeting);
             $this->assertStatus($meeting, [Meeting::STATUS_WAITING_DIREKTORAT_APPROVAL]);
             $this->ensureActorInTargetDirectorate(
@@ -197,12 +197,12 @@ class MeetingWorkflowService
             }
 
             $isAdmin = $actor->hasRole('administrator');
-            $isChecker = $actor->hasRole('checker');
+            $isCheckerExecutiveOfficer = $actor->hasRole('checker') && $this->isExecutiveOfficer($actor);
             $isApproverDeputyDirector = $actor->hasRole('approver') && $this->isDeputyDirector($actor);
             $checkerApproved = $this->isCheckerApprovedInCurrentRound($meeting, $pending->created_at);
 
             if ($action === 'approve') {
-                if (!$checkerApproved && ($isChecker || $isAdmin)) {
+                if (!$checkerApproved && ($isCheckerExecutiveOfficer || $isAdmin)) {
                     if ($this->actorAlreadyActedInRound($meeting, $actor, 'EO Direktorat', $pending->created_at)) {
                         abort(403, 'Approval EO Direktorat sudah diproses oleh user ini.');
                     }
@@ -241,7 +241,7 @@ class MeetingWorkflowService
                         )
                     );
 
-                    return;
+                    return 'Approval EO Direktorat disetujui. Menunggu approval DD Direktorat.';
                 }
 
                 if (($checkerApproved || $isAdmin) && ($isApproverDeputyDirector || $isAdmin)) {
@@ -275,14 +275,14 @@ class MeetingWorkflowService
                         )
                     );
 
-                    return;
+                    return 'Approval DD Direktorat disetujui.';
                 }
 
                 abort(403, 'Tahap approval direktorat tidak sesuai role user.');
             }
 
-            if (!$checkerApproved && !$isChecker && !$isAdmin) {
-                abort(403, 'Return pada tahap EO Direktorat hanya untuk checker.');
+            if (!$checkerApproved && !$isCheckerExecutiveOfficer && !$isAdmin) {
+                abort(403, 'Return pada tahap EO Direktorat hanya untuk checker dengan posisi Executive Officer.');
             }
             if ($checkerApproved && !$isApproverDeputyDirector && !$isAdmin) {
                 abort(403, 'Return pada tahap DD Direktorat hanya untuk approver Deputy Director.');
@@ -317,6 +317,10 @@ class MeetingWorkflowService
                     'Persiapan rapat dikembalikan EO + DD Direktorat.'
                 )
             );
+
+            return $checkerApproved
+                ? 'Approval DD Direktorat dikembalikan.'
+                : 'Approval EO Direktorat dikembalikan.';
         });
     }
 
@@ -557,12 +561,30 @@ class MeetingWorkflowService
             return collect();
         }
 
-        return User::query()
+        $eoCheckerIds = User::query()
             ->whereIn('directorate_id', $directorateIds->all())
             ->whereHas('roles', function ($query) {
-                $query->whereIn('name', ['checker', 'approver']);
+                $query->where('name', 'checker');
+            })
+            ->whereHas('position', function ($query) {
+                $query->where('name', 'ilike', '%executive officer%');
             })
             ->pluck('id');
+
+        $deputyDirectorApproverIds = User::query()
+            ->whereIn('directorate_id', $directorateIds->all())
+            ->whereHas('roles', function ($query) {
+                $query->where('name', 'approver');
+            })
+            ->whereHas('position', function ($query) {
+                $query->where('name', 'ilike', '%deputy director%');
+            })
+            ->pluck('id');
+
+        return $eoCheckerIds
+            ->merge($deputyDirectorApproverIds)
+            ->unique()
+            ->values();
     }
 
     private function getMeetingDeputyDirectorApproverIds(Meeting $meeting, User $actor)
@@ -703,6 +725,14 @@ class MeetingWorkflowService
             ->contains(function (Approval $approval) use ($labelPrefix) {
                 return Str::startsWith((string) $approval->note, $labelPrefix);
             });
+    }
+
+    private function isExecutiveOfficer(User $user): bool
+    {
+        $user->loadMissing('position');
+        $positionName = Str::lower(trim((string) ($user->position?->name ?? '')));
+
+        return $positionName !== '' && Str::contains($positionName, 'executive officer');
     }
 
     private function isDeputyDirector(User $user): bool

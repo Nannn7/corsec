@@ -68,8 +68,8 @@
             'EO Corp Affair Approved',
             'EO Corp Affair Returned',
             // backward-compat for historical notes before label simplification
-            'EO Corp Affair + Kepala Corsec Approved',
-            'EO Corp Affair + Kepala Corsec Returned',
+            'EO Corp Affair Approved',
+            'EO Corp Affair Returned',
         ];
         $userHasCorsecAction =
             $user &&
@@ -144,12 +144,14 @@
         }
 
         $positionName = \Illuminate\Support\Str::lower((string) ($user?->position?->name ?? ''));
+        $isExecutiveOfficer =
+            $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'executive officer');
         $isDeputyDirector = $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'deputy director');
 
         $canDirectorateCheckerApproval =
             $status === 'waiting_direktorat_approval' &&
             !$checkerApprovedInRound &&
-            ($isAdmin || ($isChecker && $canDirectorateActor)) &&
+            ($isAdmin || ($isChecker && $isExecutiveOfficer && $canDirectorateActor)) &&
             !$hasActedCheckerInRound;
 
         $canDirectorateApproverApproval =
@@ -285,21 +287,10 @@
     @endphp
 
     <div class="grid gap-5 lg:gap-7.5">
-        @if (session('success'))
-            <div class="alert alert-success">{{ session('success') }}</div>
-        @endif
-        @if (session('info'))
-            <div class="alert alert-info">{{ session('info') }}</div>
-        @endif
         @if ($errors->any())
-            <div class="alert alert-danger">
-                <div class="font-semibold mb-1">Terdapat kesalahan input:</div>
-                <ul class="list-disc pl-5 text-sm">
-                    @foreach ($errors->all() as $error)
-                        <li>{{ $error }}</li>
-                    @endforeach
-                </ul>
-            </div>
+            @foreach ($errors->all() as $error)
+                <em class="hidden toastr" data-type="error" data-message=" {{ $error }}"></em>
+            @endforeach
         @endif
 
         <div class="card">
@@ -578,7 +569,7 @@
                                 <div class="flex flex-col">
                                     <label class="form-label">Upload Bahan Rapat</label>
                                     <input class="file-input" type="file" name="material_files[]"
-                                        accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx" multiple>
+                                        accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx,.ppt,.pptx" multiple>
                                 </div>
                             </div>
 
@@ -703,7 +694,7 @@
                             <div class="flex flex-col">
                                 <label class="form-label">Lampiran Notulen (Opsional)</label>
                                 <input class="file-input" type="file" name="minutes_file"
-                                    accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx">
+                                    accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx,.ppt,.pptx">
                             </div>
 
                             <div class="border border-gray-200 rounded-xl p-4 grid gap-4">
@@ -803,7 +794,7 @@
                             <div class="flex flex-col">
                                 <label class="form-label">Upload Notulen Final <span class="text-danger">*</span></label>
                                 <input class="file-input" type="file" name="final_minutes_file"
-                                    accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx" required>
+                                    accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx,.ppt,.pptx" required>
                             </div>
                             <div class="flex flex-col">
                                 <label class="form-label">Catatan (Opsional)</label>
@@ -985,7 +976,8 @@
                                             <label class="form-label">Bukti Progress <span
                                                     class="text-danger">*</span></label>
                                             <input class="file-input" type="file" name="evidence_files[]"
-                                                accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx" multiple required>
+                                                accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx,.ppt,.pptx" multiple
+                                                required>
                                         </div>
                                     </div>
                                     <div class="flex justify-end">

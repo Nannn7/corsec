@@ -305,7 +305,7 @@ class MeetingController extends Controller
             'note' => ['nullable', 'string'],
             'material_agenda_id' => ['nullable', 'exists:corsec_meeting_agendas,id'],
             'material_files' => ['nullable', 'array'],
-            'material_files.*' => ['file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx'],
+            'material_files.*' => ['file', 'max:15360', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx,ppt,pptx'],
             'additional_agendas' => ['nullable', 'array'],
             'additional_agendas.*.title' => ['required_with:additional_agendas', 'string', 'max:255'],
             'additional_agendas.*.description' => ['nullable', 'string'],
@@ -377,7 +377,7 @@ class MeetingController extends Controller
             'note' => ['nullable', 'string'],
         ]);
 
-        $this->workflow->handleDirectorateApproval(
+        $successMessage = $this->workflow->handleDirectorateApproval(
             $meeting,
             Auth::user(),
             (string) $request->input('action'),
@@ -387,7 +387,7 @@ class MeetingController extends Controller
         return $this->successRedirectResponse(
             $request,
             route('meeting.show', $meeting),
-            'Approval EO + DD Direktorat berhasil diproses.'
+            $successMessage
         );
     }
 
@@ -396,7 +396,7 @@ class MeetingController extends Controller
         $this->authorizeUpdate();
         $request->validate([
             'minutes_text' => ['required', 'string'],
-            'minutes_file' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx'],
+            'minutes_file' => ['nullable', 'file', 'max:15360', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx,ppt,pptx'],
             'note' => ['nullable', 'string'],
             'submit_for_signature' => ['nullable', 'boolean'],
             'decisions' => ['nullable', 'array'],
@@ -505,7 +505,7 @@ class MeetingController extends Controller
     {
         $this->authorizeUpdate();
         $request->validate([
-            'final_minutes_file' => ['required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx'],
+            'final_minutes_file' => ['required', 'file', 'max:15360', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx,ppt,pptx'],
             'note' => ['nullable', 'string'],
         ]);
 
@@ -557,7 +557,7 @@ class MeetingController extends Controller
             'reason' => ['nullable', 'string'],
             'note' => ['nullable', 'string'],
             'evidence_files' => ['required', 'array', 'min:1'],
-            'evidence_files.*' => ['file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx'],
+            'evidence_files.*' => ['file', 'max:15360', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx,ppt,pptx'],
         ]);
 
         if (!$request->boolean('is_on_target') && trim((string) $request->input('reason')) === '') {
