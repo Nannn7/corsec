@@ -15,6 +15,10 @@
         $isApprover = $user?->hasRole('approver') ?? false;
         $actorUserId = (int) ($user?->id ?? 0);
         $actorDirectorateId = (int) ($user?->directorate_id ?? 0);
+        $isViewerOnly =
+            ($user?->hasRole('viewer') ?? false) &&
+            !($user?->hasRole(['administrator', 'maker', 'checker', 'approver']) ?? false);
+        $canCorsecUpdateAction = ($user?->can('corsec.update') ?? false) && !$isViewerOnly;
 
         $corpCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
         $actorDirectorateCode = (string) ($user?->directorate?->code ?? '');
@@ -533,7 +537,7 @@
             @endif
         @endcan
 
-        @can('corsec.update')
+        @if ($canCorsecUpdateAction)
             @if ($canDirectorateSubmit)
                 <div class="card">
                     <div class="card-header">
@@ -645,7 +649,7 @@
                     </div>
                 </div>
             @endif
-        @endcan
+        @endif
 
         @can('corsec.authorize')
             @if ($canDirectorateCheckerApproval || $canDirectorateApproverApproval)
@@ -675,7 +679,7 @@
             @endif
         @endcan
 
-        @can('corsec.update')
+        @if ($canCorsecUpdateAction)
             @if ($canSaveMinutes)
                 <div class="card">
                     <div class="card-header">
@@ -779,9 +783,9 @@
                     </div>
                 </div>
             @endif
-        @endcan
+        @endif
 
-        @can('corsec.update')
+        @if ($canCorsecUpdateAction)
             @if ($canFinalizeMinutes)
                 <div class="card">
                     <div class="card-header">
@@ -807,7 +811,7 @@
                     </div>
                 </div>
             @endif
-        @endcan
+        @endif
 
         <div class="card">
             <div class="card-header">
@@ -911,7 +915,7 @@
             </div>
         </div>
 
-        @can('corsec.update')
+        @if ($canCorsecUpdateAction)
             @if ($canInputFollowup && $meeting->decisions->count() > 0)
                 <div class="card">
                     <div class="card-header">
@@ -1002,7 +1006,7 @@
                     </div>
                 </div>
             @endif
-        @endcan
+        @endif
 
         @if ($decisionUpdates->count() > 0)
             <div class="card">

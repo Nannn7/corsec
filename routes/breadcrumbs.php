@@ -170,14 +170,3 @@ Breadcrumbs::for('letter-type.out.edit', function (BreadcrumbTrail $trail) {
     $trail->parent('corsec.letter-type.out');
     $trail->push('Edit Letter Type Out');
 });
-
-// Approval
-// Breadcrumbs::for('corsec.approval', function (BreadcrumbTrail $trail) {
-//     $trail->parent('dashboard');
-//     $trail->push('Approval Requests', route('approval.index'));
-// });
-
-// Breadcrumbs::for('corsec.approval.show', function (BreadcrumbTrail $trail, $approvalRequest) {
-//     $trail->parent('corsec.approval');
-//     $trail->push('Detail #' . $approvalRequest->id, route('approval.show', $approvalRequest->id));
-// });

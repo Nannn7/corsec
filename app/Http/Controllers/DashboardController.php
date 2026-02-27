@@ -17,7 +17,7 @@ class DashboardController extends Controller
     public function index()
     {
         $user = Auth::user();
-        if ($user && $user->hasRole(['maker', 'checker', 'approver', 'administrator'])) {
+        if ($user && $user->hasRole(['maker', 'checker', 'approver', 'administrator', 'viewer'])) {
             $incomingOpen = IncomingLetter::query()
                 ->whereNotIn('status', [
                     IncomingLetter::STATUS_VERIFIED,

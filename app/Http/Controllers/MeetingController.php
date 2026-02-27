@@ -3,12 +3,16 @@
 namespace Modules\Corsec\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Maatwebsite\Excel\Facades\Excel;
+use Modules\Corsec\Exports\MeetingExport;
 use Modules\Corsec\Models\Attachable;
 use Modules\Corsec\Models\Attachment;
 use Modules\Corsec\Models\Comment;
@@ -37,12 +41,6 @@ class MeetingController extends Controller
         $this->authorizeRead();
 
         $user = Auth::user();
-        $query = $this->scopedMeetingsQuery($user)
-            ->withCount(['participants', 'agendas'])
-            ->latest('meeting_at')
-            ->latest('id');
-        $meetings = $query->paginate(20);
-
         $summaryBase = $this->scopedMeetingsQuery($user);
         $summary = [
             'total' => (clone $summaryBase)->count(),
@@ -53,11 +51,114 @@ class MeetingController extends Controller
         ];
 
         return view('corsec::meeting.index', [
-            'meetings' => $meetings,
             'summary' => $summary,
             'statusLabels' => Meeting::statusLabels(),
             'typeOptions' => Meeting::typeOptions(),
         ]);
+    }
+
+    public function datatables(Request $request)
+    {
+        $this->authorizeRead();
+
+        try {
+            $user = Auth::user();
+            $query = $this->scopedMeetingsQuery($user)
+                ->withCount(['participants', 'agendas']);
+
+            $search = trim((string) $request->get('search', ''));
+            if ($search !== '') {
+                $query->where(function ($q) use ($search) {
+                    $q->where('title', 'ilike', '%' . $search . '%')
+                        ->orWhere('meeting_type', 'ilike', '%' . $search . '%')
+                        ->orWhere('status', 'ilike', '%' . $search . '%')
+                        ->orWhereRaw("to_char(meeting_at, 'YYYY-MM-DD HH24:MI:SS') ilike ?", ['%' . $search . '%']);
+                });
+            }
+
+            $totalRecords = $this->scopedMeetingsQuery($user)->count();
+            $filteredRecords = (clone $query)->count();
+
+            $sortField = (string) $request->get('sortField', 'meeting_at');
+            $sortOrder = strtolower((string) $request->get('sortOrder', 'desc'));
+
+            $allowedSort = [
+                'meeting_at',
+                'meeting_type',
+                'title',
+                'status',
+                'participants_count',
+                'agendas_count',
+                'created_at',
+            ];
+            if (!in_array($sortField, $allowedSort, true)) {
+                $sortField = 'meeting_at';
+            }
+            if (!in_array($sortOrder, ['asc', 'desc'], true)) {
+                $sortOrder = 'desc';
+            }
+            $query->orderBy($sortField, $sortOrder)->orderBy('id', 'desc');
+
+            $page = max((int) $request->get('page', 1), 1);
+            $size = max((int) $request->get('size', 10), 1);
+            $offset = ($page - 1) * $size;
+
+            $statusLabels = Meeting::statusLabels();
+            $typeOptions = Meeting::typeOptions();
+            $data = $query->skip($offset)->take($size)->get()->values()->map(
+                function (Meeting $meeting, int $index) use ($offset, $statusLabels, $typeOptions) {
+                    return [
+                        'id' => (int) $meeting->id,
+                        'uuid' => (string) $meeting->uuid,
+                        'row_number' => $offset + $index + 1,
+                        'meeting_at' => optional($meeting->meeting_at)->toDateTimeString(),
+                        'meeting_type' => $meeting->meeting_type,
+                        'meeting_type_label' => $typeOptions[$meeting->meeting_type] ?? ($meeting->meeting_type ?: '-'),
+                        'title' => (string) ($meeting->title ?? '-'),
+                        'status' => $meeting->status,
+                        'status_label' => $statusLabels[$meeting->status] ?? ($meeting->status ?: '-'),
+                        'participants_count' => (int) ($meeting->participants_count ?? 0),
+                        'agendas_count' => (int) ($meeting->agendas_count ?? 0),
+                        'created_by' => (int) ($meeting->created_by ?? 0),
+                    ];
+                }
+            );
+
+            $pageCount = (int) ceil($filteredRecords / $size);
+
+            return response()->json([
+                'recordsTotal' => $totalRecords,
+                'recordsFiltered' => $filteredRecords,
+                'pageCount' => $pageCount,
+                'page' => $page,
+                'totalCount' => $totalRecords,
+                'data' => $data,
+            ]);
+        } catch (Exception $e) {
+            Log::error('Meeting datatables error: ' . $e->getMessage(), [
+                'user_id' => Auth::id(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memuat data meeting.',
+            ], 500);
+        }
+    }
+
+    public function export(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->can('corsec.export')) {
+            abort(403, 'Sorry! You are not allowed to export meeting.');
+        }
+
+        $search = trim((string) $request->get('search', ''));
+
+        return Excel::download(
+            new MeetingExport($user, $search),
+            'meetings_' . now()->format('Ymd_His') . '.xlsx'
+        );
     }
 
     public function create()
@@ -981,6 +1082,9 @@ class MeetingController extends Controller
         if (!$user || !$user->can('corsec.update')) {
             abort(403, 'Sorry! You are not allowed to update meeting.');
         }
+        if ($this->isViewerRole($user)) {
+            abort(403, 'Role viewer tidak memiliki akses untuk update meeting.');
+        }
     }
 
     private function authorizeDelete(): void
@@ -997,6 +1101,11 @@ class MeetingController extends Controller
         if (!$user || !$user->can('corsec.authorize')) {
             abort(403, 'Sorry! You are not allowed to authorize meeting.');
         }
+    }
+
+    private function isViewerRole(User $user): bool
+    {
+        return $user->hasRole('viewer') && !$user->hasRole(['administrator', 'maker', 'checker', 'approver']);
     }
 
     private function successRedirectResponse(Request $request, string $redirectUrl, string $message)
