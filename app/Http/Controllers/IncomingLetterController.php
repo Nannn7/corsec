@@ -364,6 +364,8 @@ class IncomingLetterController extends Controller
      */
     public function edit(IncomingLetter $incomingLetter)
     {
+        $this->authorizeNonViewerUpdate();
+
         $directorates = $this->getCachedDirectorates();
         $senders = $this->getCachedSenders();
         $letterTypes = $this->getCachedLetterTypes();
@@ -377,6 +379,8 @@ class IncomingLetterController extends Controller
      */
     public function update(Request $request, IncomingLetter $incomingLetter)
     {
+        $this->authorizeNonViewerUpdate();
+
         $request->validate([
             'external_letter_no' => ['required', 'string', 'max:255'],
             'letter_date' => ['required', 'date'],
@@ -799,6 +803,8 @@ class IncomingLetterController extends Controller
     // Staff Corsec set sirkulasi/directorate target
     public function circulate(Request $request, IncomingLetter $incomingLetter)
     {
+        $this->authorizeNonViewerUpdate();
+
         $request->validate([
             'to_directorate_id' => ['required', 'exists:directorates,id'],
             'note' => ['nullable', 'string'],
@@ -842,6 +848,8 @@ class IncomingLetterController extends Controller
     // Staff Direktorat update tindak lanjut + upload bukti
     public function directorateUpdate(Request $request, IncomingLetter $incomingLetter)
     {
+        $this->authorizeNonViewerUpdate();
+
         $submitForApproval = $request->boolean('submit_for_approval', true);
         $followupActionInput = $request->string('followup_action')->toString();
 
@@ -964,6 +972,8 @@ class IncomingLetterController extends Controller
 
     public function lookupUserByNik(Request $request)
     {
+        $this->authorizeNonViewerUpdate();
+
         $validated = $request->validate([
             'nik' => ['required', 'string', 'max:50'],
         ]);
@@ -1053,6 +1063,8 @@ class IncomingLetterController extends Controller
 
     public function addMonitoringDirectorates(Request $request, IncomingLetter $incomingLetter)
     {
+        $this->authorizeNonViewerUpdate();
+
         $user = Auth::user();
         $directorateId = $user?->directorate_id ?? $user?->directorateid;
         $isAdmin = $user?->hasRole('administrator');
@@ -1179,5 +1191,21 @@ class IncomingLetterController extends Controller
             ->whereIn('id', $positionIds)
             ->orderByDesc('level')
             ->value('name');
+    }
+
+    private function authorizeNonViewerUpdate(): void
+    {
+        $user = Auth::user();
+        if (!$user || !$user->can('corsec.update')) {
+            abort(403, 'Sorry! You are not allowed to update incoming letters.');
+        }
+        if ($this->isViewerRole($user)) {
+            abort(403, 'Role viewer tidak memiliki akses untuk aksi update ini.');
+        }
+    }
+
+    private function isViewerRole(User $user): bool
+    {
+        return $user->hasRole('viewer') && !$user->hasRole(['administrator', 'maker', 'checker', 'approver']);
     }
 }

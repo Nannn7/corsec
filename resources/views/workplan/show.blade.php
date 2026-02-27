@@ -248,8 +248,14 @@
                                     </td>
                                 </tr>
                             @empty
-                                <tr>
-                                    <td colspan="6" class="text-center text-gray-500">Belum ada item program kerja.</td>
+                                <tr class="table-empty-row" data-empty-row="true">
+                                    <td colspan="6" class="table-empty-cell">
+                                        <div class="table-empty-state" role="status" aria-live="polite">
+                                            <i class="ki-filled ki-file-deleted" aria-hidden="true"></i>
+                                            <div class="table-empty-title">Belum ada item program kerja</div>
+                                            <div class="table-empty-description">Item akan muncul setelah program kerja ditambahkan.</div>
+                                        </div>
+                                    </td>
                                 </tr>
                             @endforelse
                         </tbody>

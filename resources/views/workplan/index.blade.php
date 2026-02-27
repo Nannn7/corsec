@@ -283,13 +283,13 @@
                             </a>`;
                         @endcan
 
-                        @can('corsec.update')
+                        @if (auth()->user()?->can('corsec.update') && !(auth()->user()?->hasRole('viewer') && !auth()->user()?->hasRole(['administrator', 'maker', 'checker', 'approver'])))
                             if (canEditStatus) {
                                 html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}/edit">
                                     <i class="ki-outline ki-notepad-edit"></i>
                                 </a>`;
                             }
-                        @endcan
+                        @endif
 
                         @can('corsec.delete')
                             if (canDeleteStatus) {

@@ -693,6 +693,9 @@ class WorkplanController extends Controller
         if (!$user || !$user->can('corsec.update')) {
             abort(403, 'Sorry! You are not allowed to update work plan.');
         }
+        if ($this->isViewerRole($user)) {
+            abort(403, 'Role viewer tidak memiliki akses untuk update work plan.');
+        }
     }
 
     private function authorizeDelete(): void
@@ -761,6 +764,10 @@ class WorkplanController extends Controller
 
     private function canEditProgram(WorkProgram $program, User $user): bool
     {
+        if ($this->isViewerRole($user)) {
+            return false;
+        }
+
         if (!in_array((string) $program->status, [WorkProgram::STATUS_DRAFT, WorkProgram::STATUS_RETURNED], true)) {
             return false;
         }
@@ -787,6 +794,10 @@ class WorkplanController extends Controller
 
     private function canSubmitUpdate(WorkProgram $program, User $user): bool
     {
+        if ($this->isViewerRole($user)) {
+            return false;
+        }
+
         if ((string) $program->status !== WorkProgram::STATUS_ACTIVE) {
             return false;
         }
@@ -947,5 +958,10 @@ class WorkplanController extends Controller
     {
         $date = $program->created_at ? $program->created_at->format('Ymd') : now()->format('Ymd');
         return 'PK-' . $date . '-' . str_pad((string) $program->id, 6, '0', STR_PAD_LEFT);
+    }
+
+    private function isViewerRole(User $user): bool
+    {
+        return $user->hasRole('viewer') && !$user->hasRole(['administrator', 'maker', 'checker', 'approver']);
     }
 }

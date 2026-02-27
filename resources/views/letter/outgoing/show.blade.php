@@ -11,6 +11,13 @@
         $isAdmin = $user?->hasRole('administrator');
         $isChecker = $user?->hasRole('checker');
         $isApprover = $user?->hasRole('approver');
+        $isViewerOnly =
+            ($user?->hasRole('viewer') ?? false) &&
+            !($user?->hasRole(['administrator', 'maker', 'checker', 'approver']) ?? false);
+        $canCorsecUpdateAction = ($user?->can('corsec.update') ?? false) && !$isViewerOnly;
+        $canCorsecCreateOrUpdateAction =
+            (($user?->can('corsec.create') ?? false) || ($user?->can('corsec.update') ?? false)) &&
+            !$isViewerOnly;
         $canEdit =
             in_array($status, ['draft', 'returned'], true) &&
             ($isAdmin || ($user && (int) $outgoingLetter->requester_directorate_id === (int) $user->directorate_id));
@@ -343,7 +350,7 @@
             </div>
         </div>
 
-        @can('corsec.update')
+        @if ($canCorsecUpdateAction)
             @if ($canComplianceReview)
                 <div class="card">
                     <div class="card-header">
@@ -368,7 +375,7 @@
                     </div>
                 </div>
             @endif
-        @endcan
+        @endif
 
         @if ($canFinalUpload)
             <div class="card">
@@ -397,7 +404,7 @@
             </div>
         @endif
 
-        @canany(['corsec.create', 'corsec.update'])
+        @if ($canCorsecCreateOrUpdateAction)
             @if ($canCancelRequest)
                 <div class="card">
                     <div class="card-header">
@@ -421,7 +428,7 @@
                     </div>
                 </div>
             @endif
-        @endcanany
+        @endif
 
         @if ($approvals->count() > 0)
             <div class="card">

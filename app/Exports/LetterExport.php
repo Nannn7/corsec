@@ -38,35 +38,77 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
         if ($this->type === 'incoming') {
             return [
                 'No Registrasi',
+                'UUID',
                 'No Surat',
                 'Tanggal Surat',
                 'Perihal',
                 'Ringkasan',
                 'Pengirim',
+                'Pengirim Lainnya',
+                'Cabang Nasabah',
                 'Jenis Surat',
+                'Jenis Surat Lainnya',
                 'Tanggal Terima',
+                'Prioritas',
                 'Sirkulasi',
                 'Leader Tindak Lanjut',
                 'Target Date',
                 'Status',
+                'Followup Action',
+                'Followup Detail',
+                'Followup Note',
+                'Followup Submitted At',
+                'Followup Submitted By',
+                'Route Terakhir',
+                'Lampiran',
+                'Response Outgoing',
+                'Komentar',
+                'Approval',
+                'Authorized Status',
+                'Authorized At',
+                'Authorized By',
                 'Dibuat',
+                'Dibuat Oleh',
+                'Diupdate',
+                'Diupdate Oleh',
+                'Deskripsi',
             ];
         }
 
         return [
             'No Registrasi',
+            'UUID',
             'Tanggal Order',
             'Perihal',
-            'Jenis Surat',
             'Ringkasan',
+            'Direktorat Pemohon',
+            'Jenis Surat',
             'Perlu Review Kepatuhan',
             'Penerima',
+            'Penerima Lainnya',
             'Jenis Perihal',
             'Referensi Surat Masuk',
             'Keterangan Perihal',
-            'Nomor Surat',
-            'Status',
+            'Catatan',
+                'Nomor Surat',
+                'Status Internal',
+                'Status Tampilan',
+                'Tanggal Final Upload',
+                'Draft Attachment',
+                'Compliance Attachment',
+                'Final Attachment',
+                'Attachment Tambahan',
+                'Number Request Info',
+            'Cancel Info',
+            'Komentar',
+            'Approval',
+            'Authorized Status',
+            'Authorized At',
+            'Authorized By',
             'Dibuat',
+            'Dibuat Oleh',
+            'Diupdate',
+            'Diupdate Oleh',
         ];
     }
 
@@ -82,7 +124,24 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
     private function incomingCollection(): Collection
     {
         $query = IncomingLetter::query()
-            ->with(['targetDirectorate', 'sender', 'letterType', 'circulationDirectorates'])
+            ->with([
+                'targetDirectorate',
+                'sender',
+                'customerBranch',
+                'letterType',
+                'circulationDirectorates',
+                'lastRoutedFromDirectorate',
+                'lastRoutedToDirectorate',
+                'lastRoutedFromUser',
+                'lastRoutedToUser',
+                'attachables.attachment',
+                'comments.createdBy',
+                'approvals.actor',
+                'createdBy',
+                'updatedBy',
+                'authorizedBy',
+                'responseOutgoingLetters.letterType',
+            ])
             ->latest();
 
         if ($this->search !== '') {
@@ -117,7 +176,24 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
     private function outgoingCollection(): Collection
     {
         $query = OutgoingLetter::query()
-            ->with(['requesterDirectorate', 'recipient', 'letterType', 'perihalIncomingLetter'])
+            ->with([
+                'requesterDirectorate',
+                'recipient',
+                'letterType',
+                'perihalIncomingLetter',
+                'draftAttachment',
+                'complianceAttachment',
+                'finalAttachment',
+                'attachables.attachment',
+                'comments.createdBy',
+                'approvals.actor',
+                'numberRequestedBy',
+                'cancelRequestedBy',
+                'cancelledBy',
+                'createdBy',
+                'updatedBy',
+                'authorizedBy',
+            ])
             ->latest();
 
         if ($this->status !== '') {
@@ -141,20 +217,96 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
         $circulations = $row->circulationDirectorates?->pluck('name')->filter()->values()->all() ?? [];
         $circulationLabel = count($circulations) > 0 ? implode(', ', $circulations) : '-';
 
+        $followupDetail = '-';
+        if (is_array($row->followup_detail)) {
+            $followupDetail = $this->cleanText(json_encode($row->followup_detail, JSON_UNESCAPED_UNICODE));
+        }
+
+        $routeSummary = implode(' | ', array_filter([
+            $row->lastRoutedFromDirectorate?->name ? 'From Dir: ' . $row->lastRoutedFromDirectorate->name : null,
+            $row->lastRoutedToDirectorate?->name ? 'To Dir: ' . $row->lastRoutedToDirectorate->name : null,
+            $row->lastRoutedFromUser?->name ? 'From User: ' . $row->lastRoutedFromUser->name : null,
+            $row->lastRoutedToUser?->name ? 'To User: ' . $row->lastRoutedToUser->name : null,
+            $row->last_routed_at ? 'At: ' . $this->formatDateTime($row->last_routed_at) : null,
+            $row->last_route_note ? 'Note: ' . $this->cleanText($row->last_route_note) : null,
+        ]));
+        $routeSummary = $routeSummary !== '' ? $routeSummary : '-';
+
+        $attachmentSummary = $this->joinValues($row->attachables->map(function ($attachable) {
+            $file = $attachable->attachment?->original_name ?? $attachable->attachment?->file_name;
+            if (!$file) {
+                return null;
+            }
+
+            return trim(implode(' | ', array_filter([
+                $file,
+                $attachable->category ? 'Category: ' . $attachable->category : null,
+                $attachable->note ? 'Note: ' . $this->cleanText($attachable->note) : null,
+            ])));
+        })->all());
+
+        $outgoingResponses = $this->joinValues($row->responseOutgoingLetters->map(function ($outgoingLetter) {
+            return trim(implode(' | ', array_filter([
+                $outgoingLetter->registration_no ? 'Reg: ' . $outgoingLetter->registration_no : null,
+                $outgoingLetter->letter_no ? 'No: ' . $outgoingLetter->letter_no : null,
+                $outgoingLetter->subject ? 'Perihal: ' . $this->cleanText($outgoingLetter->subject) : null,
+                $outgoingLetter->status ? 'Status: ' . OutgoingLetter::displayStatusLabel($outgoingLetter->status) : null,
+            ])));
+        })->all());
+
+        $commentSummary = $this->joinValues($row->comments->map(function ($comment) {
+            return trim(implode(' | ', array_filter([
+                $comment->createdBy?->name ? 'By: ' . $comment->createdBy->name : null,
+                $comment->created_at ? 'At: ' . $this->formatDateTime($comment->created_at) : null,
+                'Body: ' . $this->cleanText($comment->body),
+            ])));
+        })->all());
+
+        $approvalSummary = $this->joinValues($row->approvals->map(function ($approval) {
+            return trim(implode(' | ', array_filter([
+                'Status: ' . ($approval->status ?? '-'),
+                $approval->actor?->name ? 'By: ' . $approval->actor->name : null,
+                $approval->acted_at ? 'At: ' . $this->formatDateTime($approval->acted_at) : null,
+                $approval->note ? 'Note: ' . $this->cleanText($approval->note) : null,
+            ])));
+        })->all());
+
         return [
             $row->registration_no ?? '-',
+            $row->uuid ?? '-',
             $row->external_letter_no ?? '-',
-            $row->letter_date ? $row->letter_date->format('Y-m-d') : '-',
-            $row->subject ?? '-',
-            $row->summary ?? '-',
+            $this->formatDate($row->letter_date),
+            $this->cleanText($row->subject),
+            $this->cleanText($row->summary),
             $row->sender?->name ?? ($row->sender_other ?? ($row->getAttribute('sender') ?? '-')),
+            $this->cleanText($row->sender_other),
+            $row->customerBranch?->name ?? '-',
             $row->letterType?->name ?? '-',
-            $row->received_date ? $row->received_date->format('Y-m-d') : '-',
+            $this->cleanText($row->letter_type_other),
+            $this->formatDate($row->received_date),
+            $this->cleanText($row->priority),
             $circulationLabel,
             $row->targetDirectorate?->name ?? '-',
-            $row->target_date ? $row->target_date->format('Y-m-d') : '-',
+            $this->formatDate($row->target_date),
             $row->status ?? '-',
-            $row->created_at ? $row->created_at->format('Y-m-d H:i:s') : '-',
+            $this->cleanText($row->followup_action),
+            $followupDetail,
+            $this->cleanText($row->followup_note),
+            $this->formatDateTime($row->followup_submitted_at),
+            $row->followup_submitted_by ?? '-',
+            $routeSummary,
+            $attachmentSummary,
+            $outgoingResponses,
+            $commentSummary,
+            $approvalSummary,
+            $row->authorized_status ?? '-',
+            $this->formatDateTime($row->authorized_at),
+            $row->authorizedBy?->name ?? '-',
+            $this->formatDateTime($row->created_at),
+            $row->createdBy?->name ?? '-',
+            $this->formatDateTime($row->updated_at),
+            $row->updatedBy?->name ?? '-',
+            $this->cleanText($row->description),
         ];
     }
 
@@ -171,20 +323,87 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
             $perihalDescription = $row->perihal_text ?? '-';
         }
 
+        $extraAttachmentSummary = $this->joinValues($row->attachables->map(function ($attachable) {
+            $file = $attachable->attachment?->original_name ?? $attachable->attachment?->file_name;
+            if (!$file) {
+                return null;
+            }
+
+            return trim(implode(' | ', array_filter([
+                $file,
+                $attachable->category ? 'Category: ' . $attachable->category : null,
+                $attachable->note ? 'Note: ' . $this->cleanText($attachable->note) : null,
+            ])));
+        })->all());
+
+        $numberRequestInfo = implode(' | ', array_filter([
+            $this->formatDateTime($row->number_requested_at) !== '-' ? 'At: ' . $this->formatDateTime($row->number_requested_at) : null,
+            $row->numberRequestedBy?->name ? 'By: ' . $row->numberRequestedBy->name : null,
+            $row->number_request_note ? 'Note: ' . $this->cleanText($row->number_request_note) : null,
+        ]));
+        $numberRequestInfo = $numberRequestInfo !== '' ? $numberRequestInfo : '-';
+
+        $cancelInfo = implode(' | ', array_filter([
+            $row->cancel_previous_status ? 'Prev: ' . OutgoingLetter::displayStatusLabel($row->cancel_previous_status) : null,
+            $row->cancel_reason ? 'Reason: ' . $this->cleanText($row->cancel_reason) : null,
+            $this->formatDateTime($row->cancel_requested_at) !== '-' ? 'Req At: ' . $this->formatDateTime($row->cancel_requested_at) : null,
+            $row->cancelRequestedBy?->name ? 'Req By: ' . $row->cancelRequestedBy->name : null,
+            $this->formatDateTime($row->cancelled_at) !== '-' ? 'Done At: ' . $this->formatDateTime($row->cancelled_at) : null,
+            $row->cancelledBy?->name ? 'Done By: ' . $row->cancelledBy->name : null,
+        ]));
+        $cancelInfo = $cancelInfo !== '' ? $cancelInfo : '-';
+
+        $commentSummary = $this->joinValues($row->comments->map(function ($comment) {
+            return trim(implode(' | ', array_filter([
+                $comment->createdBy?->name ? 'By: ' . $comment->createdBy->name : null,
+                $comment->created_at ? 'At: ' . $this->formatDateTime($comment->created_at) : null,
+                'Body: ' . $this->cleanText($comment->body),
+            ])));
+        })->all());
+
+        $approvalSummary = $this->joinValues($row->approvals->map(function ($approval) {
+            return trim(implode(' | ', array_filter([
+                'Status: ' . ($approval->status ?? '-'),
+                $approval->actor?->name ? 'By: ' . $approval->actor->name : null,
+                $approval->acted_at ? 'At: ' . $this->formatDateTime($approval->acted_at) : null,
+                $approval->note ? 'Note: ' . $this->cleanText($approval->note) : null,
+            ])));
+        })->all());
+
         return [
             $row->registration_no ?? '-',
-            $row->order_date ? $row->order_date->format('Y-m-d') : '-',
-            $row->subject ?? '-',
+            $row->uuid ?? '-',
+            $this->formatDate($row->order_date),
+            $this->cleanText($row->subject),
+            $this->cleanText($row->summary),
+            $row->requesterDirectorate?->name ?? '-',
             $row->letterType?->name ?? '-',
-            $row->summary ?? '-',
             $row->need_compliance_review ? 'Ya' : 'Tidak',
             $row->recipient?->name ?? ($row->recipient_other ?? '-'),
+            $this->cleanText($row->recipient_other),
             $perihalType,
             $incomingReference,
-            $perihalDescription,
+            $this->cleanText($perihalDescription),
+            $this->cleanText($row->note),
             $row->letter_no ?? '-',
+            $row->status ?? '-',
             OutgoingLetter::displayStatusLabel($row->status),
-            $row->created_at ? $row->created_at->format('Y-m-d H:i:s') : '-',
+            $this->formatDate($row->final_upload_date),
+            $row->draftAttachment?->original_name ?? $row->draftAttachment?->file_name ?? '-',
+            $row->complianceAttachment?->original_name ?? $row->complianceAttachment?->file_name ?? '-',
+            $row->finalAttachment?->original_name ?? $row->finalAttachment?->file_name ?? '-',
+            $extraAttachmentSummary,
+            $numberRequestInfo,
+            $cancelInfo,
+            $commentSummary,
+            $approvalSummary,
+            $row->authorized_status ?? '-',
+            $this->formatDateTime($row->authorized_at),
+            $row->authorizedBy?->name ?? '-',
+            $this->formatDateTime($row->created_at),
+            $row->createdBy?->name ?? '-',
+            $this->formatDateTime($row->updated_at),
+            $row->updatedBy?->name ?? '-',
         ];
     }
 
@@ -196,5 +415,44 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
             'insidentil' => 'Insidentil',
             default => $type ?? '-',
         };
+    }
+
+    private function joinValues(array $values): string
+    {
+        $clean = array_values(array_filter(array_map(function ($value) {
+            return trim((string) $value);
+        }, $values), function ($value) {
+            return $value !== '' && $value !== '-';
+        }));
+
+        return empty($clean) ? '-' : implode(' || ', $clean);
+    }
+
+    private function cleanText(?string $text): string
+    {
+        if ($text === null) {
+            return '-';
+        }
+
+        $value = trim(preg_replace('/\s+/u', ' ', $text) ?? '');
+        return $value === '' ? '-' : $value;
+    }
+
+    private function formatDate($value): string
+    {
+        if (!$value) {
+            return '-';
+        }
+
+        return $value->format('Y-m-d');
+    }
+
+    private function formatDateTime($value): string
+    {
+        if (!$value) {
+            return '-';
+        }
+
+        return $value->format('Y-m-d H:i:s');
     }
 }

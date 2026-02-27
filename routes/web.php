@@ -73,6 +73,8 @@ Route::middleware(['auth'])->group(function () {
     // Meeting Routes
     Route::prefix('meeting')->name('meeting.')->group(function () {
         Route::get('/', [MeetingController::class, 'index'])->middleware('permission:corsec.read')->name('index');
+        Route::get('/datatables', [MeetingController::class, 'datatables'])->middleware('permission:corsec.read')->name('datatables');
+        Route::get('/export', [MeetingController::class, 'export'])->middleware('permission:corsec.export')->name('export');
         Route::get('/create', [MeetingController::class, 'create'])->middleware('permission:corsec.create')->name('create');
         Route::post('/store', [MeetingController::class, 'store'])->middleware('permission:corsec.create')->name('store');
         Route::get('/{meeting}', [MeetingController::class, 'show'])->middleware('permission:corsec.read')->name('show');

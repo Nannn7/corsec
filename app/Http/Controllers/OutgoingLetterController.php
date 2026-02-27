@@ -1083,6 +1083,9 @@ class OutgoingLetterController extends Controller
         if (!$user || !$user->can('corsec.update')) {
             abort(403, 'Sorry! You are not allowed to update outgoing letters.');
         }
+        if ($this->isViewerRole($user)) {
+            abort(403, 'Role viewer tidak memiliki akses untuk update surat keluar.');
+        }
     }
 
     private function authorizeCreateOrUpdate(): void
@@ -1090,6 +1093,9 @@ class OutgoingLetterController extends Controller
         $user = Auth::user();
         if (!$user || (!$user->can('corsec.create') && !$user->can('corsec.update'))) {
             abort(403, 'Sorry! You are not allowed to access this action.');
+        }
+        if ($this->isViewerRole($user)) {
+            abort(403, 'Role viewer tidak memiliki akses untuk aksi ini.');
         }
     }
 
@@ -1144,5 +1150,10 @@ class OutgoingLetterController extends Controller
         $positionName = Str::lower((string) ($user->position?->name ?? ''));
 
         return $positionName !== '' && Str::contains($positionName, 'staff');
+    }
+
+    private function isViewerRole(User $user): bool
+    {
+        return $user->hasRole('viewer') && !$user->hasRole(['administrator', 'maker', 'checker', 'approver']);
     }
 }

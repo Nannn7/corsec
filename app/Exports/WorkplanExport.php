@@ -26,9 +26,23 @@ class WorkplanExport implements FromCollection, WithHeadings, WithMapping
         $query = WorkProgramItem::query()
             ->with([
                 'program.directorate',
+                'program.createdBy',
+                'program.updatedBy',
+                'program.authorizedBy',
+                'program.attachables.attachment',
+                'program.comments.createdBy',
+                'program.approvals.actor',
+                'creator',
+                'attachables.attachment',
+                'comments.createdBy',
                 'updates' => function ($q) {
                     $q->latest('id');
                 },
+                'updates.updater',
+                'updates.authorizedBy',
+                'updates.attachables.attachment',
+                'updates.comments.createdBy',
+                'updates.approvals.actor',
             ]);
 
         $query->whereHas('program', function ($programQuery) {
@@ -59,6 +73,11 @@ class WorkplanExport implements FromCollection, WithHeadings, WithMapping
                 $q->where('title', 'ilike', '%' . $search . '%')
                     ->orWhere('description', 'ilike', '%' . $search . '%')
                     ->orWhere('status', 'ilike', '%' . $search . '%')
+                    ->orWhereHas('updates', function ($updateQuery) use ($search) {
+                        $updateQuery->where('note', 'ilike', '%' . $search . '%')
+                            ->orWhere('status', 'ilike', '%' . $search . '%')
+                            ->orWhere('action', 'ilike', '%' . $search . '%');
+                    })
                     ->orWhereHas('program', function ($programQuery) use ($search) {
                         $programQuery->where('title', 'ilike', '%' . $search . '%')
                             ->orWhere('description', 'ilike', '%' . $search . '%')
@@ -77,19 +96,39 @@ class WorkplanExport implements FromCollection, WithHeadings, WithMapping
     {
         return [
             'No Program',
-            'Tanggal Input',
+            'UUID Program',
+            'Tanggal Input Program',
             'Direktorat',
             'Tahun',
             'Judul Program (Header)',
+            'Deskripsi Program',
+            'Status Program',
+            'Authorized Status Program',
+            'Authorized At Program',
+            'Authorized By Program',
+            'Created At Program',
+            'Created By Program',
+            'Updated At Program',
+            'Updated By Program',
+            'Lampiran Program',
+            'Komentar Program',
+            'Approval Program',
+            'ID Item',
             'Program Kerja (Item)',
-            'Target',
+            'Deskripsi Item',
+            'Bobot Item',
+            'Target Awal',
+            'Target Saat Ini',
             'Status Item',
             'SLA',
+            'Completed At',
+            'Created By Item',
+            'Lampiran Item',
+            'Komentar Item',
             'Progress Terakhir (%)',
             'Aksi Update Terakhir',
             'Catatan Update Terakhir',
-            'Status Program',
-            'Authorized Status',
+            'Detail Update (Semua)',
         ];
     }
 
@@ -101,19 +140,39 @@ class WorkplanExport implements FromCollection, WithHeadings, WithMapping
 
         return [
             $program ? $this->programNumber($program) : '-',
-            $program && $program->created_at ? $program->created_at->format('Y-m-d') : '-',
+            $program?->uuid ?? '-',
+            $this->formatDateTime($program?->created_at),
             $program?->directorate?->name ?? '-',
             $program?->year ?? '-',
-            $program?->title ?? '-',
-            $row->title ?? '-',
-            $row->target_date ? $row->target_date->format('Y-m-d') : '-',
-            $this->itemStatusLabel($row->status),
-            $this->itemSlaLabel($row->status),
-            $latestUpdate?->progress_percent ?? 0,
-            $this->updateActionLabel($latestUpdate?->action),
-            $latestUpdate?->note ?? '-',
+            $this->cleanText($program?->title),
+            $this->cleanText($program?->description),
             $this->programStatusLabel($program?->status),
             $program?->authorized_status ?? '-',
+            $this->formatDateTime($program?->authorized_at),
+            $program?->authorizedBy?->name ?? '-',
+            $this->formatDateTime($program?->created_at),
+            $program?->createdBy?->name ?? '-',
+            $this->formatDateTime($program?->updated_at),
+            $program?->updatedBy?->name ?? '-',
+            $this->attachableDetails($program?->attachables ?? collect()),
+            $this->commentDetails($program?->comments ?? collect()),
+            $this->approvalDetails($program?->approvals ?? collect()),
+            $row->id,
+            $this->cleanText($row->title),
+            $this->cleanText($row->description),
+            $row->weight ?? '-',
+            $this->formatDate($row->initial_target_date),
+            $this->formatDate($row->target_date),
+            $this->itemStatusLabel($row->status),
+            $this->itemSlaLabel($row->status),
+            $this->formatDateTime($row->completed_at),
+            $row->creator?->name ?? '-',
+            $this->attachableDetails($row->attachables),
+            $this->commentDetails($row->comments),
+            $latestUpdate?->progress_percent ?? 0,
+            $this->updateActionLabel($latestUpdate?->action),
+            $this->cleanText($latestUpdate?->note),
+            $this->updateDetails($row->updates),
         ];
     }
 
@@ -168,7 +227,112 @@ class WorkplanExport implements FromCollection, WithHeadings, WithMapping
             WorkProgram::STATUS_ACTIVE => 'Active',
             WorkProgram::STATUS_DONE => 'Done',
             WorkProgram::STATUS_RETURNED => 'Returned',
+            WorkProgram::STATUS_REJECTED => 'Rejected',
             default => $status ?: '-',
         };
+    }
+
+    private function updateDetails(Collection $updates): string
+    {
+        return $this->joinValues($updates->map(function (WorkProgramUpdate $update) {
+            $files = $this->attachableDetails($update->attachables);
+            $comments = $this->commentDetails($update->comments);
+            $approvals = $this->approvalDetails($update->approvals);
+
+            return trim(implode(' | ', array_filter([
+                'ID: ' . $update->id,
+                'Action: ' . $this->updateActionLabel($update->action),
+                'Status: ' . ($update->status ?? '-'),
+                'Progress: ' . ((int) ($update->progress_percent ?? 0)) . '%',
+                $update->revised_target_date ? 'Revised Target: ' . $this->formatDate($update->revised_target_date) : null,
+                $update->note ? 'Note: ' . $this->cleanText($update->note) : null,
+                $update->updater?->name ? 'By: ' . $update->updater->name : null,
+                $update->created_at ? 'At: ' . $this->formatDateTime($update->created_at) : null,
+                $update->authorized_status ? 'Authorized: ' . $update->authorized_status : null,
+                $update->authorized_at ? 'Authorized At: ' . $this->formatDateTime($update->authorized_at) : null,
+                $update->authorizedBy?->name ? 'Authorized By: ' . $update->authorizedBy->name : null,
+                $files !== '-' ? 'Files: ' . $files : null,
+                $comments !== '-' ? 'Comments: ' . $comments : null,
+                $approvals !== '-' ? 'Approvals: ' . $approvals : null,
+            ])));
+        })->all());
+    }
+
+    private function attachableDetails(Collection $attachables): string
+    {
+        return $this->joinValues($attachables->map(function ($attachable) {
+            $file = $attachable->attachment?->original_name ?? $attachable->attachment?->file_name;
+            if (!$file) {
+                return null;
+            }
+
+            return trim(implode(' | ', array_filter([
+                $file,
+                $attachable->category ? 'Category: ' . $attachable->category : null,
+                $attachable->note ? 'Note: ' . $this->cleanText($attachable->note) : null,
+            ])));
+        })->all());
+    }
+
+    private function commentDetails(Collection $comments): string
+    {
+        return $this->joinValues($comments->map(function ($comment) {
+            return trim(implode(' | ', array_filter([
+                $comment->createdBy?->name ? 'By: ' . $comment->createdBy->name : null,
+                $comment->created_at ? 'At: ' . $this->formatDateTime($comment->created_at) : null,
+                'Body: ' . $this->cleanText($comment->body),
+            ])));
+        })->all());
+    }
+
+    private function approvalDetails(Collection $approvals): string
+    {
+        return $this->joinValues($approvals->map(function ($approval) {
+            return trim(implode(' | ', array_filter([
+                'Status: ' . ($approval->status ?? '-'),
+                $approval->actor?->name ? 'By: ' . $approval->actor->name : null,
+                $approval->acted_at ? 'At: ' . $this->formatDateTime($approval->acted_at) : null,
+                $approval->note ? 'Note: ' . $this->cleanText($approval->note) : null,
+            ])));
+        })->all());
+    }
+
+    private function joinValues(array $values): string
+    {
+        $clean = array_values(array_filter(array_map(function ($value) {
+            return trim((string) $value);
+        }, $values), function ($value) {
+            return $value !== '' && $value !== '-';
+        }));
+
+        return empty($clean) ? '-' : implode(' || ', $clean);
+    }
+
+    private function cleanText(?string $text): string
+    {
+        if ($text === null) {
+            return '-';
+        }
+
+        $value = trim(preg_replace('/\s+/u', ' ', $text) ?? '');
+        return $value === '' ? '-' : $value;
+    }
+
+    private function formatDate($value): string
+    {
+        if (!$value) {
+            return '-';
+        }
+
+        return $value->format('Y-m-d');
+    }
+
+    private function formatDateTime($value): string
+    {
+        if (!$value) {
+            return '-';
+        }
+
+        return $value->format('Y-m-d H:i:s');
     }
 }

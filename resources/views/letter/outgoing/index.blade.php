@@ -241,6 +241,8 @@
         const apiUrl = element.getAttribute('data-api-url');
         const baseUrl = element.getAttribute('data-base-url');
         const isAdmin = @json(auth()->user()?->hasRole('administrator'));
+        const hasOperationalRole = @json((bool) (auth()->user()?->hasRole('administrator') || auth()->user()?->hasRole('maker') || auth()->user()?->hasRole('checker') || auth()->user()?->hasRole('approver')));
+        const isViewerRole = @json((bool) auth()->user()?->hasRole('viewer')) && !hasOperationalRole;
         const hasMakerRole = @json(auth()->user()?->hasRole('maker'));
         const isStaffPosition = @json(
             \Illuminate\Support\Str::contains(
@@ -248,7 +250,7 @@
                 'staff'));
         const currentUserId = @json((int) (auth()->id() ?? 0));
         const currentUserDirectorateId = @json((int) (auth()->user()?->directorate_id ?? 0));
-        const canCreateOrUpdate = @json((bool) (auth()->user()?->can('corsec.create') || auth()->user()?->can('corsec.update')));
+        const canCreateOrUpdate = @json((bool) (auth()->user()?->can('corsec.create') || auth()->user()?->can('corsec.update'))) && !isViewerRole;
 
         const statusBadge = (status) => {
             const val = (status ?? '').toString().toLowerCase();
@@ -407,7 +409,7 @@
                             </a>`;
                         @endcan
 
-                        @if (auth()->user()?->hasRole('administrator') || auth()->user()?->can('corsec.update'))
+                        @if (auth()->user()?->hasRole('administrator') || (auth()->user()?->can('corsec.update') && !(auth()->user()?->hasRole('viewer') && !auth()->user()?->hasRole(['administrator', 'maker', 'checker', 'approver']))))
                             if (canEditStatus) {
                                 html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}/edit">
                                     <i class="ki-outline ki-notepad-edit"></i>

@@ -11,6 +11,11 @@
         $isAdmin = $user?->hasRole('administrator');
         $isChecker = $user?->hasRole('checker');
         $isApprover = $user?->hasRole('approver');
+        $isViewerOnly =
+            ($user?->hasRole('viewer') ?? false) &&
+            !($user?->hasRole(['administrator', 'maker', 'checker', 'approver']) ?? false);
+        $canViewerNote = ($user?->can('corsec.update') ?? false) && $isViewerOnly;
+        $canCorsecUpdateAction = ($user?->can('corsec.update') ?? false) && !$isViewerOnly;
         $eoDirectorateCode = config('corsec.eo_corp_affair_directorate_code', '');
         $directorateName = \Illuminate\Support\Str::lower((string) ($user?->directorate?->name ?? ''));
         $isEoCorpAffairDirectorate =
@@ -629,7 +634,28 @@
             </div>
         @endif
 
-        @can('corsec.update')
+        @if ($canViewerNote)
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Tambah Catatan</h3>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ route('letter.incoming.director.note', $incomingLetter) }}"
+                        class="grid gap-4 js-ajax-form" data-form-type="incoming-viewer-note">
+                        @csrf
+                        <div class="flex flex-col">
+                            <label class="form-label">Catatan <span class="text-danger">*</span></label>
+                            <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan..." required></textarea>
+                        </div>
+                        <div class="flex justify-end">
+                            <button type="submit" class="btn btn-primary">Simpan Catatan</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        @endif
+
+        @if ($canCorsecUpdateAction)
             @if ($canDirectorateUpdate)
                 <div class="card">
                     <div class="card-header">
@@ -929,7 +955,7 @@
                     </div>
                 </div>
             @endif
-        @endcan
+        @endif
 
         @if ($approvals->count() > 0)
             <div class="card">
