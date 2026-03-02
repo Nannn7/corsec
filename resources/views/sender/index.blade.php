@@ -5,6 +5,7 @@
 @endsection
 
 @section('content')
+    @php($permissionFlags = $permissionFlags ?? [])
     <div class="grid">
         <div class="min-w-full card card-grid" data-datatable="false" data-datatable-page-size="10"
             data-datatable-state-save="false" id="sender-table" data-api-url="{{ route('sender.datatables') }}">
@@ -20,17 +21,17 @@
                     </div>
                     <div class="flex flex-wrap gap-2.5">
                         <div class="h-[24px] border border-r-gray-200"></div>
-                        @can('sender.export')
+                        @if ($permissionFlags['can_export'] ?? false)
                             <a id="export-btn" class="btn btn-sm btn-light" href="{{ route('sender.export') }}"> Export to
                                 Excel </a>
-                        @endcan
-                        @can('sender.create')
+                        @endif
+                        @if ($permissionFlags['can_create'] ?? false)
                             <a class="btn btn-sm btn-primary" href="{{ route('sender.create') }}"> Tambah Sender </a>
-                        @endcan
-                        @can('sender.delete')
+                        @endif
+                        @if ($permissionFlags['can_delete'] ?? false)
                             <button class="hidden btn btn-sm btn-danger" id="deleteSelected"
                                 onclick="deleteSelectedRows()">Delete Selected</button>
-                        @endcan
+                        @endif
                     </div>
                 </div>
             </div>
@@ -162,6 +163,8 @@
         const searchInput = document.getElementById('search');
         const exportBtn = document.getElementById('export-btn');
         const deleteSelectedButton = document.getElementById('deleteSelected');
+        const canUpdate = @json((bool) ($permissionFlags['can_update'] ?? false));
+        const canDelete = @json((bool) ($permissionFlags['can_delete'] ?? false));
 
         const apiUrl = element.getAttribute('data-api-url');
         const dataTableOptions = {
@@ -174,6 +177,7 @@
             columns: {
                 select: {
                     render: (item, data, context) => {
+                        if (!canDelete) return '';
                         const checkbox = document.createElement('input');
                         checkbox.className = 'checkbox checkbox-sm';
                         checkbox.type = 'checkbox';
@@ -203,17 +207,17 @@
                         const rowKey = data.uuid ?? data.id;
                         let html = `<div class="flex flex-nowrap justify-center">`;
 
-                        @can('sender.update')
+                        if (canUpdate) {
                             html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="sender/${rowKey}/edit">
                                 <i class="ki-outline ki-notepad-edit"></i>
                             </a>`;
-                        @endcan
+                        }
 
-                        @can('sender.delete')
+                        if (canDelete) {
                             html += `<a onclick="deleteData('${rowKey}')" class="delete btn btn-sm btn-icon btn-clear btn-danger">
                                 <i class="ki-outline ki-trash"></i>
                             </a>`;
-                        @endcan
+                        }
 
                         html += `</div>`;
                         return html;
@@ -245,6 +249,7 @@
         });
 
         function updateDeleteButtonVisibility() {
+            if (!deleteSelectedButton) return;
             const selectedCheckboxes = document.querySelectorAll('input[data-datatable-row-check="true"]:checked');
             if (selectedCheckboxes.length > 0) {
                 deleteSelectedButton.classList.remove('hidden');

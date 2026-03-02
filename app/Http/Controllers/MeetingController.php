@@ -25,13 +25,15 @@ use Modules\Corsec\Models\MeetingMinutes;
 use Modules\Corsec\Models\MeetingParticipant;
 use Modules\Corsec\Models\Directorate;
 use Modules\Corsec\Models\Approval;
+use Modules\Corsec\Services\CorsecPermissionService;
 use Modules\Corsec\Services\MeetingWorkflowService;
 use Modules\Usermanagement\Models\User;
 
 class MeetingController extends Controller
 {
     public function __construct(
-        private readonly MeetingWorkflowService $workflow
+        private readonly MeetingWorkflowService $workflow,
+        private readonly CorsecPermissionService $permissionService
     ) {
         $this->middleware('auth');
     }
@@ -49,11 +51,13 @@ class MeetingController extends Controller
             'followup_open' => (clone $summaryBase)->where('status', Meeting::STATUS_PROSES_TINDAKLANJUT_HASIL_RAPAT)->count(),
             'done_followup' => (clone $summaryBase)->where('status', Meeting::STATUS_DONE_TINDAKLANJUT_HASIL_RAPAT)->count(),
         ];
+        $permissionFlags = $this->permissionService->meetingIndexFlags($user);
 
         return view('corsec::meeting.index', [
             'summary' => $summary,
             'statusLabels' => Meeting::statusLabels(),
             'typeOptions' => Meeting::typeOptions(),
+            'permissionFlags' => $permissionFlags,
         ]);
     }
 
@@ -258,12 +262,14 @@ class MeetingController extends Controller
             ->orderByDesc('acted_at')
             ->orderByDesc('created_at')
             ->get();
+        $permissionFlags = $this->permissionService->meetingDetailFlags($meeting, $approvals, $user);
 
         return view('corsec::meeting.show', [
             'meeting' => $meeting,
             'statusLabels' => Meeting::statusLabels(),
             'typeOptions' => Meeting::typeOptions(),
             'approvals' => $approvals,
+            'permissionFlags' => $permissionFlags,
             ...$options,
         ]);
     }
@@ -1082,7 +1088,7 @@ class MeetingController extends Controller
         if (!$user || !$user->can('corsec.update')) {
             abort(403, 'Sorry! You are not allowed to update meeting.');
         }
-        if ($this->isViewerRole($user)) {
+        if ($this->permissionService->isViewerRole($user)) {
             abort(403, 'Role viewer tidak memiliki akses untuk update meeting.');
         }
     }
@@ -1101,11 +1107,6 @@ class MeetingController extends Controller
         if (!$user || !$user->can('corsec.authorize')) {
             abort(403, 'Sorry! You are not allowed to authorize meeting.');
         }
-    }
-
-    private function isViewerRole(User $user): bool
-    {
-        return $user->hasRole('viewer') && !$user->hasRole(['administrator', 'maker', 'checker', 'approver']);
     }
 
     private function successRedirectResponse(Request $request, string $redirectUrl, string $message)

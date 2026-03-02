@@ -11,8 +11,9 @@ use Modules\Corsec\Http\Controllers\ApproverController;
 use Modules\Corsec\Http\Controllers\DirectorateController;
 use Modules\Corsec\Http\Controllers\SenderController;
 use Modules\Corsec\Http\Controllers\LetterTypeController;
+use Modules\Corsec\Http\Middleware\LogCorsecRequestErrors;
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
     // Letters Routes

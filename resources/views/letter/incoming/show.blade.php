@@ -6,98 +6,15 @@
 
 @section('content')
     @php
-        $user = auth()->user();
+        $permissionFlags = $permissionFlags ?? [];
         $status = $incomingLetter->status;
-        $isAdmin = $user?->hasRole('administrator');
-        $isChecker = $user?->hasRole('checker');
-        $isApprover = $user?->hasRole('approver');
-        $isViewerOnly =
-            ($user?->hasRole('viewer') ?? false) &&
-            !($user?->hasRole(['administrator', 'maker', 'checker', 'approver']) ?? false);
-        $canViewerNote = ($user?->can('corsec.update') ?? false) && $isViewerOnly;
-        $canCorsecUpdateAction = ($user?->can('corsec.update') ?? false) && !$isViewerOnly;
-        $eoDirectorateCode = config('corsec.eo_corp_affair_directorate_code', '');
-        $directorateName = \Illuminate\Support\Str::lower((string) ($user?->directorate?->name ?? ''));
-        $isEoCorpAffairDirectorate =
-            $user &&
-            (($eoDirectorateCode !== '' && $user->directorate?->code === $eoDirectorateCode) ||
-                ($directorateName !== '' &&
-                    \Illuminate\Support\Str::contains($directorateName, 'corporate secretary')));
-        $isEoCorpAffairActor = $isEoCorpAffairDirectorate && ($isChecker || $isApprover);
-        $positionName = \Illuminate\Support\Str::lower((string) ($user?->position?->name ?? ''));
-        $isExecutiveOfficer =
-            $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'executive officer');
-        $isSekretariatDireksi =
-            $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'sekretariat direksi');
-        $isEoCorpSecretaryChecker = $isChecker && $isEoCorpAffairDirectorate && $isExecutiveOfficer;
-        $isTargetDirectorate =
-            $user &&
-            $incomingLetter->target_directorate_id &&
-            (int) $user->directorate_id === (int) $incomingLetter->target_directorate_id;
-        $isMonitoringDirectorate =
-            $user && $incomingLetter->circulationDirectorates?->contains('id', (int) $user->directorate_id);
-        $canDirectorateUpdate =
-            in_array($status, ['dispatched', 'in_progress', 'returned'], true) &&
-            !$isEoCorpAffairActor &&
-            ($isAdmin || ($isTargetDirectorate && $incomingLetter->authorized_status === 'authorized'));
-        $checkerApproved =
-            $approvals
-                ->where('status', 'approved')
-                ->filter(function ($approval) {
-                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
-                })
-                ->count() > 0;
-        $userHasEoDirApproval =
-            $user &&
-            $approvals
-                ->where('acted_by', $user->id)
-                ->filter(function ($approval) {
-                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Approved') ||
-                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Returned');
-                })
-                ->count() > 0;
-        $userHasDdDirApproval =
-            $user &&
-            $approvals
-                ->where('acted_by', $user->id)
-                ->filter(function ($approval) {
-                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'DD Direktorat Approved') ||
-                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'DD Direktorat Returned');
-                })
-                ->count() > 0;
-        $userHasEoCorpAffairApproval =
-            $user &&
-            $approvals
-                ->where('acted_by', $user->id)
-                ->filter(function ($approval) {
-                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Corp Affair Approved') ||
-                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Corp Affair Returned');
-                })
-                ->count() > 0;
-        $userHasEoCorpAffairVerification =
-            $user &&
-            $approvals
-                ->where('acted_by', $user->id)
-                ->filter(function ($approval) {
-                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'Verifikasi EO Corp Affair');
-                })
-                ->count() > 0;
-        $canCheckerDirApproval =
-            $status === 'waiting_dir_approval' &&
-            !$checkerApproved &&
-            ($isAdmin || $isChecker) &&
-            !$userHasEoDirApproval;
-        $canApproverApproval =
-            $status === 'waiting_dir_approval' &&
-            $checkerApproved &&
-            ($isAdmin || $isApprover) &&
-            !$userHasDdDirApproval;
-        $canCheckerApproval =
-            ($incomingLetter->authorized_status === 'pending' ||
-                in_array($status, ['on_approval', 'waiting_verification'], true)) &&
-            ($isAdmin || $isEoCorpAffairActor) &&
-            ($status === 'waiting_verification' ? !$userHasEoCorpAffairVerification : !$userHasEoCorpAffairApproval);
-        $canAddMonitoring = $isAdmin || $isTargetDirectorate || $isEoCorpSecretaryChecker || $isSekretariatDireksi;
+        $canViewerNote = (bool) ($permissionFlags['can_viewer_note'] ?? false);
+        $canCorsecUpdateAction = (bool) ($permissionFlags['can_corsec_update_action'] ?? false);
+        $canDirectorateUpdate = (bool) ($permissionFlags['can_directorate_update'] ?? false);
+        $canCheckerDirApproval = (bool) ($permissionFlags['can_checker_dir_approval'] ?? false);
+        $canApproverApproval = (bool) ($permissionFlags['can_approver_approval'] ?? false);
+        $canCheckerApproval = (bool) ($permissionFlags['can_checker_approval'] ?? false);
+        $canAddMonitoring = (bool) ($permissionFlags['can_add_monitoring'] ?? false);
         $statusSteps = [
             'draft' => 'Draft',
             'on_approval' => 'On Approval',
@@ -116,13 +33,7 @@
             $incomingLetter->attachables?->where('category', 'social_material')->values() ?? collect();
         $directorateMap = $directorates?->keyBy('id') ?? collect();
         $responseOutgoingLetter = $responseOutgoingLetter ?? null;
-        $canCreateOutgoingFromIncoming =
-            $incomingLetter->followup_action === 'response_letter' &&
-            $status === 'waiting_response_letter' &&
-            !$responseOutgoingLetter &&
-            $user &&
-            $user->can('corsec.create') &&
-            !$isEoCorpAffairDirectorate;
+        $canCreateOutgoingFromIncoming = (bool) ($permissionFlags['can_create_outgoing_from_incoming'] ?? false);
         $responseLetterProgressBadgeLabel = null;
         $responseLetterProgressBadgeClass = 'badge-light';
         if ($incomingLetter->followup_action === 'response_letter') {

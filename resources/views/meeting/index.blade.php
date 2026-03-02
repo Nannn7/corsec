@@ -5,6 +5,7 @@
 @endsection
 
 @section('content')
+    @php($permissionFlags = $permissionFlags ?? [])
     <div class="grid gap-5">
         @if (session('success'))
             <div class="alert alert-success">{{ session('success') }}</div>
@@ -62,19 +63,19 @@
                         </label>
                     </div>
                     <div class="flex flex-wrap gap-2.5">
-                        @if (auth()->user()?->can('corsec.export') || auth()->user()?->can('corsec.create'))
+                        @if (($permissionFlags['can_export'] ?? false) || ($permissionFlags['can_create'] ?? false))
                             <div class="h-[24px] border border-r-gray-200"></div>
                         @endif
-                        @can('corsec.export')
+                        @if ($permissionFlags['can_export'] ?? false)
                             <a id="export-btn" class="btn btn-sm btn-light" href="{{ route('meeting.export') }}">
                                 Export to Excel
                             </a>
-                        @endcan
-                        @can('corsec.create')
+                        @endif
+                        @if ($permissionFlags['can_create'] ?? false)
                             <a href="{{ route('meeting.create') }}" class="btn btn-sm btn-primary">
                                 Tambah Meeting
                             </a>
-                        @endcan
+                        @endif
                     </div>
                 </div>
             </div>
@@ -126,8 +127,10 @@
             const exportBtn = document.getElementById('export-btn');
             const apiUrl = element.getAttribute('data-api-url');
             const baseUrl = element.getAttribute('data-base-url');
-            const isAdmin = @json(auth()->user()?->hasRole('administrator'));
-            const actorId = @json((int) (auth()->id() ?? 0));
+            const isAdmin = @json((bool) ($permissionFlags['is_admin'] ?? false));
+            const actorId = @json((int) ($permissionFlags['actor_id'] ?? 0));
+            const canRead = @json((bool) ($permissionFlags['can_read'] ?? false));
+            const canEditAction = @json((bool) ($permissionFlags['can_edit_action'] ?? false));
 
             const statusBadgeClass = (status) => {
                 const val = (status ?? '').toString().toLowerCase();
@@ -194,23 +197,19 @@
                             const rowKey = data.uuid ?? data.id;
                             let html = `<div class="flex flex-nowrap justify-center">`;
 
-                            @can('corsec.read')
+                            if (canRead) {
                                 html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}" title="Detail">
                                     <i class="ki-outline ki-eye"></i>
                                 </a>`;
-                            @endcan
+                            }
 
-                            @if (auth()->user()?->can('corsec.update') &&
-                                    !(auth()->user()?->hasRole('viewer') &&
-                                        !auth()->user()
-                                            ?->hasRole(['administrator', 'maker', 'checker', 'approver'])
-                                    ))
+                            if (canEditAction) {
                                 if (canEdit) {
                                     html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}/edit" title="Edit">
                                         <i class="ki-outline ki-notepad-edit"></i>
                                     </a>`;
                                 }
-                            @endif
+                            }
 
                             html += `</div>`;
                             return html;

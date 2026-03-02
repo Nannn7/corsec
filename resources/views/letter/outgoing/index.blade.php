@@ -5,6 +5,7 @@
 @endsection
 
 @section('content')
+    @php($permissionFlags = $permissionFlags ?? [])
     <div class="container-fluid">
         <div class="grid">
             <div class="min-w-full card card-grid" data-datatable="false" data-datatable-page-size="10"
@@ -21,20 +22,20 @@
                             </label>
                         </div>
                         <div class="flex flex-wrap gap-2.5 lg:gap-5">
-                            @if (($canCreate ?? false) || auth()->user()?->can('corsec.export') || auth()->user()?->can('corsec.delete'))
+                            @if (($canCreate ?? false) || ($permissionFlags['can_export'] ?? false) || ($permissionFlags['can_delete'] ?? false))
                                 <div class="h-[24px] border border-r-gray-200"> </div>
                             @endif
 
-                            @can('corsec.export')
+                            @if ($permissionFlags['can_export'] ?? false)
                                 <a id="export-btn" class="btn btn-sm btn-light" href="{{ route('letter.outgoing.export') }}">
                                     Export to Excel
                                 </a>
-                            @endcan
+                            @endif
 
-                            @can('corsec.delete')
+                            @if ($permissionFlags['can_delete'] ?? false)
                                 <button class="hidden btn btn-sm btn-danger" id="deleteSelected"
                                     onclick="deleteSelectedRows()">Delete Selected</button>
-                            @endcan
+                            @endif
 
                             @if ($canCreate ?? false)
                                 <a class="btn btn-sm btn-primary" href="{{ route('letter.outgoing.create') }}">
@@ -240,17 +241,17 @@
         const deleteSelectedButton = document.getElementById('deleteSelected');
         const apiUrl = element.getAttribute('data-api-url');
         const baseUrl = element.getAttribute('data-base-url');
-        const isAdmin = @json(auth()->user()?->hasRole('administrator'));
-        const hasOperationalRole = @json((bool) (auth()->user()?->hasRole('administrator') || auth()->user()?->hasRole('maker') || auth()->user()?->hasRole('checker') || auth()->user()?->hasRole('approver')));
-        const isViewerRole = @json((bool) auth()->user()?->hasRole('viewer')) && !hasOperationalRole;
-        const hasMakerRole = @json(auth()->user()?->hasRole('maker'));
-        const isStaffPosition = @json(
-            \Illuminate\Support\Str::contains(
-                \Illuminate\Support\Str::lower((string) (auth()->user()?->position?->name ?? '')),
-                'staff'));
-        const currentUserId = @json((int) (auth()->id() ?? 0));
-        const currentUserDirectorateId = @json((int) (auth()->user()?->directorate_id ?? 0));
-        const canCreateOrUpdate = @json((bool) (auth()->user()?->can('corsec.create') || auth()->user()?->can('corsec.update'))) && !isViewerRole;
+        const isAdmin = @json((bool) ($permissionFlags['is_admin'] ?? false));
+        const hasOperationalRole = @json((bool) ($permissionFlags['has_operational_role'] ?? false));
+        const isViewerRole = @json((bool) ($permissionFlags['is_viewer_role'] ?? false));
+        const hasMakerRole = @json((bool) ($permissionFlags['has_maker_role'] ?? false));
+        const isStaffPosition = @json((bool) ($permissionFlags['is_staff_position'] ?? false));
+        const currentUserId = @json((int) ($permissionFlags['current_user_id'] ?? 0));
+        const currentUserDirectorateId = @json((int) ($permissionFlags['current_user_directorate_id'] ?? 0));
+        const canCreateOrUpdate = @json((bool) ($permissionFlags['can_create_or_update'] ?? false));
+        const canRead = @json((bool) ($permissionFlags['can_read'] ?? false));
+        const canDelete = @json((bool) ($permissionFlags['can_delete'] ?? false));
+        const canEditAction = @json((bool) ($permissionFlags['can_edit_action'] ?? false));
 
         const statusBadge = (status) => {
             const val = (status ?? '').toString().toLowerCase();
@@ -308,7 +309,7 @@
             columns: {
                 select: {
                     render: (item, data) => {
-                        @can('corsec.delete')
+                        if (canDelete) {
                             const status = (data.status ?? '').toString().toLowerCase();
                             const deletableStatuses = ['draft', 'returned'];
                             if (!isAdmin && !deletableStatuses.includes(status)) return '';
@@ -319,7 +320,7 @@
                             checkbox.value = data.id.toString();
                             checkbox.setAttribute('data-datatable-row-check', 'true');
                             return checkbox.outerHTML.trim();
-                        @endcan
+                        }
                         return '';
                     },
                 },
@@ -403,27 +404,27 @@
                         const rowKey = data.uuid ?? data.id;
                         let html = `<div class="flex flex-nowrap justify-center">`;
 
-                        @can('corsec.read')
+                        if (canRead) {
                             html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}">
                                 <i class="ki-outline ki-eye"></i>
                             </a>`;
-                        @endcan
+                        }
 
-                        @if (auth()->user()?->hasRole('administrator') || (auth()->user()?->can('corsec.update') && !(auth()->user()?->hasRole('viewer') && !auth()->user()?->hasRole(['administrator', 'maker', 'checker', 'approver']))))
+                        if (canEditAction) {
                             if (canEditStatus) {
                                 html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}/edit">
                                     <i class="ki-outline ki-notepad-edit"></i>
                                 </a>`;
                             }
-                        @endif
+                        }
 
-                        @can('corsec.delete')
+                        if (canDelete) {
                             if (canDeleteStatus) {
                                 html += `<a onclick="deleteData('${rowKey}')" class="btn btn-sm btn-icon btn-clear btn-danger">
                                     <i class="ki-outline ki-trash"></i>
                                 </a>`;
                             }
-                        @endcan
+                        }
 
                         if (canCancelRequest) {
                             html += `<a onclick="cancelRequestData('${rowKey}')" class="btn btn-sm btn-icon btn-clear btn-warning" title="Ajukan Pembatalan">

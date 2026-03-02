@@ -22,13 +22,14 @@ use Modules\Corsec\Models\IncomingLetter;
 use Modules\Corsec\Models\LetterType;
 use Modules\Corsec\Models\OutgoingLetter;
 use Modules\Corsec\Models\Sender;
+use Modules\Corsec\Services\CorsecPermissionService;
 use Modules\Corsec\Services\OutgoingLetterWorkflowService;
-use Modules\Usermanagement\Models\User;
 
 class OutgoingLetterController extends Controller
 {
     public function __construct(
-        private readonly OutgoingLetterWorkflowService $workflow
+        private readonly OutgoingLetterWorkflowService $workflow,
+        private readonly CorsecPermissionService $permissionService
     ) {
         $this->middleware('auth');
     }
@@ -36,8 +37,11 @@ class OutgoingLetterController extends Controller
     public function index()
     {
         $this->authorizeRead();
-        $canCreate = $this->canCreateOutgoing(Auth::user());
-        return view('corsec::letter.outgoing.index', compact('canCreate'));
+        $user = Auth::user();
+        $canCreate = $this->permissionService->canCreateOutgoing($user);
+        $permissionFlags = $this->permissionService->outgoingIndexFlags($user);
+
+        return view('corsec::letter.outgoing.index', compact('canCreate', 'permissionFlags'));
     }
 
     public function datatables(Request $request)
@@ -451,8 +455,9 @@ class OutgoingLetterController extends Controller
 
         $senders = Sender::query()->orderBy('name')->get(['id', 'name']);
         $incomingLetters = $this->getIncomingLettersForResponseLetter($outgoingLetter->perihal_incoming_letter_id);
+        $permissionFlags = $this->permissionService->outgoingDetailFlags($outgoingLetter, $approvals, Auth::user());
 
-        return view('corsec::letter.outgoing.show', compact('outgoingLetter', 'approvals', 'senders', 'incomingLetters'));
+        return view('corsec::letter.outgoing.show', compact('outgoingLetter', 'approvals', 'senders', 'incomingLetters', 'permissionFlags'));
     }
 
     public function edit(OutgoingLetter $outgoingLetter)
@@ -702,7 +707,7 @@ class OutgoingLetterController extends Controller
         if ($outgoingLetter->status !== OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD) {
             abort(403, 'Upload final surat hanya untuk status waiting final upload.');
         }
-        if (!$this->isRequesterDirectorateMakerStaff($outgoingLetter, $user)) {
+        if (!$this->permissionService->isRequesterDirectorateMakerStaff($outgoingLetter, $user)) {
             abort(403, 'Upload final surat hanya untuk staff maker dari direktorat terkait.');
         }
 
@@ -1072,7 +1077,7 @@ class OutgoingLetterController extends Controller
         if (!$user || !$user->can('corsec.create')) {
             abort(403, 'Sorry! You are not allowed to create outgoing letters.');
         }
-        if ($this->isCorpSecretaryDirectorate($user)) {
+        if ($this->permissionService->isCorpSecretaryDirectorate($user)) {
             abort(403, 'Direktorat Corporate Secretary tidak diperbolehkan membuat surat keluar.');
         }
     }
@@ -1083,7 +1088,7 @@ class OutgoingLetterController extends Controller
         if (!$user || !$user->can('corsec.update')) {
             abort(403, 'Sorry! You are not allowed to update outgoing letters.');
         }
-        if ($this->isViewerRole($user)) {
+        if ($this->permissionService->isViewerRole($user)) {
             abort(403, 'Role viewer tidak memiliki akses untuk update surat keluar.');
         }
     }
@@ -1094,66 +1099,9 @@ class OutgoingLetterController extends Controller
         if (!$user || (!$user->can('corsec.create') && !$user->can('corsec.update'))) {
             abort(403, 'Sorry! You are not allowed to access this action.');
         }
-        if ($this->isViewerRole($user)) {
+        if ($this->permissionService->isViewerRole($user)) {
             abort(403, 'Role viewer tidak memiliki akses untuk aksi ini.');
         }
     }
 
-    private function canCreateOutgoing(?User $user): bool
-    {
-        if (!$user || !$user->can('corsec.create')) {
-            return false;
-        }
-
-        return !$this->isCorpSecretaryDirectorate($user);
-    }
-
-    private function isCorpSecretaryDirectorate(?User $user): bool
-    {
-        if (!$user) {
-            return false;
-        }
-
-        $eoDirectorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
-
-        $user->loadMissing('directorate');
-        $directorateCode = $user->directorate?->code;
-        $directorateName = $user->directorate?->name;
-
-        if ($directorateCode && $eoDirectorateCode !== '' && $directorateCode === $eoDirectorateCode) {
-            return true;
-        }
-
-        if ($directorateName) {
-            $normalized = Str::lower($directorateName);
-            return Str::contains($normalized, 'corporate secretary');
-        }
-
-        return false;
-    }
-
-    private function isRequesterDirectorateMakerStaff(OutgoingLetter $outgoingLetter, User $user): bool
-    {
-        if ($user->hasRole('administrator')) {
-            return true;
-        }
-
-        if (!$user->hasRole('maker')) {
-            return false;
-        }
-
-        if ((int) $outgoingLetter->requester_directorate_id !== (int) $user->directorate_id) {
-            return false;
-        }
-
-        $user->loadMissing('position');
-        $positionName = Str::lower((string) ($user->position?->name ?? ''));
-
-        return $positionName !== '' && Str::contains($positionName, 'staff');
-    }
-
-    private function isViewerRole(User $user): bool
-    {
-        return $user->hasRole('viewer') && !$user->hasRole(['administrator', 'maker', 'checker', 'approver']);
-    }
 }

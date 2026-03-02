@@ -10,7 +10,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Corsec\Exports\WorkplanExport;
@@ -41,8 +40,8 @@ class WorkplanController extends Controller
         $user->loadMissing('directorate');
         $directorates = Directorate::query()->orderBy('name')->get(['id', 'name', 'code']);
 
-        $programSummaryQuery = $this->scopedProgramsQuery($user);
-        $itemSummaryQuery = $this->scopedItemsQuery($user);
+        $programSummaryQuery = $this->workflow->scopedProgramsQuery($user);
+        $itemSummaryQuery = $this->workflow->scopedItemsQuery($user);
         $programIds = (clone $programSummaryQuery)->pluck('id');
         $doneOnTarget = (clone $itemSummaryQuery)->where('status', WorkProgramItem::STATUS_DONE_ON_TARGET)->count();
         $doneOverTarget = (clone $itemSummaryQuery)->where('status', WorkProgramItem::STATUS_DONE_OVER_TARGET)->count();
@@ -85,7 +84,11 @@ class WorkplanController extends Controller
             'is_admin' => $user->hasRole('administrator'),
         ];
 
-        return view('corsec::workplan.index', compact('directorates', 'summary', 'pageInfo'));
+        $permissionFlags = [
+            'is_deputy_director' => $this->workflow->isDeputyDirector($user),
+        ];
+
+        return view('corsec::workplan.index', compact('directorates', 'summary', 'pageInfo', 'permissionFlags'));
     }
 
     public function datatables(Request $request)
@@ -94,7 +97,7 @@ class WorkplanController extends Controller
 
         try {
             $user = Auth::user();
-            $query = $this->scopedProgramsQuery($user)->with(['directorate', 'createdBy', 'items']);
+            $query = $this->workflow->scopedProgramsQuery($user)->with(['directorate', 'createdBy', 'items']);
 
             $search = trim((string) $request->get('search', ''));
             if ($search !== '') {
@@ -141,7 +144,7 @@ class WorkplanController extends Controller
                 }
             }
 
-            $totalRecords = $this->scopedProgramsQuery($user)->count();
+            $totalRecords = $this->workflow->scopedProgramsQuery($user)->count();
             $filteredRecords = (clone $query)->count();
 
             $sortField = (string) $request->get('sortField', 'created_at');
@@ -310,7 +313,7 @@ class WorkplanController extends Controller
         $this->authorizeRead();
 
         $user = Auth::user();
-        if (!$this->canSeeProgram($workplan, $user)) {
+        if (!$this->workflow->canSeeProgram($workplan, $user)) {
             abort(403, 'Anda tidak memiliki akses melihat program kerja ini.');
         }
 
@@ -337,36 +340,15 @@ class WorkplanController extends Controller
             ->orderByDesc('created_at')
             ->get();
 
-        $pendingApproval = Approval::query()
-            ->where('approvable_type', WorkProgram::class)
-            ->where('approvable_id', $workplan->id)
-            ->where('status', WorkProgramUpdate::STATUS_PENDING)
-            ->latest('id')
-            ->first();
+        $pendingApproval = $this->workflow->latestPendingProgramApproval($workplan);
+        $approvalFlags = $this->workflow->resolveApprovalPermissionFlags($workplan, $user, $pendingApproval);
 
-        $checkerApproved = false;
-        $requiresCheckerApproval = true;
-        if ($pendingApproval) {
-            $pendingNote = Str::lower((string) $pendingApproval->note);
-            $requiresCheckerApproval = !Str::startsWith($pendingNote, 'menunggu approval dd direktorat');
-
-            if ($requiresCheckerApproval) {
-                $checkerApproved = Approval::query()
-                    ->where('approvable_type', WorkProgram::class)
-                    ->where('approvable_id', $workplan->id)
-                    ->where('status', WorkProgramUpdate::STATUS_APPROVED)
-                    ->where('created_at', '>=', $pendingApproval->created_at)
-                    ->where('note', 'ilike', 'EO Direktorat Approved%')
-                    ->exists();
-            }
-        }
-
-        $canEdit = $this->canEditProgram($workplan, $user);
-        $canDelete = $this->canDeleteProgram($workplan, $user);
-        $canSubmit = $canEdit && in_array((string) $workplan->status, [WorkProgram::STATUS_DRAFT, WorkProgram::STATUS_RETURNED], true);
-        $canSubmitUpdate = $this->canSubmitUpdate($workplan, $user);
-        $canCheckerApproval = $pendingApproval && $requiresCheckerApproval && !$checkerApproved && $this->canCheckerApprove($workplan, $user);
-        $canApproverApproval = $pendingApproval && ((!$requiresCheckerApproval) || $checkerApproved) && $this->canApproverApprove($workplan, $user);
+        $canEdit = $this->workflow->canEditProgram($workplan, $user);
+        $canDelete = $this->workflow->canDeleteProgram($workplan, $user);
+        $canSubmit = $this->workflow->canSubmitProgram($workplan, $user);
+        $canSubmitUpdate = $this->workflow->canSubmitUpdate($workplan, $user);
+        $canCheckerApproval = (bool) ($approvalFlags['can_checker_approval'] ?? false);
+        $canApproverApproval = (bool) ($approvalFlags['can_approver_approval'] ?? false);
 
         $statusSteps = [
             WorkProgram::STATUS_DRAFT => 'Draft',
@@ -394,7 +376,7 @@ class WorkplanController extends Controller
         $this->authorizeUpdate();
 
         $user = Auth::user();
-        if (!$this->canEditProgram($workplan, $user)) {
+        if (!$this->workflow->canEditProgram($workplan, $user)) {
             abort(403, 'Program kerja tidak dapat diubah pada status ini.');
         }
 
@@ -409,7 +391,7 @@ class WorkplanController extends Controller
         $this->authorizeUpdate();
 
         $user = Auth::user();
-        if (!$this->canEditProgram($workplan, $user)) {
+        if (!$this->workflow->canEditProgram($workplan, $user)) {
             abort(403, 'Program kerja tidak dapat diubah pada status ini.');
         }
 
@@ -524,7 +506,7 @@ class WorkplanController extends Controller
         $this->authorizeDelete();
 
         $user = Auth::user();
-        if (!$this->canDeleteProgram($workplan, $user)) {
+        if (!$this->workflow->canDeleteProgram($workplan, $user)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Program kerja hanya bisa dihapus oleh pembuat (status Draft/Returned) atau Administrator.',
@@ -559,7 +541,7 @@ class WorkplanController extends Controller
         $this->authorizeUpdate();
 
         $user = Auth::user();
-        if (!$this->canEditProgram($workplan, $user)) {
+        if (!$this->workflow->canEditProgram($workplan, $user)) {
             abort(403, 'Program kerja tidak dapat disubmit pada status ini.');
         }
 
@@ -599,7 +581,7 @@ class WorkplanController extends Controller
         if ((int) $item->work_program_id !== (int) $workplan->id) {
             abort(404, 'Item program kerja tidak sesuai.');
         }
-        if (!$this->canSubmitUpdate($workplan, $user)) {
+        if (!$this->workflow->canSubmitUpdate($workplan, $user)) {
             abort(403, 'Tidak punya akses untuk update progress program kerja ini.');
         }
 
@@ -693,8 +675,11 @@ class WorkplanController extends Controller
         if (!$user || !$user->can('corsec.update')) {
             abort(403, 'Sorry! You are not allowed to update work plan.');
         }
-        if ($this->isViewerRole($user)) {
+        if ($this->workflow->isViewerRole($user)) {
             abort(403, 'Role viewer tidak memiliki akses untuk update work plan.');
+        }
+        if ($this->workflow->isDeputyDirector($user)) {
+            abort(403, 'Posisi Deputy Director hanya dapat melihat dan melakukan approval program kerja.');
         }
     }
 
@@ -712,130 +697,6 @@ class WorkplanController extends Controller
         if (!$user || !$user->can('corsec.authorize')) {
             abort(403, 'Sorry! You are not allowed to authorize work plan.');
         }
-    }
-
-    private function canViewAllPrograms(User $user): bool
-    {
-        return $user->hasRole('administrator') || $user->hasRole('checker') || $user->hasRole('approver');
-    }
-
-    private function scopedProgramsQuery(User $user)
-    {
-        $query = WorkProgram::query();
-        if ($this->canViewAllPrograms($user)) {
-            return $query;
-        }
-
-        $directorateId = $user->directorate_id ?? null;
-        return $query->where(function ($w) use ($user, $directorateId) {
-            $w->where('created_by', $user->id);
-            if ($directorateId) {
-                $w->orWhere('directorate_id', $directorateId);
-            }
-        });
-    }
-
-    private function scopedItemsQuery(User $user)
-    {
-        return WorkProgramItem::query()->whereHas('program', function ($query) use ($user) {
-            if ($this->canViewAllPrograms($user)) {
-                return;
-            }
-
-            $directorateId = $user->directorate_id ?? null;
-            $query->where(function ($w) use ($user, $directorateId) {
-                $w->where('created_by', $user->id);
-                if ($directorateId) {
-                    $w->orWhere('directorate_id', $directorateId);
-                }
-            });
-        });
-    }
-
-    private function canSeeProgram(WorkProgram $program, User $user): bool
-    {
-        if ($this->canViewAllPrograms($user)) {
-            return true;
-        }
-
-        return (int) $program->created_by === (int) $user->id ||
-            ((int) ($program->directorate_id ?? 0) === (int) ($user->directorate_id ?? 0));
-    }
-
-    private function canEditProgram(WorkProgram $program, User $user): bool
-    {
-        if ($this->isViewerRole($user)) {
-            return false;
-        }
-
-        if (!in_array((string) $program->status, [WorkProgram::STATUS_DRAFT, WorkProgram::STATUS_RETURNED], true)) {
-            return false;
-        }
-
-        if ($user->hasRole('administrator')) {
-            return true;
-        }
-
-        return (int) $program->created_by === (int) $user->id;
-    }
-
-    private function canDeleteProgram(WorkProgram $program, User $user): bool
-    {
-        if ($user->hasRole('administrator')) {
-            return true;
-        }
-
-        if (!in_array((string) $program->status, [WorkProgram::STATUS_DRAFT, WorkProgram::STATUS_RETURNED], true)) {
-            return false;
-        }
-
-        return (int) $program->created_by === (int) $user->id;
-    }
-
-    private function canSubmitUpdate(WorkProgram $program, User $user): bool
-    {
-        if ($this->isViewerRole($user)) {
-            return false;
-        }
-
-        if ((string) $program->status !== WorkProgram::STATUS_ACTIVE) {
-            return false;
-        }
-
-        if ($user->hasRole('administrator')) {
-            return true;
-        }
-
-        return (int) ($program->directorate_id ?? 0) === (int) ($user->directorate_id ?? 0);
-    }
-
-    private function canCheckerApprove(WorkProgram $program, User $user): bool
-    {
-        if ($user->hasRole('administrator')) {
-            return true;
-        }
-
-        return $user->hasRole('checker') &&
-            (int) ($program->directorate_id ?? 0) === (int) ($user->directorate_id ?? 0);
-    }
-
-    private function canApproverApprove(WorkProgram $program, User $user): bool
-    {
-        if ($user->hasRole('administrator')) {
-            return true;
-        }
-
-        return $user->hasRole('approver') &&
-            $this->isDeputyDirector($user) &&
-            (int) ($program->directorate_id ?? 0) === (int) ($user->directorate_id ?? 0);
-    }
-
-    private function isDeputyDirector(User $user): bool
-    {
-        $user->loadMissing('position');
-        $positionName = Str::lower(trim((string) ($user->position?->name ?? '')));
-
-        return $positionName !== '' && Str::contains($positionName, 'deputy director');
     }
 
     private function resolveDirectorateIdForMutation(Request $request, User $user): int
@@ -958,10 +819,5 @@ class WorkplanController extends Controller
     {
         $date = $program->created_at ? $program->created_at->format('Ymd') : now()->format('Ymd');
         return 'PK-' . $date . '-' . str_pad((string) $program->id, 6, '0', STR_PAD_LEFT);
-    }
-
-    private function isViewerRole(User $user): bool
-    {
-        return $user->hasRole('viewer') && !$user->hasRole(['administrator', 'maker', 'checker', 'approver']);
     }
 }

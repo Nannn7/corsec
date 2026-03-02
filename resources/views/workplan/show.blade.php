@@ -58,7 +58,11 @@
             };
         };
 
-        $programNo = 'PK-' . ($workplan->created_at ? $workplan->created_at->format('Ymd') : now()->format('Ymd')) . '-' . str_pad((string) $workplan->id, 6, '0', STR_PAD_LEFT);
+        $programNo =
+            'PK-' .
+            ($workplan->created_at ? $workplan->created_at->format('Ymd') : now()->format('Ymd')) .
+            '-' .
+            str_pad((string) $workplan->id, 6, '0', STR_PAD_LEFT);
 
         $allUpdates = $workplan->items
             ->flatMap(function ($item) {
@@ -89,7 +93,8 @@
                         </a>
                     @endif
                     @if ($canDelete)
-                        <button type="button" class="btn btn-sm btn-danger" onclick="deleteWorkplanDetail('{{ $workplan->uuid }}')">
+                        <button type="button" class="btn btn-sm btn-danger"
+                            onclick="deleteWorkplanDetail('{{ $workplan->uuid }}')">
                             Hapus
                         </button>
                     @endif
@@ -156,7 +161,8 @@
             <div class="card-body">
                 <div class="flex flex-wrap gap-2">
                     @foreach ($statusSteps as $key => $label)
-                        <span class="badge {{ $workplan->status === $key ? 'badge-success' : 'badge-light' }}">{{ $label }}</span>
+                        <span
+                            class="badge {{ $workplan->status === $key ? 'badge-success' : 'badge-light' }}">{{ $label }}</span>
                     @endforeach
                 </div>
             </div>
@@ -213,11 +219,16 @@
                                         @php
                                             $targetDate = $item->target_date;
                                             $initialTargetDate = $item->initial_target_date;
-                                            $hasRevisedTarget = $targetDate && $initialTargetDate && !$initialTargetDate->isSameDay($targetDate);
+                                            $hasRevisedTarget =
+                                                $targetDate &&
+                                                $initialTargetDate &&
+                                                !$initialTargetDate->isSameDay($targetDate);
                                         @endphp
-                                        <div class="font-medium">{{ $targetDate ? $targetDate->format('Y-m-d') : '-' }}</div>
+                                        <div class="font-medium">{{ $targetDate ? $targetDate->format('Y-m-d') : '-' }}
+                                        </div>
                                         @if ($hasRevisedTarget)
-                                            <div class="text-xs text-gray-500">Target awal: {{ $initialTargetDate->format('Y-m-d') }}</div>
+                                            <div class="text-xs text-gray-500">Target awal:
+                                                {{ $initialTargetDate->format('Y-m-d') }}</div>
                                         @endif
                                     </td>
                                     <td>
@@ -253,7 +264,8 @@
                                         <div class="table-empty-state" role="status" aria-live="polite">
                                             <i class="ki-filled ki-file-deleted" aria-hidden="true"></i>
                                             <div class="table-empty-title">Belum ada item program kerja</div>
-                                            <div class="table-empty-description">Item akan muncul setelah program kerja ditambahkan.</div>
+                                            <div class="table-empty-description">Item akan muncul setelah program kerja
+                                                ditambahkan.</div>
                                         </div>
                                     </td>
                                 </tr>
@@ -273,12 +285,14 @@
                     @foreach ($workplan->items as $item)
                         @if (!in_array((string) $item->status, ['done_on_target', 'done_over_target'], true))
                             <form method="POST" action="{{ route('workplan.items.progress', [$workplan, $item]) }}"
-                                enctype="multipart/form-data" class="p-4 border rounded-xl border-gray-200 grid gap-4 workplan-update-form">
+                                enctype="multipart/form-data"
+                                class="p-4 border rounded-xl border-gray-200 grid gap-4 workplan-update-form">
                                 @csrf
                                 <div class="font-medium text-gray-800">{{ $item->title }}</div>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div class="flex flex-col">
-                                        <label class="form-label">Update Program Kerja <span class="text-danger">*</span></label>
+                                        <label class="form-label">Update Program Kerja <span
+                                                class="text-danger">*</span></label>
                                         <select class="select js-update-action" name="action" required>
                                             <option value="progress">Proses</option>
                                             <option value="done_on_target">Done - On Target</option>
@@ -348,7 +362,8 @@
                                         <td>{{ $updateActionLabel($update->action) }}</td>
                                         <td>{{ $update->progress_percent ?? 0 }}%</td>
                                         <td>{{ $update->note ?? '-' }}</td>
-                                        <td>{{ $update->revised_target_date ? $update->revised_target_date->format('Y-m-d') : '-' }}</td>
+                                        <td>{{ $update->revised_target_date ? $update->revised_target_date->format('Y-m-d') : '-' }}
+                                        </td>
                                         <td>{{ $update->status ?? '-' }}</td>
                                         <td>{{ $update->updater?->name ?? '-' }}</td>
                                         <td>{{ $update->created_at ? $update->created_at->format('Y-m-d H:i') : '-' }}</td>
@@ -401,11 +416,13 @@
                                         <td>
                                             {{ $approval->actor?->name ?? '-' }}
                                             @if ($approval->actor?->directorate?->name)
-                                                <span class="text-xs text-gray-500">({{ $approval->actor->directorate->name }})</span>
+                                                <span
+                                                    class="text-xs text-gray-500">({{ $approval->actor->directorate->name }})</span>
                                             @endif
                                         </td>
                                         <td>{{ $approval->note ?? '-' }}</td>
-                                        <td>{{ $approval->acted_at ? $approval->acted_at->format('Y-m-d H:i:s') : '-' }}</td>
+                                        <td>{{ $approval->acted_at ? $approval->acted_at->format('Y-m-d H:i:s') : '-' }}
+                                        </td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -433,7 +450,7 @@
                             </div>
                             <div class="flex flex-wrap gap-2 justify-end">
                                 <button class="btn btn-sm btn-danger" type="submit" name="action" value="reject">
-                                    Reject/Return
+                                    Reject
                                 </button>
                                 <button class="btn btn-sm btn-success" type="submit" name="action" value="approve">
                                     Approve

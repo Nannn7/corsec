@@ -211,6 +211,7 @@
         const apiUrl = element.getAttribute('data-api-url');
         const baseUrl = element.getAttribute('data-base-url');
         const isAdmin = @json(auth()->user()?->hasRole('administrator'));
+        const isDeputyDirector = @json($permissionFlags['is_deputy_director'] ?? false);
 
         const statusBadge = (status) => {
             const val = (status ?? '').toString().toLowerCase();
@@ -284,7 +285,7 @@
                         @endcan
 
                         @if (auth()->user()?->can('corsec.update') && !(auth()->user()?->hasRole('viewer') && !auth()->user()?->hasRole(['administrator', 'maker', 'checker', 'approver'])))
-                            if (canEditStatus) {
+                            if (canEditStatus && !isDeputyDirector) {
                                 html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}/edit">
                                     <i class="ki-outline ki-notepad-edit"></i>
                                 </a>`;

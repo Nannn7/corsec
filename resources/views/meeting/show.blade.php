@@ -7,198 +7,21 @@
 @section('content')
     @php
 
-        $user = auth()->user();
+        $permissionFlags = $permissionFlags ?? [];
         $status = (string) ($meeting->status ?? '');
-
-        $isAdmin = $user?->hasRole('administrator') ?? false;
-        $isChecker = $user?->hasRole('checker') ?? false;
-        $isApprover = $user?->hasRole('approver') ?? false;
-        $actorUserId = (int) ($user?->id ?? 0);
-        $actorDirectorateId = (int) ($user?->directorate_id ?? 0);
-        $isViewerOnly =
-            ($user?->hasRole('viewer') ?? false) &&
-            !($user?->hasRole(['administrator', 'maker', 'checker', 'approver']) ?? false);
-        $canCorsecUpdateAction = ($user?->can('corsec.update') ?? false) && !$isViewerOnly;
-
-        $corpCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
-        $actorDirectorateCode = (string) ($user?->directorate?->code ?? '');
-        $actorDirectorateName = \Illuminate\Support\Str::lower((string) ($user?->directorate?->name ?? ''));
-        $isCorsecDirectorate =
-            $user &&
-            (($corpCode !== '' && $actorDirectorateCode === $corpCode) ||
-                ($actorDirectorateName !== '' &&
-                    \Illuminate\Support\Str::contains($actorDirectorateName, 'corporate secretary')));
-
-        $participantDirectorateIds = $meeting->participants
-            ->pluck('directorate_id')
-            ->filter()
-            ->map(fn($id) => (int) $id);
-        $agendaDirectorateIds = $meeting->agendas->pluck('owner_directorate_id')->filter()->map(fn($id) => (int) $id);
-        $decisionDirectorateIds = $meeting->decisions
-            ->pluck('owner_directorate_id')
-            ->filter()
-            ->map(fn($id) => (int) $id);
-        $targetDirectorateIds = $participantDirectorateIds
-            ->merge($agendaDirectorateIds)
-            ->merge($decisionDirectorateIds)
-            ->unique()
-            ->values();
-
-        $isAssignedUser =
-            $meeting->participants->contains(function ($participant) use ($actorUserId) {
-                return (int) ($participant->user_id ?? 0) === $actorUserId;
-            }) ||
-            $meeting->agendas->contains(function ($agenda) use ($actorUserId) {
-                return (int) ($agenda->pic_user_id ?? 0) === $actorUserId;
-            }) ||
-            $meeting->decisions->contains(function ($decision) use ($actorUserId) {
-                return (int) ($decision->pic_user_id ?? 0) === $actorUserId;
-            });
-
-        $canDirectorateActor =
-            $isAdmin ||
-            $isAssignedUser ||
-            ($actorDirectorateId > 0 && $targetDirectorateIds->contains($actorDirectorateId));
-
-        $canEdit =
-            ($isAdmin || (int) ($meeting->created_by ?? 0) === $actorUserId) &&
-            in_array($status, ['draft', 'returned_by_corsec', 'returned_by_direktorat'], true);
-
-        $canSubmitPlan =
-            ($isAdmin || (int) ($meeting->created_by ?? 0) === $actorUserId) &&
-            in_array($status, ['draft', 'returned_by_corsec', 'returned_by_direktorat'], true);
-
-        $corsecActionNotePrefixes = [
-            'EO Corp Affair Approved',
-            'EO Corp Affair Returned',
-            // backward-compat for historical notes before label simplification
-            'EO Corp Affair Approved',
-            'EO Corp Affair Returned',
-        ];
-        $userHasCorsecAction =
-            $user &&
-            $approvals->where('acted_by', $user->id)->contains(function ($approval) use ($corsecActionNotePrefixes) {
-                $note = (string) $approval->note;
-                foreach ($corsecActionNotePrefixes as $prefix) {
-                    if (\Illuminate\Support\Str::startsWith($note, $prefix)) {
-                        return true;
-                    }
-                }
-                return false;
-            });
-
-        $canCorsecApproval =
-            $status === 'waiting_corsec_approval' &&
-            ($isAdmin || ($isChecker && $isCorsecDirectorate)) &&
-            !$userHasCorsecAction;
-
-        $canMarkPendingDirectorate =
-            $canDirectorateActor && in_array($status, ['jadwal_terkirim', 'returned_by_direktorat'], true);
-        $canDirectorateSubmit =
-            $canDirectorateActor &&
-            in_array($status, ['jadwal_terkirim', 'pending_direktorat', 'returned_by_direktorat'], true);
-
-        $latestPendingDirectorateApproval = $approvals
-            ->where('status', 'pending')
-            ->filter(function ($approval) {
-                return \Illuminate\Support\Str::contains(
-                    \Illuminate\Support\Str::lower((string) $approval->note),
-                    'direktorat',
-                );
-            })
-            ->sortByDesc('id')
-            ->first();
-
-        $currentRoundStartedAt = $latestPendingDirectorateApproval?->created_at;
-        $checkerApprovedInRound = false;
-        $hasActedCheckerInRound = false;
-        $hasActedApproverInRound = false;
-
-        if ($currentRoundStartedAt) {
-            $checkerApprovedInRound = $approvals
-                ->where('status', 'approved')
-                ->filter(function ($approval) use ($currentRoundStartedAt) {
-                    return $approval->created_at &&
-                        $approval->created_at->greaterThanOrEqualTo($currentRoundStartedAt) &&
-                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
-                })
-                ->isNotEmpty();
-
-            $hasActedCheckerInRound = $approvals
-                ->where('acted_by', $actorUserId)
-                ->whereIn('status', ['approved', 'returned'])
-                ->filter(function ($approval) use ($currentRoundStartedAt) {
-                    return $approval->created_at &&
-                        $approval->created_at->greaterThanOrEqualTo($currentRoundStartedAt) &&
-                        (\Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Approved') ||
-                            \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Returned'));
-                })
-                ->isNotEmpty();
-
-            $hasActedApproverInRound = $approvals
-                ->where('acted_by', $actorUserId)
-                ->whereIn('status', ['approved', 'returned'])
-                ->filter(function ($approval) use ($currentRoundStartedAt) {
-                    return $approval->created_at &&
-                        $approval->created_at->greaterThanOrEqualTo($currentRoundStartedAt) &&
-                        (\Illuminate\Support\Str::startsWith((string) $approval->note, 'DD Direktorat Approved') ||
-                            \Illuminate\Support\Str::startsWith((string) $approval->note, 'DD Direktorat Returned'));
-                })
-                ->isNotEmpty();
-        }
-
-        $positionName = \Illuminate\Support\Str::lower((string) ($user?->position?->name ?? ''));
-        $isExecutiveOfficer =
-            $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'executive officer');
-        $isDeputyDirector = $positionName !== '' && \Illuminate\Support\Str::contains($positionName, 'deputy director');
-
-        $canDirectorateCheckerApproval =
-            $status === 'waiting_direktorat_approval' &&
-            !$checkerApprovedInRound &&
-            ($isAdmin || ($isChecker && $isExecutiveOfficer && $canDirectorateActor)) &&
-            !$hasActedCheckerInRound;
-
-        $canDirectorateApproverApproval =
-            $status === 'waiting_direktorat_approval' &&
-            $checkerApprovedInRound &&
-            ($isAdmin || ($isApprover && $isDeputyDirector && $canDirectorateActor)) &&
-            !$hasActedApproverInRound;
-
-        $canManageMinutes = $isAdmin || $isCorsecDirectorate || (int) ($meeting->created_by ?? 0) === $actorUserId;
-        $canSaveMinutes = $canManageMinutes && in_array($status, ['data_terkirim', 'proses_pembuatan_notulen'], true);
-        $canFinalizeMinutes =
-            $canManageMinutes && in_array($status, ['proses_pembuatan_notulen', 'proses_sirkulasi_tandatangan'], true);
-        $canInputFollowup = in_array($status, ['notulen_final', 'proses_tindaklanjut_hasil_rapat'], true);
-
-        $canUpdateDecision = function ($decision) use (
-            $isAdmin,
-            $actorUserId,
-            $actorDirectorateId,
-            $canDirectorateActor,
-        ) {
-            if ($isAdmin) {
-                return true;
-            }
-            $picUserId = (int) ($decision->pic_user_id ?? 0);
-            if ($picUserId > 0) {
-                return $picUserId === $actorUserId;
-            }
-            $ownerDirectorateId = (int) ($decision->owner_directorate_id ?? 0);
-            if ($ownerDirectorateId > 0 && $actorDirectorateId > 0) {
-                return $ownerDirectorateId === $actorDirectorateId;
-            }
-            return $canDirectorateActor;
-        };
-
-        $allDecisionsDone =
-            $meeting->decisions->count() > 0 &&
-            $meeting->decisions->every(function ($decision) {
-                return in_array((string) ($decision->status ?? ''), ['done', 'dropped'], true);
-            });
-        $canCompleteFollowup =
-            $canManageMinutes &&
-            in_array($status, ['notulen_final', 'proses_tindaklanjut_hasil_rapat'], true) &&
-            $allDecisionsDone;
+        $canCorsecUpdateAction = (bool) ($permissionFlags['can_corsec_update_action'] ?? false);
+        $canEdit = (bool) ($permissionFlags['can_edit'] ?? false);
+        $canSubmitPlan = (bool) ($permissionFlags['can_submit_plan'] ?? false);
+        $canCorsecApproval = (bool) ($permissionFlags['can_corsec_approval'] ?? false);
+        $canMarkPendingDirectorate = (bool) ($permissionFlags['can_mark_pending_direktorat'] ?? false);
+        $canDirectorateSubmit = (bool) ($permissionFlags['can_directorate_submit'] ?? false);
+        $canDirectorateCheckerApproval = (bool) ($permissionFlags['can_directorate_checker_approval'] ?? false);
+        $canDirectorateApproverApproval = (bool) ($permissionFlags['can_directorate_approver_approval'] ?? false);
+        $canSaveMinutes = (bool) ($permissionFlags['can_save_minutes'] ?? false);
+        $canFinalizeMinutes = (bool) ($permissionFlags['can_finalize_minutes'] ?? false);
+        $canInputFollowup = (bool) ($permissionFlags['can_input_followup'] ?? false);
+        $canCompleteFollowup = (bool) ($permissionFlags['can_complete_followup'] ?? false);
+        $updatableDecisionIds = collect($permissionFlags['updatable_decision_ids'] ?? []);
 
         $statusBadgeClass = match ($status) {
             'draft' => 'badge-light',
@@ -926,7 +749,7 @@
                             @php
                                 $decisionStatus = (string) ($decision->status ?? '');
                                 $canUpdateThisDecision =
-                                    $canUpdateDecision($decision) &&
+                                    $updatableDecisionIds->contains((int) ($decision->id ?? 0)) &&
                                     !in_array($decisionStatus, ['done', 'dropped'], true);
                             @endphp
                             @if ($canUpdateThisDecision)

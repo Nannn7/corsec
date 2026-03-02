@@ -2,11 +2,19 @@
 
 namespace Modules\Corsec\Providers;
 
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 use Nwidart\Modules\Traits\PathNamespace;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Throwable;
 
 class CorsecServiceProvider extends ServiceProvider
 {
@@ -26,6 +34,7 @@ class CorsecServiceProvider extends ServiceProvider
         $this->registerTranslations();
         $this->registerConfig();
         $this->registerViews();
+        $this->registerCorsecAuditTrail();
         $this->loadMigrationsFrom(module_path($this->name, 'database/migrations'));
         if (class_exists('Breadcrumbs')) {
             require __DIR__ . '/../../routes/breadcrumbs.php';
@@ -141,6 +150,83 @@ class CorsecServiceProvider extends ServiceProvider
     public function provides(): array
     {
         return [];
+    }
+
+    private function registerCorsecAuditTrail(): void
+    {
+        Event::listen('eloquent.created: *', fn(string $eventName, array $data) => $this->recordEloquentEvent('created', $data));
+        Event::listen('eloquent.updated: *', fn(string $eventName, array $data) => $this->recordEloquentEvent('updated', $data));
+        Event::listen('eloquent.deleted: *', fn(string $eventName, array $data) => $this->recordEloquentEvent('deleted', $data));
+        Event::listen('eloquent.restored: *', fn(string $eventName, array $data) => $this->recordEloquentEvent('restored', $data));
+    }
+
+    private function recordEloquentEvent(string $event, array $data): void
+    {
+        $model = $data[0] ?? null;
+        if (!$model instanceof Model) {
+            return;
+        }
+
+        $this->recordCorsecActivity($event, $model);
+    }
+
+    private function recordCorsecActivity(string $event, Model $model): void
+    {
+        if (!function_exists('activity') || !$this->shouldRecordCorsecActivity($model)) {
+            return;
+        }
+
+        try {
+            $changes = Arr::except($model->getChanges(), ['updated_at']);
+            if ($event === 'updated' && empty($changes)) {
+                return;
+            }
+
+            $attributes = $event === 'deleted'
+                ? $model->getOriginal()
+                : $model->getAttributes();
+
+            $properties = [
+                'attributes' => Arr::except((array) $attributes, ['updated_at']),
+                'changes' => $changes,
+                'route' => request()?->route()?->getName(),
+                'method' => request()?->method(),
+                'path' => request()?->path(),
+                'user_id' => Auth::id(),
+            ];
+
+            if (empty($properties['changes'])) {
+                unset($properties['changes']);
+            }
+
+            $logger = activity('Corsec')
+                ->performedOn($model)
+                ->event($event)
+                ->withProperties($properties);
+
+            $user = Auth::user();
+            if ($user) {
+                $logger->causedBy($user);
+            }
+
+            $logger->log(class_basename($model) . ' ' . $event);
+        } catch (Throwable $exception) {
+            Log::warning('Failed recording Corsec audit trail', [
+                'event' => $event,
+                'model' => $model::class,
+                'model_id' => $model->getKey(),
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    private function shouldRecordCorsecActivity(Model $model): bool
+    {
+        if (!Str::startsWith($model::class, 'Modules\\Corsec\\Models\\')) {
+            return false;
+        }
+
+        return !in_array(LogsActivity::class, class_uses_recursive($model), true);
     }
 
     private function getPublishableViewPaths(): array

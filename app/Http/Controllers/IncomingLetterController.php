@@ -22,18 +22,19 @@ use Modules\Corsec\Models\Attachable;
 use Modules\Corsec\Models\Approval;
 use Modules\Corsec\Models\Comment;
 use Modules\Corsec\Services\IncomingLetterWorkflowService;
+use Modules\Corsec\Services\CorsecPermissionService;
 use Modules\Corsec\Models\Directorate;
 use Modules\Corsec\Models\Sender;
 use Modules\Corsec\Models\LetterType;
 use Modules\Basicdata\Models\Branch;
 use Modules\Corsec\Notifications\CorsecFlowNotification;
 use Modules\Usermanagement\Models\User;
-use Modules\Usermanagement\Models\Position;
 
 class IncomingLetterController extends Controller
 {
     public function __construct(
-        private readonly IncomingLetterWorkflowService $workflow
+        private readonly IncomingLetterWorkflowService $workflow,
+        private readonly CorsecPermissionService $permissionService
     ) {
         $this->middleware('auth');
     }
@@ -71,7 +72,7 @@ class IncomingLetterController extends Controller
         $user = Auth::user();
         if (!$user->hasRole('administrator')) {
             $directorateId = $user->directorate_id ?? $user->directorateid;
-            $isEoCorpAffairActor = $this->isEoCorpAffairActor($user);
+            $isEoCorpAffairActor = $this->permissionService->isEoCorpAffairActor($user);
             // kalau user bukan corsec directorate (asumsi corsec = directoratetertentu -> nanti bisa refine)
             // simple rule: user boleh lihat kalau:
             // - dia creator
@@ -93,8 +94,9 @@ class IncomingLetterController extends Controller
         $directorates = $this->getCachedDirectorates();
         $senders = $this->getCachedSenders();
         $letterTypes = $this->getCachedLetterTypes();
+        $permissionFlags = $this->permissionService->incomingIndexFlags($user);
 
-        return view('corsec::letter.incoming.index', compact('directorates', 'senders', 'letterTypes'));
+        return view('corsec::letter.incoming.index', compact('directorates', 'senders', 'letterTypes', 'permissionFlags'));
     }
 
     /**
@@ -338,7 +340,7 @@ class IncomingLetterController extends Controller
             $isTargetDirectorate = $directorateId && (int) $incomingLetter->target_directorate_id === (int) $directorateId;
             $isCirculationDirectorate = $directorateId &&
                 $incomingLetter->circulationDirectorates?->contains('id', (int) $directorateId);
-            $isEoCorpAffairActor = $this->isEoCorpAffairActor($user);
+            $isEoCorpAffairActor = $this->permissionService->isEoCorpAffairActor($user);
             $canEoCorpAffairSee = $isEoCorpAffairActor;
 
             if (!$isCreator && !$isTargetDirectorate && !$isCirculationDirectorate && !$canEoCorpAffairSee) {
@@ -355,8 +357,14 @@ class IncomingLetterController extends Controller
             ->get();
 
         $directorates = $this->getCachedDirectorates();
+        $permissionFlags = $this->permissionService->incomingDetailFlags(
+            $incomingLetter,
+            $approvals,
+            $user,
+            $responseOutgoingLetter
+        );
 
-        return view('corsec::letter.incoming.show', compact('incomingLetter', 'approvals', 'directorates', 'responseOutgoingLetter'));
+        return view('corsec::letter.incoming.show', compact('incomingLetter', 'approvals', 'directorates', 'responseOutgoingLetter', 'permissionFlags'));
     }
 
     /**
@@ -592,7 +600,7 @@ class IncomingLetterController extends Controller
             // scope akses (copy dari index lo, biar konsisten)
             if (!$user->hasRole('administrator')) {
                 $directorateId = $user->directorate_id ?? $user->directorateid;
-                $isEoCorpAffairActor = $this->isEoCorpAffairActor($user);
+                $isEoCorpAffairActor = $this->permissionService->isEoCorpAffairActor($user);
                 $query->where(function ($w) use ($user, $directorateId, $isEoCorpAffairActor) {
                     $w->where('created_by', $user->id)
                         ->orWhere('target_directorate_id', $user->directorate_id ?? $user->directorateid);
@@ -1069,11 +1077,10 @@ class IncomingLetterController extends Controller
         $directorateId = $user?->directorate_id ?? $user?->directorateid;
         $isAdmin = $user?->hasRole('administrator');
         $isTargetDirectorate = $user && (int) $incomingLetter->target_directorate_id === (int) $directorateId;
-        $positionName = $this->getUserPositionName($user);
-        $isExecutiveOfficer = $positionName && Str::contains(Str::lower($positionName), 'executive officer');
-        $isSekretariatDireksi = $positionName && Str::contains(Str::lower($positionName), 'sekretariat direksi');
+        $isExecutiveOfficer = $this->permissionService->isExecutiveOfficer($user);
+        $isSekretariatDireksi = $this->permissionService->isSekretariatDireksi($user);
         $isEoCorpSecretaryChecker =
-            $user && $user->hasRole('checker') && $this->isCorpSecretaryDirectorate($user) && $isExecutiveOfficer;
+            $user && $user->hasRole('checker') && $this->permissionService->isCorpSecretaryDirectorate($user) && $isExecutiveOfficer;
 
         if (!$user || (!$isAdmin && !$isTargetDirectorate && !$isEoCorpSecretaryChecker && !$isSekretariatDireksi)) {
             abort(403, 'Anda tidak memiliki akses untuk menambahkan monitoring.');
@@ -1133,79 +1140,14 @@ class IncomingLetterController extends Controller
         ]);
     }
 
-    private function isEoCorpAffairActor(?User $user): bool
-    {
-        if (!$user || !$user->hasRole(['checker', 'approver'])) {
-            return false;
-        }
-
-        return $this->isCorpSecretaryDirectorate($user);
-    }
-
-    private function isCorpSecretaryDirectorate(?User $user): bool
-    {
-        if (!$user) {
-            return false;
-        }
-
-        $eoDirectorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
-
-        $user->loadMissing('directorate');
-        $directorateCode = $user->directorate?->code;
-        $directorateName = $user->directorate?->name;
-
-        if ($directorateCode && $eoDirectorateCode !== '' && $directorateCode === $eoDirectorateCode) {
-            return true;
-        }
-
-        if ($directorateName) {
-            $normalized = Str::lower($directorateName);
-            return Str::contains($normalized, 'corporate secretary');
-        }
-
-        return false;
-    }
-
-    private function getUserPositionName(?User $user): ?string
-    {
-        if (!$user) {
-            return null;
-        }
-
-        $user->loadMissing('position', 'roles');
-        if ($user->position) {
-            return $user->position->name;
-        }
-
-        $positionIds = $user->roles
-            ->pluck('position_id')
-            ->filter()
-            ->unique()
-            ->values();
-
-        if ($positionIds->isEmpty()) {
-            return null;
-        }
-
-        return Position::query()
-            ->whereIn('id', $positionIds)
-            ->orderByDesc('level')
-            ->value('name');
-    }
-
     private function authorizeNonViewerUpdate(): void
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.update')) {
             abort(403, 'Sorry! You are not allowed to update incoming letters.');
         }
-        if ($this->isViewerRole($user)) {
+        if ($this->permissionService->isViewerRole($user)) {
             abort(403, 'Role viewer tidak memiliki akses untuk aksi update ini.');
         }
-    }
-
-    private function isViewerRole(User $user): bool
-    {
-        return $user->hasRole('viewer') && !$user->hasRole(['administrator', 'maker', 'checker', 'approver']);
     }
 }
