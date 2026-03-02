@@ -15,16 +15,19 @@ use Modules\Corsec\Http\Requests\LetterTypeRequest;
 use Modules\Corsec\Models\ApprovalRequest;
 use Modules\Corsec\Models\LetterType;
 use Modules\Corsec\Services\ApprovalRequestService;
+use Modules\Corsec\Services\CorsecPermissionService;
 
 class LetterTypeController extends Controller
 {
     protected $user;
     private readonly ApprovalRequestService $approvalService;
+    private readonly CorsecPermissionService $permissionService;
 
     public function __construct()
     {
         $this->middleware('auth');
         $this->approvalService = app(ApprovalRequestService::class);
+        $this->permissionService = app(CorsecPermissionService::class);
 
         $this->middleware(function ($request, $next) {
             $this->user = Auth::user();
@@ -49,7 +52,8 @@ class LetterTypeController extends Controller
             'scope' => $scope,
         ]);
 
-        return view('corsec::letter-type.index', compact('scope', 'scopeLabel', 'routePrefix', 'breadcrumb'));
+        $permissionFlags = $this->permissionService->masterDataFlags($user, 'letter-type');
+        return view('corsec::letter-type.index', compact('scope', 'scopeLabel', 'routePrefix', 'breadcrumb', 'permissionFlags'));
     }
 
     public function create(Request $request)

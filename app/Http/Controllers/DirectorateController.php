@@ -14,17 +14,20 @@ use Modules\Corsec\Exports\DirectorateExport;
 use Modules\Corsec\Http\Requests\DirectorateRequest;
 use Modules\Corsec\Models\ApprovalRequest;
 use Modules\Corsec\Services\ApprovalRequestService;
+use Modules\Corsec\Services\CorsecPermissionService;
 
 class DirectorateController extends Controller
 {
     protected $user;
     private readonly ApprovalRequestService $approvalService;
+    private readonly CorsecPermissionService $permissionService;
 
     public function __construct()
     {
         // Mengatur middleware auth
         $this->middleware('auth');
         $this->approvalService = app(ApprovalRequestService::class);
+        $this->permissionService = app(CorsecPermissionService::class);
 
         // Mengatur user setelah middleware auth dijalankan
         $this->middleware(function ($request, $next) {
@@ -44,7 +47,8 @@ class DirectorateController extends Controller
         }
 
         Log::info('User accessed directorate index', ['user_id' => $user->id]);
-        return view('corsec::direktorat.index');
+        $permissionFlags = $this->permissionService->masterDataFlags($user, 'directorate');
+        return view('corsec::direktorat.index', compact('permissionFlags'));
     }
 
     /**

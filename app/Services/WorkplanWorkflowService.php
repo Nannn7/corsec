@@ -261,6 +261,167 @@ class WorkplanWorkflowService
         });
     }
 
+    public function canViewAllPrograms(User $user): bool
+    {
+        return $user->hasRole('administrator') || $user->hasRole('checker') || $user->hasRole('approver');
+    }
+
+    public function scopedProgramsQuery(User $user)
+    {
+        $query = WorkProgram::query();
+        if ($this->canViewAllPrograms($user)) {
+            return $query;
+        }
+
+        $directorateId = $user->directorate_id ?? null;
+        return $query->where(function ($builder) use ($user, $directorateId) {
+            $builder->where('created_by', $user->id);
+            if ($directorateId) {
+                $builder->orWhere('directorate_id', $directorateId);
+            }
+        });
+    }
+
+    public function scopedItemsQuery(User $user)
+    {
+        return WorkProgramItem::query()->whereHas('program', function ($query) use ($user) {
+            if ($this->canViewAllPrograms($user)) {
+                return;
+            }
+
+            $directorateId = $user->directorate_id ?? null;
+            $query->where(function ($builder) use ($user, $directorateId) {
+                $builder->where('created_by', $user->id);
+                if ($directorateId) {
+                    $builder->orWhere('directorate_id', $directorateId);
+                }
+            });
+        });
+    }
+
+    public function canSeeProgram(WorkProgram $program, User $user): bool
+    {
+        if ($this->canViewAllPrograms($user)) {
+            return true;
+        }
+
+        return (int) $program->created_by === (int) $user->id ||
+            ((int) ($program->directorate_id ?? 0) === (int) ($user->directorate_id ?? 0));
+    }
+
+    public function canEditProgram(WorkProgram $program, User $user): bool
+    {
+        if ($this->isViewerRole($user) || $this->isDeputyDirector($user)) {
+            return false;
+        }
+
+        if (!in_array((string) $program->status, [WorkProgram::STATUS_DRAFT, WorkProgram::STATUS_RETURNED], true)) {
+            return false;
+        }
+
+        if ($user->hasRole('administrator')) {
+            return true;
+        }
+
+        return (int) $program->created_by === (int) $user->id;
+    }
+
+    public function canDeleteProgram(WorkProgram $program, User $user): bool
+    {
+        if ($user->hasRole('administrator')) {
+            return true;
+        }
+
+        if (!in_array((string) $program->status, [WorkProgram::STATUS_DRAFT, WorkProgram::STATUS_RETURNED], true)) {
+            return false;
+        }
+
+        return (int) $program->created_by === (int) $user->id;
+    }
+
+    public function canSubmitProgram(WorkProgram $program, User $user): bool
+    {
+        return $this->canEditProgram($program, $user) &&
+            in_array((string) $program->status, [WorkProgram::STATUS_DRAFT, WorkProgram::STATUS_RETURNED], true);
+    }
+
+    public function canSubmitUpdate(WorkProgram $program, User $user): bool
+    {
+        if ($this->isViewerRole($user) || $this->isDeputyDirector($user)) {
+            return false;
+        }
+
+        if ((string) $program->status !== WorkProgram::STATUS_ACTIVE) {
+            return false;
+        }
+
+        if ($user->hasRole('administrator')) {
+            return true;
+        }
+
+        return (int) ($program->directorate_id ?? 0) === (int) ($user->directorate_id ?? 0);
+    }
+
+    public function canCheckerApprove(WorkProgram $program, User $user): bool
+    {
+        if ($user->hasRole('administrator')) {
+            return true;
+        }
+
+        return $user->hasRole('checker') &&
+            (int) ($program->directorate_id ?? 0) === (int) ($user->directorate_id ?? 0);
+    }
+
+    public function canApproverApprove(WorkProgram $program, User $user): bool
+    {
+        if ($user->hasRole('administrator')) {
+            return true;
+        }
+
+        return $user->hasRole('approver') &&
+            $this->isDeputyDirector($user) &&
+            (int) ($program->directorate_id ?? 0) === (int) ($user->directorate_id ?? 0);
+    }
+
+    public function isViewerRole(User $user): bool
+    {
+        return $user->hasRole('viewer') && !$user->hasRole(['administrator', 'maker', 'checker', 'approver']);
+    }
+
+    public function latestPendingProgramApproval(WorkProgram $program): ?Approval
+    {
+        return $this->latestPendingApproval($program);
+    }
+
+    public function resolveApprovalPermissionFlags(WorkProgram $program, User $user, ?Approval $pendingApproval): array
+    {
+        $requiresCheckerApproval = true;
+        $checkerApproved = false;
+
+        if ($pendingApproval) {
+            $requiresCheckerApproval = $this->requiresCheckerApproval($pendingApproval);
+            if ($requiresCheckerApproval) {
+                $checkerApproved = $this->isCheckerApprovedInCurrentRound($program, $pendingApproval->created_at);
+            }
+        }
+
+        return [
+            'requires_checker_approval' => $requiresCheckerApproval,
+            'checker_approved' => $checkerApproved,
+            'can_checker_approval' => (bool) (
+                $pendingApproval &&
+                $requiresCheckerApproval &&
+                !$checkerApproved &&
+                $this->canCheckerApprove($program, $user)
+            ),
+            'can_approver_approval' => (bool) (
+                $pendingApproval &&
+                ((!$requiresCheckerApproval) || $checkerApproved) &&
+                $this->canApproverApprove($program, $user)
+            ),
+        ];
+    }
+
     private function applyPendingUpdates(WorkProgram $program, User $actor): void
     {
         $updates = WorkProgramUpdate::query()
@@ -389,7 +550,7 @@ class WorkplanWorkflowService
         return $positionName !== '' && Str::contains($positionName, 'executive officer');
     }
 
-    private function isDeputyDirector(User $user): bool
+    public function isDeputyDirector(User $user): bool
     {
         $user->loadMissing('position');
         $positionName = Str::lower(trim((string) ($user->position?->name ?? '')));

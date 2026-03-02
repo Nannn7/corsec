@@ -5,6 +5,7 @@
 @endsection
 
 @section('content')
+    @php($permissionFlags = $permissionFlags ?? [])
     <div class="grid">
         <div class="min-w-full card card-grid" data-datatable="false" data-datatable-page-size="10"
             data-datatable-state-save="false" id="incoming-letter-table"
@@ -23,22 +24,22 @@
                     <div class="flex flex-wrap gap-2.5">
                         <div class="h-[24px] border border-r-gray-200"></div>
 
-                        @can('corsec.export')
+                        @if ($permissionFlags['can_export'] ?? false)
                             <a id="export-btn" class="btn btn-sm btn-light" href="{{ route('letter.incoming.export') }}">
                                 Export to Excel
                             </a>
-                        @endcan
+                        @endif
 
-                        @can('corsec.create')
+                        @if ($permissionFlags['can_create'] ?? false)
                             <a class="btn btn-sm btn-primary" href="{{ route('letter.incoming.create') }}">
                                 Tambah Surat
                             </a>
-                        @endcan
+                        @endif
 
-                        @can('corsec.delete')
+                        @if ($permissionFlags['can_delete'] ?? false)
                             <button class="hidden btn btn-sm btn-danger" id="deleteSelected"
                                 onclick="deleteSelectedRows()">Delete Selected</button>
-                        @endcan
+                        @endif
                     </div>
                 </div>
             </div>
@@ -244,7 +245,10 @@
 
         const apiUrl = element.getAttribute('data-api-url');
         const baseUrl = element.getAttribute('data-base-url');
-        const isAdmin = @json(auth()->user()?->hasRole('administrator'));
+        const isAdmin = @json((bool) ($permissionFlags['is_admin'] ?? false));
+        const canRead = @json((bool) ($permissionFlags['can_read'] ?? false));
+        const canDelete = @json((bool) ($permissionFlags['can_delete'] ?? false));
+        const canEditAction = @json((bool) ($permissionFlags['can_edit_action'] ?? false));
 
         const statusBadge = (status) => {
             const val = (status ?? '').toString().toLowerCase();
@@ -273,7 +277,7 @@
             columns: {
                 select: {
                     render: (item, data) => {
-                        @can('corsec.delete')
+                        if (canDelete) {
                             const status = (data.status ?? '').toString().toLowerCase();
                             const deletableStatuses = ['draft', 'returned'];
                             if (!isAdmin && !deletableStatuses.includes(status)) return '';
@@ -283,7 +287,7 @@
                             checkbox.value = data.id.toString();
                             checkbox.setAttribute('data-datatable-row-check', 'true');
                             return checkbox.outerHTML.trim();
-                        @endcan
+                        }
                         return '';
                     },
                 },
@@ -373,13 +377,13 @@
                         const rowKey = data.uuid ?? data.id;
                         let html = `<div class="flex flex-nowrap justify-center">`;
 
-                        @can('corsec.read')
+                        if (canRead) {
                             html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}">
                                 <i class="ki-outline ki-eye"></i>
                             </a>`;
-                        @endcan
+                        }
 
-                        @if (auth()->user()?->hasRole('administrator') || auth()->user()?->can('corsec.create'))
+                        if (canEditAction) {
                             if (canEditStatus) {
                                 html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}/edit">
                                     <i class="ki-outline ki-notepad-edit"></i>
@@ -391,7 +395,7 @@
                                     <i class="ki-outline ki-trash"></i>
                                 </a>`;
                             }
-                        @endif
+                        }
 
                         html += `</div>`;
                         return html;

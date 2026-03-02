@@ -14,16 +14,19 @@ use Modules\Corsec\Http\Requests\SenderRequest;
 use Modules\Corsec\Models\ApprovalRequest;
 use Modules\Corsec\Models\Sender;
 use Modules\Corsec\Services\ApprovalRequestService;
+use Modules\Corsec\Services\CorsecPermissionService;
 
 class SenderController extends Controller
 {
     protected $user;
     private readonly ApprovalRequestService $approvalService;
+    private readonly CorsecPermissionService $permissionService;
 
     public function __construct()
     {
         $this->middleware('auth');
         $this->approvalService = app(ApprovalRequestService::class);
+        $this->permissionService = app(CorsecPermissionService::class);
 
         $this->middleware(function ($request, $next) {
             $this->user = Auth::user();
@@ -39,7 +42,8 @@ class SenderController extends Controller
         }
 
         Log::info('User accessed sender index', ['user_id' => $user->id]);
-        return view('corsec::sender.index');
+        $permissionFlags = $this->permissionService->masterDataFlags($user, 'sender');
+        return view('corsec::sender.index', compact('permissionFlags'));
     }
 
     public function create()

@@ -6,195 +6,32 @@
 
 @section('content')
     @php
-        $user = auth()->user();
+        $permissionFlags = $permissionFlags ?? [];
         $status = $outgoingLetter->status;
-        $isAdmin = $user?->hasRole('administrator');
-        $isChecker = $user?->hasRole('checker');
-        $isApprover = $user?->hasRole('approver');
-        $isViewerOnly =
-            ($user?->hasRole('viewer') ?? false) &&
-            !($user?->hasRole(['administrator', 'maker', 'checker', 'approver']) ?? false);
-        $canCorsecUpdateAction = ($user?->can('corsec.update') ?? false) && !$isViewerOnly;
-        $canCorsecCreateOrUpdateAction =
-            (($user?->can('corsec.create') ?? false) || ($user?->can('corsec.update') ?? false)) &&
-            !$isViewerOnly;
-        $canEdit =
-            in_array($status, ['draft', 'returned'], true) &&
-            ($isAdmin || ($user && (int) $outgoingLetter->requester_directorate_id === (int) $user->directorate_id));
-        $isRequesterDirectorate =
-            $user && (int) $outgoingLetter->requester_directorate_id === (int) $user->directorate_id;
-        $requesterRoleNames =
-            $user?->roles?->pluck('name')->map(function ($name) {
-                return \Illuminate\Support\Str::lower((string) $name);
-            }) ?? collect();
-        $corpSecretaryCode = config('corsec.eo_corp_affair_directorate_code', '');
-        $corpDirectorateName = \Illuminate\Support\Str::lower((string) ($user?->directorate?->name ?? ''));
-        $isCorpSecretaryDirectorate =
-            $user &&
-            (($corpSecretaryCode !== '' && $user->directorate?->code === $corpSecretaryCode) ||
-                ($corpDirectorateName !== '' &&
-                    \Illuminate\Support\Str::contains($corpDirectorateName, 'corporate secretary')));
-        $complianceCode = config('corsec.compliance_directorate_code', '');
-        $complianceDirectorateName = \Illuminate\Support\Str::lower((string) ($user?->directorate?->name ?? ''));
-        $isComplianceDirectorate =
-            $user &&
-            (($complianceCode !== '' && $user->directorate?->code === $complianceCode) ||
-                ($complianceDirectorateName !== '' &&
-                    (\Illuminate\Support\Str::contains($complianceDirectorateName, 'kepatuhan') ||
-                        \Illuminate\Support\Str::contains($complianceDirectorateName, 'compliance'))));
-
-        $checkerApprovedDir =
-            $approvals
-                ->where('status', 'approved')
-                ->filter(function ($approval) {
-                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
-                })
-                ->count() > 0;
-        $checkerApprovedCompliance =
-            $approvals
-                ->where('status', 'approved')
-                ->filter(function ($approval) {
-                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Kepatuhan Approved');
-                })
-                ->count() > 0;
-
-        $userHasDirCheckerAction =
-            $user &&
-            $approvals
-                ->where('acted_by', $user->id)
-                ->filter(function ($approval) {
-                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Approved') ||
-                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Direktorat Returned');
-                })
-                ->count() > 0;
-        $userHasDirApproverAction =
-            $user &&
-            $approvals
-                ->where('acted_by', $user->id)
-                ->filter(function ($approval) {
-                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'DD Direktorat Approved') ||
-                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'DD Direktorat Returned');
-                })
-                ->count() > 0;
-        $userHasComplianceCheckerAction =
-            $user &&
-            $approvals
-                ->where('acted_by', $user->id)
-                ->filter(function ($approval) {
-                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Kepatuhan Approved') ||
-                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'EO Kepatuhan Returned');
-                })
-                ->count() > 0;
-        $userHasComplianceApproverAction =
-            $user &&
-            $approvals
-                ->where('acted_by', $user->id)
-                ->filter(function ($approval) {
-                    return \Illuminate\Support\Str::startsWith((string) $approval->note, 'DD Kepatuhan Approved') ||
-                        \Illuminate\Support\Str::startsWith((string) $approval->note, 'DD Kepatuhan Returned');
-                })
-                ->count() > 0;
-
-        $canDirCheckerApproval =
-            $status === 'waiting_dir_approval' &&
-            !$checkerApprovedDir &&
-            ($isAdmin || ($isRequesterDirectorate && $isChecker)) &&
-            !$userHasDirCheckerAction;
-        $canDirApproverApproval =
-            $status === 'waiting_dir_approval' &&
-            $checkerApprovedDir &&
-            ($isAdmin || ($isRequesterDirectorate && $isApprover)) &&
-            !$userHasDirApproverAction;
-
-        $corpPositionName = \Illuminate\Support\Str::lower((string) ($user?->position?->name ?? ''));
-        $isCorpSecretaryChecker =
-            $isCorpSecretaryDirectorate &&
-            $requesterRoleNames->contains(function ($name) {
-                return \Illuminate\Support\Str::contains($name, 'checker');
-            });
-
-        $isComplianceMakerStaff =
-            $isComplianceDirectorate &&
-            $requesterRoleNames->contains(function ($name) {
-                return \Illuminate\Support\Str::contains($name, 'maker');
-            }) &&
-            $corpPositionName !== '' &&
-            \Illuminate\Support\Str::contains($corpPositionName, 'staff');
-        $canComplianceReview = $status === 'compliance_review' && ($isAdmin || $isComplianceMakerStaff);
-
-        $canComplianceCheckerApproval =
-            $status === 'waiting_compliance_approval' &&
-            !$checkerApprovedCompliance &&
-            ($isAdmin || ($isComplianceDirectorate && $isChecker)) &&
-            !$userHasComplianceCheckerAction;
-        $canComplianceApproverApproval =
-            $status === 'waiting_compliance_approval' &&
-            $checkerApprovedCompliance &&
-            ($isAdmin || ($isComplianceDirectorate && $isApprover)) &&
-            !$userHasComplianceApproverAction;
-
-        $isRequesterDirectorateMakerStaff =
-            $user &&
-            (int) $outgoingLetter->requester_directorate_id === (int) $user->directorate_id &&
-            $requesterRoleNames->contains(function ($name) {
-                return \Illuminate\Support\Str::contains($name, 'maker');
-            }) &&
-            $corpPositionName !== '' &&
-            \Illuminate\Support\Str::contains($corpPositionName, 'staff');
-        $isRequesterCreator = $user && (int) $outgoingLetter->created_by === (int) $user->id;
-        $canFinalUpload = $status === 'waiting_final_upload' && ($isAdmin || $isRequesterDirectorateMakerStaff);
-        $canVerify = $status === 'waiting_verification' && ($isAdmin || $isCorpSecretaryChecker);
-        $canCancelRequest =
-            in_array(
-                $status,
-                [
-                    'draft',
-                    'returned',
-                    'waiting_dir_approval',
-                    'compliance_review',
-                    'waiting_compliance_approval',
-                    'waiting_verification',
-                    'waiting_final_upload',
-                ],
-                true,
-            ) &&
-            ($isAdmin || ($isRequesterDirectorateMakerStaff && $isRequesterCreator));
-        $canCancelApproval = $status === 'waiting_cancel_approval' && ($isAdmin || ($isRequesterDirectorate && $isChecker));
-
-        $isResponseLetterFlow = (string) $outgoingLetter->perihal_type === 'tanggapan_surat_masuk';
-        if ($isResponseLetterFlow) {
-            $statusSteps = [
-                'draft' => 'Draft',
-                'waiting_dir_approval' => 'Approval EO dan DD Direktorat',
-            ];
-            if ($outgoingLetter->need_compliance_review) {
-                $statusSteps['waiting_compliance_approval'] = 'Approval EO dan DD Kepatuhan';
-            }
-            $statusSteps['waiting_final_upload'] = 'Final Upload';
-            $statusSteps['waiting_cancel_approval'] = 'Approval Pembatalan EO Direktorat';
-            $statusSteps['verified'] = 'Done';
-            $statusSteps['returned'] = 'Revisi';
-            $statusSteps['cancelled'] = 'Cancelled';
-            if ($status === 'compliance_review') {
-                $statusSteps['compliance_review'] = 'Review Kepatuhan (Legacy)';
-            }
-            if ($status === 'waiting_verification') {
-                $statusSteps['waiting_verification'] = 'Verifikasi EO Corp Affair (Legacy)';
-            }
-        } else {
-            $statusSteps = [
-                'draft' => 'Draft',
-                'waiting_dir_approval' => 'Approval EO dan DD Direktorat',
-                'compliance_review' => 'Review Kepatuhan',
-                'waiting_compliance_approval' => 'Approval EO dan DD Kepatuhan',
-                'waiting_verification' => 'Verifikasi EO Corp Affair',
-                'waiting_final_upload' => 'Final Upload',
-                'waiting_cancel_approval' => 'Approval Pembatalan EO Direktorat',
-                'verified' => 'Done',
-                'returned' => 'Revisi',
-                'cancelled' => 'Cancelled',
-            ];
-        }
+        $canCorsecUpdateAction = (bool) ($permissionFlags['can_corsec_update_action'] ?? false);
+        $canCorsecCreateOrUpdateAction = (bool) ($permissionFlags['can_corsec_create_or_update_action'] ?? false);
+        $canEdit = (bool) ($permissionFlags['can_edit'] ?? false);
+        $canDirCheckerApproval = (bool) ($permissionFlags['can_dir_checker_approval'] ?? false);
+        $canDirApproverApproval = (bool) ($permissionFlags['can_dir_approver_approval'] ?? false);
+        $canComplianceReview = (bool) ($permissionFlags['can_compliance_review'] ?? false);
+        $canComplianceCheckerApproval = (bool) ($permissionFlags['can_compliance_checker_approval'] ?? false);
+        $canComplianceApproverApproval = (bool) ($permissionFlags['can_compliance_approver_approval'] ?? false);
+        $canFinalUpload = (bool) ($permissionFlags['can_final_upload'] ?? false);
+        $canVerify = (bool) ($permissionFlags['can_verify'] ?? false);
+        $canCancelRequest = (bool) ($permissionFlags['can_cancel_request'] ?? false);
+        $canCancelApproval = (bool) ($permissionFlags['can_cancel_approval'] ?? false);
+        $statusSteps = $permissionFlags['status_steps'] ?? [
+            'draft' => 'Draft',
+            'waiting_dir_approval' => 'Approval EO dan DD Direktorat',
+            'compliance_review' => 'Review Kepatuhan',
+            'waiting_compliance_approval' => 'Approval EO dan DD Kepatuhan',
+            'waiting_verification' => 'Verifikasi EO Corp Affair',
+            'waiting_final_upload' => 'Final Upload',
+            'waiting_cancel_approval' => 'Approval Pembatalan EO Direktorat',
+            'verified' => 'Done',
+            'returned' => 'Revisi',
+            'cancelled' => 'Cancelled',
+        ];
     @endphp
 
     <div class="grid gap-5 lg:gap-7.5">
@@ -358,11 +195,13 @@
                     </div>
                     <div class="card-body">
                         <form method="POST" action="{{ route('letter.outgoing.compliance.review', $outgoingLetter) }}"
-                            enctype="multipart/form-data" class="grid gap-4 js-ajax-form" data-form-type="outgoing-compliance">
+                            enctype="multipart/form-data" class="grid gap-4 js-ajax-form"
+                            data-form-type="outgoing-compliance">
                             @csrf
                             <div class="flex flex-col">
                                 <label class="form-label">File Review Kepatuhan <span class="text-danger">*</span></label>
-                                <input class="file-input" type="file" name="compliance_file" accept=".pdf,.jpg,.jpeg,.png">
+                                <input class="file-input" type="file" name="compliance_file"
+                                    accept=".pdf,.jpg,.jpeg,.png">
                             </div>
                             <div class="flex flex-col">
                                 <label class="form-label">Catatan (opsional)</label>
@@ -387,7 +226,7 @@
                         enctype="multipart/form-data" class="grid gap-4 js-ajax-form" data-form-type="outgoing-final">
                         @csrf
                         <div class="flex flex-col">
-                            <label class="form-label">Tanggal Upload Final (wajib saat Simpan Draft)</label>
+                            <label class="form-label">Tanggal Upload Final (wajib jika Simpan Draft)</label>
                             <input class="input" type="date" name="final_upload_date"
                                 value="{{ old('final_upload_date', optional($outgoingLetter->final_upload_date)->format('Y-m-d')) }}">
                         </div>
@@ -396,8 +235,10 @@
                             <input class="file-input" type="file" name="final_file" accept=".pdf,.jpg,.jpeg,.png">
                         </div>
                         <div class="flex justify-end gap-2">
-                            <button class="btn btn-light" type="submit" name="submit_action" value="draft">Simpan Draft</button>
-                            <button class="btn btn-primary" type="submit" name="submit_action" value="upload">Upload Final</button>
+                            <button class="btn btn-light" type="submit" name="submit_action" value="draft">Simpan
+                                Draft</button>
+                            <button class="btn btn-primary" type="submit" name="submit_action" value="upload">Upload
+                                Final</button>
                         </div>
                     </form>
                 </div>
@@ -419,7 +260,8 @@
                             </div>
                             <div class="flex flex-col">
                                 <label class="form-label">Alasan Pembatalan <span class="text-danger">*</span></label>
-                                <textarea class="textarea w-full" name="note" rows="3" placeholder="Tuliskan alasan pembatalan..." required></textarea>
+                                <textarea class="textarea w-full" name="note" rows="3" placeholder="Tuliskan alasan pembatalan..."
+                                    required></textarea>
                             </div>
                             <div class="flex justify-end">
                                 <button class="btn btn-warning" type="submit">Ajukan Approval EO</button>
@@ -526,10 +368,10 @@
                                 <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan..."></textarea>
                             </div>
                             <div class="flex flex-wrap gap-2 justify-end">
-                                <button class="btn btn-sm btn-danger" type="submit" name="action"
-                                    value="reject">Reject Pembatalan</button>
-                                <button class="btn btn-sm btn-success" type="submit" name="action"
-                                    value="approve">Approve Pembatalan</button>
+                                <button class="btn btn-sm btn-danger" type="submit" name="action" value="reject">Reject
+                                    Pembatalan</button>
+                                <button class="btn btn-sm btn-success" type="submit" name="action" value="approve">Approve
+                                    Pembatalan</button>
                             </div>
                         </form>
                     @elseif ($status === 'waiting_dir_approval' && ($canDirCheckerApproval || $canDirApproverApproval))
@@ -652,8 +494,10 @@
                     } else if (formType === 'outgoing-cancel-request') {
                         errors = validateSimpleRequired($form, ['note']);
                     } else if (formType === 'outgoing-cancel-approval') {
-                        const action = submitter && submitter.name === 'action' ? submitter.value : 'approve';
-                        if ((action === 'reject' || action === 'return') && !$form.find('[name="note"]').val()) {
+                        const action = submitter && submitter.name === 'action' ? submitter.value :
+                            'approve';
+                        if ((action === 'reject' || action === 'return') && !$form.find('[name="note"]')
+                            .val()) {
                             errors.note = 'Field ini tidak boleh kosong.';
                         }
                     }
@@ -684,7 +528,8 @@
                             'X-CSRF-TOKEN': $form.find('input[name="_token"]').val()
                         },
                         success: function(response) {
-                            const successMessage = response && typeof response.message === 'string' &&
+                            const successMessage = response && typeof response.message ===
+                                'string' &&
                                 response.message.trim() !== '' ?
                                 response.message : 'Berhasil disimpan.';
                             if (window.toast && typeof window.toast.success === 'function') {
