@@ -4,6 +4,7 @@ namespace Modules\Corsec\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -33,6 +34,11 @@ class Meeting extends Model
     public const STATUS_NOTULEN_FINAL = 'notulen_final';
     public const STATUS_PROSES_TINDAKLANJUT_HASIL_RAPAT = 'proses_tindaklanjut_hasil_rapat';
     public const STATUS_DONE_TINDAKLANJUT_HASIL_RAPAT = 'done_tindaklanjut_hasil_rapat';
+    public const STATUS_CANCELLED_DIREKTORAT = 'cancelled_direktorat';
+
+    public const RESPONSE_PENDING = 'pending';
+    public const RESPONSE_ON_SCHEDULE = 'on_schedule';
+    public const RESPONSE_CANCEL = 'cancel';
 
     protected $table = 'corsec_meetings';
 
@@ -50,6 +56,10 @@ class Meeting extends Model
         'authorized_at',
         'authorized_status',
         'authorized_by',
+        'directorate_response_status',
+        'directorate_response_note',
+        'directorate_responded_at',
+        'directorate_responded_by',
         'created_by',
         'updated_by',
         'deleted_by',
@@ -61,11 +71,36 @@ class Meeting extends Model
         'conducted_at' => 'datetime',
         'finished_at' => 'datetime',
         'authorized_at' => 'datetime',
+        'directorate_responded_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
 
     public static function typeOptions(): array
     {
+        return self::typeOptionsFromMasterData();
+    }
+
+    public static function typeOptionsFromMasterData(bool $activeOnly = false): array
+    {
+        try {
+            $query = MeetingType::query()->orderBy('name');
+            if ($activeOnly) {
+                $query->where('status', true);
+            }
+
+            $options = $query->pluck('name', 'code')
+                ->mapWithKeys(function ($name, $code) {
+                    return [(string) $code => (string) $name];
+                })
+                ->all();
+
+            if (!empty($options)) {
+                return $options;
+            }
+        } catch (\Throwable) {
+            // Fallback to static defaults while migration/table is not ready.
+        }
+
         return [
             self::TYPE_KOMISARIS => 'Rapat Komisaris',
             self::TYPE_DIREKSI => 'Rapat Direksi',
@@ -90,6 +125,16 @@ class Meeting extends Model
             self::STATUS_NOTULEN_FINAL => 'Notulen Final',
             self::STATUS_PROSES_TINDAKLANJUT_HASIL_RAPAT => 'Proses Tindaklanjut Hasil Rapat',
             self::STATUS_DONE_TINDAKLANJUT_HASIL_RAPAT => 'Done Tindaklanjut Hasil Rapat',
+            self::STATUS_CANCELLED_DIREKTORAT => 'Dibatalkan Direktorat',
+        ];
+    }
+
+    public static function responseLabels(): array
+    {
+        return [
+            self::RESPONSE_PENDING => 'Menunggu Tanggapan Direktorat',
+            self::RESPONSE_ON_SCHEDULE => 'On Schedule',
+            self::RESPONSE_CANCEL => 'Cancel',
         ];
     }
 
@@ -97,7 +142,13 @@ class Meeting extends Model
     {
         return [
             self::STATUS_DONE_TINDAKLANJUT_HASIL_RAPAT,
+            self::STATUS_CANCELLED_DIREKTORAT,
         ];
+    }
+
+    public function isDirektoratType(): bool
+    {
+        return (string) $this->meeting_type === self::TYPE_DIREKTORAT;
     }
 
     public function getRouteKeyName(): string
@@ -143,5 +194,10 @@ class Meeting extends Model
     public function approvals(): MorphMany
     {
         return $this->morphMany(Approval::class, 'approvable');
+    }
+
+    public function directorateRespondedBy(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Usermanagement\Models\User::class, 'directorate_responded_by');
     }
 }

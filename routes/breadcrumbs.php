@@ -170,3 +170,19 @@ Breadcrumbs::for('letter-type.out.edit', function (BreadcrumbTrail $trail) {
     $trail->parent('corsec.letter-type.out');
     $trail->push('Edit Letter Type Out');
 });
+
+// Meeting Type
+Breadcrumbs::for('corsec.meeting-type', function (BreadcrumbTrail $trail) {
+    $trail->parent('dashboard');
+    $trail->push('Meeting Types', route('meeting-type.index'));
+});
+
+Breadcrumbs::for('meeting-type.create', function (BreadcrumbTrail $trail) {
+    $trail->parent('corsec.meeting-type');
+    $trail->push('Tambah Meeting Type', route('meeting-type.create'));
+});
+
+Breadcrumbs::for('meeting-type.edit', function (BreadcrumbTrail $trail) {
+    $trail->parent('corsec.meeting-type');
+    $trail->push('Edit Meeting Type');
+});

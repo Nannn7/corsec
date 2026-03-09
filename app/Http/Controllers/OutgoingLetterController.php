@@ -49,8 +49,23 @@ class OutgoingLetterController extends Controller
         $this->authorizeRead();
 
         $query = OutgoingLetter::query()
-            ->with(['requesterDirectorate', 'recipient', 'letterType', 'authorizedBy'])
-            ->latest();
+            ->select([
+                'id',
+                'uuid',
+                'registration_no',
+                'letter_no',
+                'order_date',
+                'subject',
+                'summary',
+                'recipient_id',
+                'recipient_other',
+                'letter_type_id',
+                'perihal_type',
+                'requester_directorate_id',
+                'status',
+                'created_at',
+                'created_by',
+            ]);
 
         if ($request->filled('status')) {
             $query->where('status', $request->string('status'));
@@ -79,8 +94,9 @@ class OutgoingLetterController extends Controller
             });
         }
 
-        $totalRecords = OutgoingLetter::count();
-        $filteredRecords = (clone $query)->count();
+        $isFiltered = $search !== '' || $request->filled('status');
+        $totalRecords = OutgoingLetter::query()->count();
+        $filteredRecords = $isFiltered ? (clone $query)->count() : $totalRecords;
 
         $sortField = (string) $request->get('sortField', 'created_at');
         $sortOrder = (string) $request->get('sortOrder', 'desc');
@@ -91,13 +107,19 @@ class OutgoingLetterController extends Controller
         if (!in_array($sortOrder, ['asc', 'desc'], true)) {
             $sortOrder = 'desc';
         }
+
+        $query->with([
+            'requesterDirectorate:id,code,name',
+            'recipient:id,name,code',
+            'letterType:id,name,code',
+        ]);
+
         $query->orderBy($sortField, $sortOrder);
 
         $page = max((int) $request->get('page', 1), 1);
         $size = max((int) $request->get('size', 10), 1);
-        $offset = ($page - 1) * $size;
 
-        $data = $query->skip($offset)->take($size)->get();
+        $data = $query->forPage($page, $size)->get();
         $pageCount = (int) ceil($filteredRecords / $size);
 
         return response()->json([

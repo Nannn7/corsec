@@ -26,6 +26,10 @@ class MeetingWorkflowService
                 'authorized_status' => 'pending',
                 'authorized_at' => null,
                 'authorized_by' => null,
+                'directorate_response_status' => $meeting->isDirektoratType() ? Meeting::RESPONSE_PENDING : null,
+                'directorate_response_note' => null,
+                'directorate_responded_at' => null,
+                'directorate_responded_by' => null,
                 'updated_by' => $actor->id,
             ]);
 
@@ -76,17 +80,31 @@ class MeetingWorkflowService
                     'authorized_status' => 'authorized',
                     'authorized_at' => now(),
                     'authorized_by' => $actor->id,
+                    'directorate_response_status' => $meeting->isDirektoratType()
+                        ? Meeting::RESPONSE_PENDING
+                        : $meeting->directorate_response_status,
+                    'directorate_response_note' => null,
+                    'directorate_responded_at' => null,
+                    'directorate_responded_by' => null,
                     'updated_by' => $actor->id,
                 ]);
 
+                $audienceUserIds = collect([$meeting->created_by])
+                    ->merge($this->getMeetingAssignedPicUserIds($meeting))
+                    ->filter()
+                    ->unique()
+                    ->values();
+
                 $this->notifyUsers(
-                    [$meeting->created_by],
+                    $audienceUserIds,
                     'meeting_corsec_action',
                     $this->meetingNotificationData(
                         $meeting,
                         $actor,
                         'Approval Corsec',
-                        'Rencana rapat disetujui EO Corp Affair.'
+                        $meeting->isDirektoratType()
+                            ? 'Rencana rapat disetujui EO Corp Affair. PIC direktorat diminta memberi tanggapan jadwal.'
+                            : 'Rencana rapat disetujui EO Corp Affair.'
                     )
                 );
 
@@ -135,6 +153,67 @@ class MeetingWorkflowService
         });
     }
 
+    public function respondDirectorateSchedule(Meeting $meeting, User $actor, string $action, ?string $note = null): void
+    {
+        DB::transaction(function () use ($meeting, $actor, $action, $note) {
+            $meeting = $this->lockMeeting($meeting);
+
+            if (!$meeting->isDirektoratType()) {
+                abort(422, 'Tanggapan jadwal hanya berlaku untuk rapat direktorat.');
+            }
+
+            $this->assertStatus($meeting, [
+                Meeting::STATUS_JADWAL_TERKIRIM,
+                Meeting::STATUS_PENDING_DIREKTORAT,
+                Meeting::STATUS_RETURNED_BY_DIREKTORAT,
+            ]);
+            if ($meeting->isDirektoratType() && !$actor->hasRole('administrator') && !$this->isActorAssignedToMeeting($meeting, $actor)) {
+                abort(403, 'Tanggapan jadwal hanya untuk PIC user direktorat yang ditugaskan.');
+            }
+            $this->ensureActorInTargetDirectorate(
+                $meeting,
+                $actor,
+                'Tanggapan jadwal hanya untuk PIC user/direktorat peserta rapat.'
+            );
+
+            if ($action === Meeting::RESPONSE_CANCEL) {
+                $meeting->update([
+                    'status' => Meeting::STATUS_CANCELLED_DIREKTORAT,
+                    'directorate_response_status' => Meeting::RESPONSE_CANCEL,
+                    'directorate_response_note' => $note,
+                    'directorate_responded_at' => now(),
+                    'directorate_responded_by' => $actor->id,
+                    'updated_by' => $actor->id,
+                ]);
+
+                $this->addComment($meeting, $actor, '[TANGGAPAN DIREKTORAT - CANCEL]', $note);
+                $this->notifyUsers(
+                    [$meeting->created_by],
+                    'meeting_directorate_action',
+                    $this->meetingNotificationData(
+                        $meeting,
+                        $actor,
+                        'Tanggapan Jadwal Direktorat',
+                        'Rapat direktorat ditandai cancel oleh PIC direktorat.'
+                    )
+                );
+
+                return;
+            }
+
+            $meeting->update([
+                'status' => Meeting::STATUS_PENDING_DIREKTORAT,
+                'directorate_response_status' => Meeting::RESPONSE_ON_SCHEDULE,
+                'directorate_response_note' => $note,
+                'directorate_responded_at' => now(),
+                'directorate_responded_by' => $actor->id,
+                'updated_by' => $actor->id,
+            ]);
+
+            $this->addComment($meeting, $actor, '[TANGGAPAN DIREKTORAT - ON SCHEDULE]', $note);
+        });
+    }
+
     public function submitDirectoratePreparation(Meeting $meeting, User $actor, ?string $note = null): void
     {
         DB::transaction(function () use ($meeting, $actor, $note) {
@@ -144,6 +223,14 @@ class MeetingWorkflowService
                 Meeting::STATUS_PENDING_DIREKTORAT,
                 Meeting::STATUS_RETURNED_BY_DIREKTORAT,
             ]);
+
+            if ($meeting->isDirektoratType() && (string) $meeting->directorate_response_status !== Meeting::RESPONSE_ON_SCHEDULE) {
+                abort(422, 'PIC direktorat wajib memberikan tanggapan on schedule sebelum submit persiapan.');
+            }
+            if ($meeting->isDirektoratType() && !$actor->hasRole('administrator') && !$this->isActorAssignedToMeeting($meeting, $actor)) {
+                abort(403, 'Persiapan rapat direktorat hanya untuk PIC user yang ditugaskan.');
+            }
+
             $this->ensureActorInTargetDirectorate(
                 $meeting,
                 $actor,
@@ -631,6 +718,20 @@ class MeetingWorkflowService
         }
 
         return $audience->filter()->unique()->values();
+    }
+
+    private function getMeetingAssignedPicUserIds(Meeting $meeting)
+    {
+        $meeting->loadMissing('participants', 'agendas', 'decisions');
+
+        return $meeting->participants
+            ->pluck('user_id')
+            ->merge($meeting->agendas->pluck('pic_user_id'))
+            ->merge($meeting->decisions->pluck('pic_user_id'))
+            ->filter()
+            ->map(fn($id) => (int) $id)
+            ->unique()
+            ->values();
     }
 
     private function getTargetDirectorateIds(Meeting $meeting, int $fallbackDirectorateId = 0)

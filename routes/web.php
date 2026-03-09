@@ -11,6 +11,7 @@ use Modules\Corsec\Http\Controllers\ApproverController;
 use Modules\Corsec\Http\Controllers\DirectorateController;
 use Modules\Corsec\Http\Controllers\SenderController;
 use Modules\Corsec\Http\Controllers\LetterTypeController;
+use Modules\Corsec\Http\Controllers\MeetingTypeController;
 use Modules\Corsec\Http\Middleware\LogCorsecRequestErrors;
 
 Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () {
@@ -85,6 +86,7 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () {
 
         Route::post('/{meeting}/submit', [MeetingController::class, 'submit'])->middleware('permission:corsec.update')->name('submit');
         Route::post('/{meeting}/corsec-approval', [MeetingController::class, 'corsecApproval'])->middleware('permission:corsec.authorize')->name('corsec.approval');
+        Route::post('/{meeting}/directorate-response', [MeetingController::class, 'directorateResponse'])->middleware('permission:corsec.update')->name('directorate.response');
         Route::post('/{meeting}/mark-pending-directorate', [MeetingController::class, 'markPendingDirectorate'])->middleware('permission:corsec.update')->name('mark.pending.directorate');
         Route::post('/{meeting}/directorate-submit', [MeetingController::class, 'directorateSubmit'])->middleware('permission:corsec.update')->name('directorate.submit');
         Route::post('/{meeting}/directorate-approval', [MeetingController::class, 'directorateApproval'])->middleware('permission:corsec.authorize')->name('directorate.approval');
@@ -156,6 +158,27 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () {
             'edit'    => 'sender.edit',
             'update'  => 'sender.update',
             'destroy' => 'sender.destroy',
+        ],
+    ]);
+
+    // Meeting Type Routes
+    Route::prefix('meeting-type')->name('meeting-type.')->group(function () {
+        Route::get('datatables', [MeetingTypeController::class, 'dataForDatatables'])->name('datatables');
+        Route::get('export', [MeetingTypeController::class, 'export'])->name('export');
+        Route::post('delete-multiple', [MeetingTypeController::class, 'deleteMultiple'])->name('deleteMultiple');
+    });
+    Route::resource('meeting-type', MeetingTypeController::class, [
+        'names' => [
+            'index'   => 'meeting-type.index',
+            'show'    => 'meeting-type.show',
+            'create'  => 'meeting-type.create',
+            'store'   => 'meeting-type.store',
+            'edit'    => 'meeting-type.edit',
+            'update'  => 'meeting-type.update',
+            'destroy' => 'meeting-type.destroy',
+        ],
+        'parameters' => [
+            'meeting-type' => 'meetingType',
         ],
     ]);
 

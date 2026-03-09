@@ -42,34 +42,78 @@ class WorkplanController extends Controller
 
         $programSummaryQuery = $this->workflow->scopedProgramsQuery($user);
         $itemSummaryQuery = $this->workflow->scopedItemsQuery($user);
-        $programIds = (clone $programSummaryQuery)->pluck('id');
-        $doneOnTarget = (clone $itemSummaryQuery)->where('status', WorkProgramItem::STATUS_DONE_ON_TARGET)->count();
-        $doneOverTarget = (clone $itemSummaryQuery)->where('status', WorkProgramItem::STATUS_DONE_OVER_TARGET)->count();
-        $totalItems = (clone $itemSummaryQuery)->count();
+        $programSummaryRow = (clone $programSummaryQuery)
+            ->selectRaw('COUNT(*) AS total_programs')
+            ->selectRaw(
+                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS draft_programs",
+                [WorkProgram::STATUS_DRAFT]
+            )
+            ->selectRaw(
+                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS waiting_dir_approval_programs",
+                [WorkProgram::STATUS_WAITING_DIR_APPROVAL]
+            )
+            ->selectRaw(
+                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS active_programs",
+                [WorkProgram::STATUS_ACTIVE]
+            )
+            ->selectRaw(
+                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS returned_programs",
+                [WorkProgram::STATUS_RETURNED]
+            )
+            ->selectRaw(
+                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS done_programs",
+                [WorkProgram::STATUS_DONE]
+            )
+            ->first();
+
+        $itemSummaryRow = (clone $itemSummaryQuery)
+            ->selectRaw('COUNT(*) AS total_items')
+            ->selectRaw(
+                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS process_on_target",
+                [WorkProgramItem::STATUS_PROCESS_ON_TARGET]
+            )
+            ->selectRaw(
+                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS done_on_target",
+                [WorkProgramItem::STATUS_DONE_ON_TARGET]
+            )
+            ->selectRaw(
+                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS done_over_target",
+                [WorkProgramItem::STATUS_DONE_OVER_TARGET]
+            )
+            ->selectRaw(
+                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS undone",
+                [WorkProgramItem::STATUS_UNDONE]
+            )
+            ->selectRaw(
+                "SUM(CASE WHEN status IN (?, ?) THEN 0 ELSE 1 END) AS pending_items",
+                [WorkProgramItem::STATUS_DONE_ON_TARGET, WorkProgramItem::STATUS_DONE_OVER_TARGET]
+            )
+            ->first();
+
+        $doneOnTarget = (int) ($itemSummaryRow->done_on_target ?? 0);
+        $doneOverTarget = (int) ($itemSummaryRow->done_over_target ?? 0);
+        $totalItems = (int) ($itemSummaryRow->total_items ?? 0);
         $doneItems = $doneOnTarget + $doneOverTarget;
+        $pendingApprovals = Approval::query()
+            ->where('approvable_type', WorkProgram::class)
+            ->where('status', WorkProgramUpdate::STATUS_PENDING)
+            ->whereIn('approvable_id', (clone $programSummaryQuery)->select('id'))
+            ->count();
 
         $summary = [
-            'total_programs' => (clone $programSummaryQuery)->count(),
+            'total_programs' => (int) ($programSummaryRow->total_programs ?? 0),
             'total_items' => $totalItems,
-            'process_on_target' => (clone $itemSummaryQuery)->where('status', WorkProgramItem::STATUS_PROCESS_ON_TARGET)->count(),
+            'process_on_target' => (int) ($itemSummaryRow->process_on_target ?? 0),
             'done_on_target' => $doneOnTarget,
             'done_over_target' => $doneOverTarget,
-            'undone' => (clone $itemSummaryQuery)->where('status', WorkProgramItem::STATUS_UNDONE)->count(),
-            'pending_items' => (clone $itemSummaryQuery)
-                ->whereNotIn('status', [WorkProgramItem::STATUS_DONE_ON_TARGET, WorkProgramItem::STATUS_DONE_OVER_TARGET])
-                ->count(),
-            'draft_programs' => (clone $programSummaryQuery)->where('status', WorkProgram::STATUS_DRAFT)->count(),
-            'waiting_dir_approval_programs' => (clone $programSummaryQuery)->where('status', WorkProgram::STATUS_WAITING_DIR_APPROVAL)->count(),
-            'active_programs' => (clone $programSummaryQuery)->where('status', WorkProgram::STATUS_ACTIVE)->count(),
-            'returned_programs' => (clone $programSummaryQuery)->where('status', WorkProgram::STATUS_RETURNED)->count(),
-            'done_programs' => (clone $programSummaryQuery)->where('status', WorkProgram::STATUS_DONE)->count(),
-            'pending_approvals' => $programIds->isEmpty()
-                ? 0
-                : Approval::query()
-                    ->where('approvable_type', WorkProgram::class)
-                    ->whereIn('approvable_id', $programIds)
-                    ->where('status', WorkProgramUpdate::STATUS_PENDING)
-                    ->count(),
+            'undone' => (int) ($itemSummaryRow->undone ?? 0),
+            'pending_items' => (int) ($itemSummaryRow->pending_items ?? 0),
+            'draft_programs' => (int) ($programSummaryRow->draft_programs ?? 0),
+            'waiting_dir_approval_programs' => (int) ($programSummaryRow->waiting_dir_approval_programs ?? 0),
+            'active_programs' => (int) ($programSummaryRow->active_programs ?? 0),
+            'returned_programs' => (int) ($programSummaryRow->returned_programs ?? 0),
+            'done_programs' => (int) ($programSummaryRow->done_programs ?? 0),
+            'pending_approvals' => $pendingApprovals,
             'completion_rate' => $totalItems > 0
                 ? (int) round(($doneItems / $totalItems) * 100)
                 : 0,
@@ -97,7 +141,20 @@ class WorkplanController extends Controller
 
         try {
             $user = Auth::user();
-            $query = $this->workflow->scopedProgramsQuery($user)->with(['directorate', 'createdBy', 'items']);
+            $query = $this->workflow->scopedProgramsQuery($user)
+                ->select([
+                    'id',
+                    'uuid',
+                    'directorate_id',
+                    'year',
+                    'title',
+                    'description',
+                    'status',
+                    'authorized_status',
+                    'created_at',
+                ]);
+
+            $baseCountQuery = clone $query;
 
             $search = trim((string) $request->get('search', ''));
             if ($search !== '') {
@@ -126,6 +183,7 @@ class WorkplanController extends Controller
             $filters = is_array($filtersParam)
                 ? $filtersParam
                 : json_decode((string) $filtersParam, true);
+            $hasStructuredFilters = false;
             if (is_array($filters)) {
                 foreach ($filters as $filter) {
                     $column = (string) ($filter['column'] ?? '');
@@ -136,16 +194,24 @@ class WorkplanController extends Controller
 
                     if (in_array($column, ['directorate_id', 'directorate'], true)) {
                         $query->where('directorate_id', (int) $value);
+                        $hasStructuredFilters = true;
                     } elseif ($column === 'status') {
                         $query->where('status', (string) $value);
+                        $hasStructuredFilters = true;
                     } elseif ($column === 'year') {
                         $query->where('year', (int) $value);
+                        $hasStructuredFilters = true;
                     }
                 }
             }
 
-            $totalRecords = $this->workflow->scopedProgramsQuery($user)->count();
-            $filteredRecords = (clone $query)->count();
+            $isFiltered = $search !== ''
+                || $request->filled('directorate_id')
+                || $request->filled('status')
+                || $request->filled('year')
+                || $hasStructuredFilters;
+            $totalRecords = $baseCountQuery->count();
+            $filteredRecords = $isFiltered ? (clone $query)->count() : $totalRecords;
 
             $sortField = (string) $request->get('sortField', 'created_at');
             $sortOrder = (string) $request->get('sortOrder', 'desc');
@@ -157,17 +223,25 @@ class WorkplanController extends Controller
                 $sortOrder = 'desc';
             }
 
+            $query->with(['directorate:id,code,name'])
+                ->withCount([
+                    'items',
+                    'items as done_items_count' => function ($itemQuery) {
+                        $itemQuery->whereIn('status', [
+                            WorkProgramItem::STATUS_DONE_ON_TARGET,
+                            WorkProgramItem::STATUS_DONE_OVER_TARGET,
+                        ]);
+                    },
+                ]);
+
             $query->orderBy($sortField, $sortOrder);
 
             $page = max((int) $request->get('page', 1), 1);
             $size = max((int) $request->get('size', 10), 1);
-            $offset = ($page - 1) * $size;
 
-            $data = $query->skip($offset)->take($size)->get()->map(function (WorkProgram $program) {
-                $totalItems = $program->items->count();
-                $doneItems = $program->items
-                    ->whereIn('status', [WorkProgramItem::STATUS_DONE_ON_TARGET, WorkProgramItem::STATUS_DONE_OVER_TARGET])
-                    ->count();
+            $data = $query->forPage($page, $size)->get()->map(function (WorkProgram $program) {
+                $totalItems = (int) ($program->items_count ?? 0);
+                $doneItems = (int) ($program->done_items_count ?? 0);
 
                 return [
                     'id' => $program->id,
@@ -187,7 +261,6 @@ class WorkplanController extends Controller
                     'done_items' => $doneItems,
                     'pending_items' => max($totalItems - $doneItems, 0),
                     'created_at' => $program->created_at,
-                    'created_by' => $program->createdBy?->name,
                 ];
             });
 

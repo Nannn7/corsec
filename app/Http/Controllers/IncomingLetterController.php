@@ -567,8 +567,52 @@ class IncomingLetterController extends Controller
 
         try {
             $query = IncomingLetter::query()
-                ->with(['targetDirectorate', 'sender', 'letterType', 'circulationDirectorates'])
-                ->latest();
+                ->select([
+                    'id',
+                    'uuid',
+                    'registration_no',
+                    'external_letter_no',
+                    'letter_date',
+                    'subject',
+                    'summary',
+                    'sender_id',
+                    'sender_other',
+                    'letter_type_id',
+                    'letter_type_other',
+                    'target_directorate_id',
+                    'status',
+                    'received_date',
+                    'created_at',
+                    'created_by',
+                ]);
+
+            // scope akses (copy dari index lo, biar konsisten)
+            if (!$user->hasRole('administrator')) {
+                $directorateId = $user->directorate_id ?? $user->directorateid;
+                $isEoCorpAffairActor = $this->permissionService->isEoCorpAffairActor($user);
+                $query->where(function ($w) use ($user, $directorateId, $isEoCorpAffairActor) {
+                    $w->where('created_by', $user->id)
+                        ->orWhere('target_directorate_id', $user->directorate_id ?? $user->directorateid);
+                    if (!empty($directorateId)) {
+                        $w->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
+                            $circulationQuery->where('directorate_id', $directorateId);
+                        });
+                    }
+                    if ($isEoCorpAffairActor) {
+                        $w->orWhereNotNull('id');
+                    }
+                });
+            }
+
+            $baseCountQuery = clone $query;
+
+            // optional filter kalau nanti mau dipakai dari UI
+            if ($request->filled('status')) {
+                $query->where('status', $request->string('status')->toString());
+            }
+            if ($request->filled('directorate_id')) {
+                $query->where('target_directorate_id', (int) $request->directorate_id);
+            }
 
             // search (sesuai template: param "search")
             $search = trim((string) $request->get('search', ''));
@@ -589,35 +633,10 @@ class IncomingLetterController extends Controller
                 });
             }
 
-            // optional filter kalau nanti mau dipakai dari UI
-            if ($request->filled('status')) {
-                $query->where('status', $request->string('status')->toString());
-            }
-            if ($request->filled('directorate_id')) {
-                $query->where('target_directorate_id', (int) $request->directorate_id);
-            }
-
-            // scope akses (copy dari index lo, biar konsisten)
-            if (!$user->hasRole('administrator')) {
-                $directorateId = $user->directorate_id ?? $user->directorateid;
-                $isEoCorpAffairActor = $this->permissionService->isEoCorpAffairActor($user);
-                $query->where(function ($w) use ($user, $directorateId, $isEoCorpAffairActor) {
-                    $w->where('created_by', $user->id)
-                        ->orWhere('target_directorate_id', $user->directorate_id ?? $user->directorateid);
-                    if (!empty($directorateId)) {
-                        $w->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
-                            $circulationQuery->where('directorate_id', $directorateId);
-                        });
-                    }
-                    if ($isEoCorpAffairActor) {
-                        $w->orWhereNotNull('id');
-                    }
-                });
-            }
-
             // total counts
-            $totalRecords = IncomingLetter::count();
-            $filteredRecords = (clone $query)->count();
+            $totalRecords = $baseCountQuery->count();
+            $isFiltered = $search !== '' || $request->filled('status') || $request->filled('directorate_id');
+            $filteredRecords = $isFiltered ? (clone $query)->count() : $totalRecords;
 
             // sorting (KTDataTable biasanya kirim sortField/sortOrder)
             $sortField = (string) $request->get('sortField', 'created_at');
@@ -644,14 +663,20 @@ class IncomingLetterController extends Controller
                 $sortOrder = 'desc';
             }
 
+            $query->with([
+                'targetDirectorate:id,code,name',
+                'sender:id,code,name',
+                'letterType:id,code,name',
+                'circulationDirectorates:id,code,name',
+            ]);
+
             $query->orderBy($sortField, $sortOrder);
 
             // paging (KTDataTable: page & size)
             $page = max((int) $request->get('page', 1), 1);
             $size = max((int) $request->get('size', 10), 1);
-            $offset = ($page - 1) * $size;
 
-            $data = $query->skip($offset)->take($size)->get();
+            $data = $query->forPage($page, $size)->get();
 
             $pageCount = (int) ceil($filteredRecords / $size);
 

@@ -141,6 +141,17 @@
                         ]
                     }
                 ]
+            },
+            {
+                "title": "Meeting Types",
+                "path": "meeting-type",
+                "icon": "ki-filled ki-people text-lg text-primary",
+                "classes": "",
+                "attributes": [],
+                "permission": "",
+                "roles": [
+                    "administrator"
+                ]
             }
         ],
         "otorisator": [
