@@ -89,6 +89,50 @@
     </div>
 @endsection
 
+@push('styles')
+    <style>
+        .cancel-request-swal-popup {
+            width: min(680px, calc(100vw - 1.5rem));
+            padding: 1rem;
+        }
+
+        .cancel-request-swal-popup .swal2-html-container {
+            margin: 0.5rem 0 0;
+            text-align: left;
+        }
+
+        .cancel-request-swal-textarea {
+            width: 100% !important;
+            min-height: 110px;
+            max-height: 42vh;
+            max-width: 100% !important;
+            resize: vertical;
+            margin: 0 !important;
+            box-sizing: border-box;
+        }
+
+        @media (max-width: 640px) {
+            .cancel-request-swal-popup {
+                width: calc(100vw - 1rem);
+                padding: 0.875rem;
+            }
+
+            .cancel-request-swal-popup .swal2-actions {
+                display: flex;
+                flex-direction: column-reverse;
+                gap: 0.5rem;
+                width: 100%;
+                margin-top: 0.875rem;
+            }
+
+            .cancel-request-swal-popup .swal2-styled {
+                width: 100%;
+                margin: 0 !important;
+            }
+        }
+    </style>
+@endpush
+
 @push('scripts')
     <script type="text/javascript">
         function deleteData(rowKey) {
@@ -177,12 +221,13 @@
 
             Swal.fire({
                 title: 'Ajukan Pembatalan Surat?',
-                width: 'min(920px, 95vw)',
-                padding: '1.5rem 1.75rem 1.25rem',
+                customClass: {
+                    popup: 'cancel-request-swal-popup'
+                },
                 html: `
                     <div class="text-left">
                         <label for="cancel_reason" class="mb-2 block text-sm text-gray-700">Alasan pembatalan <span class="text-danger">*</span></label>
-                        <textarea id="cancel_reason" class="swal2-textarea !mt-0 !w-full !max-w-full" rows="4" style="width: 90%; min-height: 110px; max-width: 100%; resize: none;" placeholder="Contoh: Data surat perlu diganti total..."></textarea>
+                        <textarea id="cancel_reason" class="swal2-textarea cancel-request-swal-textarea" rows="4" placeholder="Contoh: Data surat perlu diganti total..."></textarea>
                     </div>
                 `,
                 icon: 'warning',

@@ -14,6 +14,7 @@
         $canSubmitPlan = (bool) ($permissionFlags['can_submit_plan'] ?? false);
         $canCorsecApproval = (bool) ($permissionFlags['can_corsec_approval'] ?? false);
         $canMarkPendingDirectorate = (bool) ($permissionFlags['can_mark_pending_direktorat'] ?? false);
+        $canDirectorateResponse = (bool) ($permissionFlags['can_directorate_response'] ?? false);
         $canDirectorateSubmit = (bool) ($permissionFlags['can_directorate_submit'] ?? false);
         $canDirectorateCheckerApproval = (bool) ($permissionFlags['can_directorate_checker_approval'] ?? false);
         $canDirectorateApproverApproval = (bool) ($permissionFlags['can_directorate_approver_approval'] ?? false);
@@ -33,6 +34,7 @@
             'proses_tindaklanjut_hasil_rapat'
                 => 'badge-primary',
             'notulen_final', 'done_tindaklanjut_hasil_rapat' => 'badge-success',
+            'cancelled_direktorat' => 'badge-danger',
             default => 'badge-light',
         };
 
@@ -65,6 +67,7 @@
             'done_tindaklanjut_hasil_rapat' => 'Done',
             'returned_by_corsec' => 'Revisi Corsec',
             'returned_by_direktorat' => 'Revisi Direktorat',
+            'cancelled_direktorat' => 'Batal Direktorat',
         ];
 
         $additionalAgendas = old('additional_agendas', []);
@@ -168,6 +171,17 @@
                             <span
                                 class="badge {{ $statusBadgeClass }}">{{ $statusLabels[$status] ?? ($status ?? '-') }}</span>
                         </div>
+                        @if ((string) ($meeting->meeting_type ?? '') === 'rapat_direktorat')
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Tanggapan Direktorat:</span>
+                                <span
+                                    class="font-medium">{{ $responseLabels[$meeting->directorate_response_status] ?? '-' }}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Ditanggapi Oleh:</span>
+                                <span class="font-medium">{{ $meeting->directorateRespondedBy?->name ?? '-' }}</span>
+                            </div>
+                        @endif
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600">Pembuat:</span>
                             <span class="font-medium">{{ $meeting->createdBy?->name ?? '-' }}</span>
@@ -360,6 +374,30 @@
             @endif
         @endcan
 
+        @if ($canCorsecUpdateAction && $canDirectorateResponse)
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Tanggapan Jadwal Direktorat</h3>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ route('meeting.directorate.response', $meeting) }}" class="grid gap-4">
+                        @csrf
+                        <div class="text-sm text-gray-600">
+                            PIC direktorat wajib memilih tanggapan sebelum input agenda/persiapan rapat.
+                        </div>
+                        <div class="flex flex-col">
+                            <label class="form-label">Catatan (opsional)</label>
+                            <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan tanggapan..."></textarea>
+                        </div>
+                        <div class="flex justify-end gap-2">
+                            <button type="submit" class="btn btn-danger" name="action" value="cancel">Cancel</button>
+                            <button type="submit" class="btn btn-success" name="action" value="on_schedule">On Schedule</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        @endif
+
         @if ($canCorsecUpdateAction)
             @if ($canDirectorateSubmit)
                 <div class="card">
@@ -397,6 +435,19 @@
                                     <label class="form-label">Upload Bahan Rapat</label>
                                     <input class="file-input" type="file" name="material_files[]"
                                         accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx,.ppt,.pptx" multiple>
+                                </div>
+                            </div>
+
+                            <div class="border border-gray-200 rounded-xl p-4 grid gap-3">
+                                <div class="font-semibold text-gray-800">Undang Direktorat Tambahan (Opsional)</div>
+                                <div class="grid gap-2 max-h-[180px] overflow-auto">
+                                    @foreach ($directorates as $directorate)
+                                        <label class="flex items-center gap-2 text-sm">
+                                            <input class="checkbox checkbox-sm" type="checkbox" name="additional_participants[]"
+                                                value="{{ $directorate->id }}">
+                                            <span>{{ $directorate->name }}</span>
+                                        </label>
+                                    @endforeach
                                 </div>
                             </div>
 
@@ -693,12 +744,54 @@
                 <h3 class="card-title">Tabulasi Tindaklanjut Hasil Rapat</h3>
             </div>
             <div class="card-body">
+                @if (($crossMeetingOpenDecisions ?? collect())->count() > 0)
+                    <div class="mb-5">
+                        <div class="font-semibold text-gray-800 mb-2">Backlog Lintas Rapat (Belum Selesai)</div>
+                        <div class="overflow-x-auto">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th class="min-w-[120px]">Key</th>
+                                        <th class="min-w-[220px]">Sumber Rapat</th>
+                                        <th class="min-w-[260px]">Tindaklanjut</th>
+                                        <th class="min-w-[160px]">PIC</th>
+                                        <th class="min-w-[120px]">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($crossMeetingOpenDecisions as $openDecision)
+                                        <tr>
+                                            <td>{{ $openDecision->decision_key ?? '-' }}</td>
+                                            <td>
+                                                {{ $openDecision->meeting?->title ?? '-' }}
+                                                @if ($openDecision->meeting?->meeting_at)
+                                                    <div class="text-xs text-gray-500">
+                                                        {{ $openDecision->meeting->meeting_at->format('d/m/Y H:i') }}
+                                                    </div>
+                                                @endif
+                                            </td>
+                                            <td>{{ $openDecision->decision_text }}</td>
+                                            <td>{{ $openDecision->picUser?->name ?? ($openDecision->ownerDirectorate?->name ?? '-') }}
+                                            </td>
+                                            <td>
+                                                <span
+                                                    class="badge {{ $decisionStatusClass((string) $openDecision->status) }}">{{ $decisionStatusLabel((string) $openDecision->status) }}</span>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                @endif
+
                 @if ($meeting->decisions->count() > 0)
                     <div class="overflow-x-auto">
                         <table class="table table-striped">
                             <thead>
                                 <tr>
                                     <th class="min-w-[40px]">No</th>
+                                    <th class="min-w-[120px]">Key</th>
                                     <th class="min-w-[280px]">Tindaklanjut</th>
                                     <th class="min-w-[180px]">PIC Direktorat</th>
                                     <th class="min-w-[180px]">PIC User</th>
@@ -717,6 +810,7 @@
                                     @endphp
                                     <tr>
                                         <td>{{ $index + 1 }}</td>
+                                        <td>{{ $decision->decision_key ?? '-' }}</td>
                                         <td>{{ $decision->decision_text }}</td>
                                         <td>{{ $decision->ownerDirectorate?->name ?? '-' }}</td>
                                         <td>{{ $decision->picUser?->name ?? '-' }}</td>

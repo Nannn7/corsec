@@ -14,6 +14,7 @@
         $isEdit = isset($meeting);
         $isEditableStatus = !$isEdit || in_array((string) $meeting->status, ['draft', 'returned_by_corsec', 'returned_by_direktorat'], true);
         $meetingAt = $meeting?->meeting_at;
+        $selectedMeetingType = old('meeting_type', $meeting?->meeting_type);
 
         $selectedDirectorates = old(
             'participants',
@@ -49,6 +50,14 @@
                 'owner_directorate_id' => '',
                 'pic_user_id' => '',
             ];
+        }
+
+        $meetingDates = old('meeting_dates');
+        if (!is_array($meetingDates)) {
+            $meetingDates = [];
+        }
+        if (count($meetingDates) === 0 && !$isEdit && old('meeting_date')) {
+            $meetingDates[] = old('meeting_date');
         }
 
         $directorateOptions = $directorates
@@ -92,11 +101,11 @@
                         <div class="flex flex-col">
                             <label class="form-label">Kategori Rapat <span class="text-danger">*</span></label>
                             <select class="select @error('meeting_type') border-danger bg-danger-light @enderror"
-                                name="meeting_type" required>
+                                name="meeting_type" id="meeting_type" required>
                                 <option value="">- Pilih Kategori -</option>
                                 @foreach ($typeOptions as $value => $label)
                                     <option value="{{ $value }}"
-                                        {{ old('meeting_type', $meeting?->meeting_type) === $value ? 'selected' : '' }}>
+                                        {{ $selectedMeetingType === $value ? 'selected' : '' }}>
                                         {{ $label }}
                                     </option>
                                 @endforeach
@@ -114,11 +123,11 @@
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
                         </div>
-                        <div class="flex flex-col">
+                        <div class="flex flex-col" id="single-meeting-date-wrap">
                             <label class="form-label">Tanggal Rapat <span class="text-danger">*</span></label>
                             <input class="input @error('meeting_date') border-danger bg-danger-light @enderror"
                                 type="date" name="meeting_date"
-                                value="{{ old('meeting_date', optional($meetingAt)->format('Y-m-d')) }}" required>
+                                value="{{ old('meeting_date', optional($meetingAt)->format('Y-m-d')) }}">
                             @error('meeting_date')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
@@ -150,6 +159,39 @@
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
                         </div>
+
+                        @if (!$isEdit)
+                            <div class="flex flex-col md:col-span-2 hidden" id="batch-meeting-dates-wrap">
+                                <div class="border border-gray-200 rounded-xl p-4 grid gap-3">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div>
+                                            <div class="font-semibold text-gray-800">Batch Jadwal Rapat (Khusus Direktorat)</div>
+                                            <div class="text-xs text-gray-500">Bisa input beberapa tanggal sekaligus (maksimal 31).</div>
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-light-primary" id="add-meeting-date-row">
+                                            <i class="ki-filled ki-plus"></i> Tambah Tanggal
+                                        </button>
+                                    </div>
+                                    <div id="meeting-date-rows" class="grid gap-2">
+                                        @foreach ($meetingDates as $index => $meetingDate)
+                                            <div class="flex items-center gap-2 meeting-date-row">
+                                                <input class="input flex-1 @error('meeting_dates.' . $index) border-danger bg-danger-light @enderror"
+                                                    type="date" name="meeting_dates[]" value="{{ $meetingDate }}">
+                                                <button type="button" class="btn btn-xs btn-danger remove-meeting-date-row">Hapus</button>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                    @error('meeting_dates')
+                                        <em class="text-sm alert text-danger">{{ $message }}</em>
+                                    @enderror
+                                    @foreach ($errors->get('meeting_dates.*') as $messages)
+                                        @foreach ($messages as $message)
+                                            <em class="text-sm alert text-danger">{{ $message }}</em>
+                                        @endforeach
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endif
                     </div>
 
                     <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -168,7 +210,7 @@
                                 @endforeach
                             </div>
                         </div>
-                        <div class="card card-grid border border-gray-200">
+                        <div class="card card-grid border border-gray-200" id="participant-users-card">
                             <div class="card-header py-3">
                                 <h4 class="card-title text-sm">Peserta User (Opsional)</h4>
                             </div>
@@ -190,7 +232,7 @@
                         </div>
                     </div>
 
-                    <div class="border-t border-gray-200 pt-5">
+                    <div class="border-t border-gray-200 pt-5" id="agenda-section">
                         <div class="flex items-center justify-between gap-2 mb-3">
                             <h4 class="font-semibold text-gray-800">Agenda Rapat</h4>
                             <button type="button" class="btn btn-sm btn-light-primary" id="add-agenda-row">
@@ -286,11 +328,19 @@
 @push('scripts')
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            const DIREKTORAT_TYPE = 'rapat_direktorat';
             const agendaRows = document.getElementById('agenda-rows');
             const addAgendaButton = document.getElementById('add-agenda-row');
             const submitInput = document.getElementById('submit_for_approval');
             const meetingForm = document.getElementById('meeting-form');
-            if (!agendaRows || !addAgendaButton || !meetingForm) {
+            const meetingTypeSelect = document.getElementById('meeting_type');
+            const participantUsersCard = document.getElementById('participant-users-card');
+            const agendaSection = document.getElementById('agenda-section');
+            const batchMeetingDatesWrap = document.getElementById('batch-meeting-dates-wrap');
+            const meetingDateRows = document.getElementById('meeting-date-rows');
+            const addMeetingDateRowButton = document.getElementById('add-meeting-date-row');
+
+            if (!agendaRows || !addAgendaButton || !meetingForm || !meetingTypeSelect) {
                 return;
             }
 
@@ -314,6 +364,19 @@
                 return html;
             };
 
+            const setSectionDisabled = (section, disabled) => {
+                if (!section) {
+                    return;
+                }
+                section.querySelectorAll('input, select, textarea, button').forEach((field) => {
+                    if (field.id === 'add-agenda-row' || field.id === 'add-meeting-date-row') {
+                        field.disabled = disabled;
+                        return;
+                    }
+                    field.disabled = disabled;
+                });
+            };
+
             const renumberAgendaRows = () => {
                 agendaRows.querySelectorAll('.agenda-row').forEach((row, index) => {
                     const titleNode = row.querySelector('.font-medium');
@@ -322,9 +385,60 @@
                     }
 
                     row.querySelectorAll('[name]').forEach((input) => {
-                        input.name = input.name.replace(/agendas\\[\\d+\\]/, `agendas[${index}]`);
-                    });
+                            input.name = input.name.replace(/agendas\\[\\d+\\]/, `agendas[${index}]`);
+                        });
                 });
+            };
+
+            const buildMeetingDateRow = (value = '') => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'flex items-center gap-2 meeting-date-row';
+                wrapper.innerHTML = `
+                    <input class="input flex-1" type="date" name="meeting_dates[]" value="${value}">
+                    <button type="button" class="btn btn-xs btn-danger remove-meeting-date-row">Hapus</button>
+                `;
+                return wrapper;
+            };
+
+            const ensureMeetingDateRow = () => {
+                if (!meetingDateRows) {
+                    return;
+                }
+                if (meetingDateRows.querySelectorAll('.meeting-date-row').length === 0) {
+                    meetingDateRows.appendChild(buildMeetingDateRow(''));
+                }
+            };
+
+            const toggleDirektoratMode = () => {
+                const isDirektoratMeeting = meetingTypeSelect.value === DIREKTORAT_TYPE;
+
+                if (participantUsersCard) {
+                    participantUsersCard.classList.toggle('hidden', isDirektoratMeeting);
+                    participantUsersCard.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+                        checkbox.disabled = isDirektoratMeeting;
+                        if (isDirektoratMeeting) {
+                            checkbox.checked = false;
+                        }
+                    });
+                }
+
+                if (agendaSection) {
+                    agendaSection.classList.toggle('hidden', isDirektoratMeeting);
+                    setSectionDisabled(agendaSection, isDirektoratMeeting);
+                    if (!isDirektoratMeeting) {
+                        agendaSection.querySelectorAll('input[name*="[title]"]').forEach((input) => {
+                            input.required = true;
+                        });
+                    }
+                }
+
+                if (batchMeetingDatesWrap) {
+                    batchMeetingDatesWrap.classList.toggle('hidden', !isDirektoratMeeting);
+                    setSectionDisabled(batchMeetingDatesWrap, !isDirektoratMeeting);
+                    if (isDirektoratMeeting) {
+                        ensureMeetingDateRow();
+                    }
+                }
             };
 
             addAgendaButton.addEventListener('click', function() {
@@ -374,11 +488,45 @@
                 }
             });
 
+            if (addMeetingDateRowButton && meetingDateRows) {
+                addMeetingDateRowButton.addEventListener('click', function() {
+                    if (meetingDateRows.querySelectorAll('.meeting-date-row').length >= 31) {
+                        return;
+                    }
+                    meetingDateRows.appendChild(buildMeetingDateRow(''));
+                });
+
+                meetingDateRows.addEventListener('click', function(event) {
+                    const removeButton = event.target.closest('.remove-meeting-date-row');
+                    if (!removeButton) {
+                        return;
+                    }
+
+                    const row = removeButton.closest('.meeting-date-row');
+                    if (!row) {
+                        return;
+                    }
+
+                    if (meetingDateRows.querySelectorAll('.meeting-date-row').length <= 1) {
+                        const input = row.querySelector('input[name="meeting_dates[]"]');
+                        if (input) {
+                            input.value = '';
+                        }
+                        return;
+                    }
+
+                    row.remove();
+                });
+            }
+
             meetingForm.querySelectorAll('button[data-submit-mode]').forEach((button) => {
                 button.addEventListener('click', function() {
                     submitInput.value = this.getAttribute('data-submit-mode') === 'approval' ? '1' : '0';
                 });
             });
+
+            meetingTypeSelect.addEventListener('change', toggleDirektoratMode);
+            toggleDirektoratMode();
         });
     </script>
 @endpush

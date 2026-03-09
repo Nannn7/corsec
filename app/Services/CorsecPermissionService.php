@@ -385,6 +385,7 @@ class CorsecPermissionService
             'can_read' => (bool) ($user?->can('corsec.read') ?? false),
             'can_create' => (bool) ($user?->can('corsec.create') ?? false),
             'can_export' => (bool) ($user?->can('corsec.export') ?? false),
+            'can_delete' => (bool) ($user?->can('corsec.delete') ?? false),
             'can_edit_action' => $this->canCorsecUpdateAction($user),
         ];
     }
@@ -392,6 +393,10 @@ class CorsecPermissionService
     public function meetingDetailFlags(Meeting $meeting, Collection $approvals, ?User $user): array
     {
         $status = (string) ($meeting->status ?? '');
+        $isDirektoratMeeting = (string) ($meeting->meeting_type ?? '') === Meeting::TYPE_DIREKTORAT;
+        $hasOnScheduleResponse = (string) ($meeting->directorate_response_status ?? '') === Meeting::RESPONSE_ON_SCHEDULE;
+        $isCancelledByDirektorat = (string) ($meeting->directorate_response_status ?? '') === Meeting::RESPONSE_CANCEL
+            || $status === Meeting::STATUS_CANCELLED_DIREKTORAT;
 
         $isAdmin = (bool) ($user?->hasRole('administrator') ?? false);
         $isChecker = (bool) ($user?->hasRole('checker') ?? false);
@@ -420,6 +425,10 @@ class CorsecPermissionService
         $canDirectorateActor = $isAdmin
             || $isAssignedUser
             || ($actorDirectorateId > 0 && $targetDirectorateIds->contains($actorDirectorateId));
+
+        if ($isDirektoratMeeting) {
+            $canDirectorateActor = $isAdmin || $isAssignedUser;
+        }
 
         $canEdit = ($isAdmin || (int) ($meeting->created_by ?? 0) === $actorUserId)
             && in_array($status, [
@@ -479,7 +488,9 @@ class CorsecPermissionService
         $isExecutiveOfficer = $this->isExecutiveOfficer($user);
         $isDeputyDirector = $this->isDeputyDirector($user);
 
-        $canManageMinutes = $isAdmin || $isCorsecDirectorate || (int) ($meeting->created_by ?? 0) === $actorUserId;
+        $canManageMinutes = $isDirektoratMeeting
+            ? ($isAdmin || $isAssignedUser)
+            : ($isAdmin || $isCorsecDirectorate || (int) ($meeting->created_by ?? 0) === $actorUserId);
 
         $updatableDecisionIds = $meeting->decisions
             ->filter(function (MeetingDecision $decision) use ($isAdmin, $actorUserId, $actorDirectorateId, $canDirectorateActor) {
@@ -519,14 +530,24 @@ class CorsecPermissionService
             'can_corsec_approval' => $status === Meeting::STATUS_WAITING_CORSEC_APPROVAL
                 && ($isAdmin || ($isChecker && $isCorsecDirectorate))
                 && !$userHasCorsecAction,
-            'can_mark_pending_direktorat' => $canDirectorateActor
+            'can_mark_pending_direktorat' => !$isDirektoratMeeting
+                && $canDirectorateActor
                 && in_array($status, [Meeting::STATUS_JADWAL_TERKIRIM, Meeting::STATUS_RETURNED_BY_DIREKTORAT], true),
-            'can_directorate_submit' => $canDirectorateActor
+            'can_directorate_response' => $isDirektoratMeeting
+                && !$isCancelledByDirektorat
+                && $canDirectorateActor
                 && in_array($status, [
                     Meeting::STATUS_JADWAL_TERKIRIM,
                     Meeting::STATUS_PENDING_DIREKTORAT,
                     Meeting::STATUS_RETURNED_BY_DIREKTORAT,
                 ], true),
+            'can_directorate_submit' => $canDirectorateActor
+                && in_array($status, [
+                    Meeting::STATUS_JADWAL_TERKIRIM,
+                    Meeting::STATUS_PENDING_DIREKTORAT,
+                    Meeting::STATUS_RETURNED_BY_DIREKTORAT,
+                ], true)
+                && (!$isDirektoratMeeting || ($hasOnScheduleResponse && !$isCancelledByDirektorat)),
             'can_directorate_checker_approval' => $status === Meeting::STATUS_WAITING_DIREKTORAT_APPROVAL
                 && !$checkerApprovedInRound
                 && ($isAdmin || ($isChecker && $isExecutiveOfficer && $canDirectorateActor))
@@ -539,7 +560,8 @@ class CorsecPermissionService
                 && in_array($status, [Meeting::STATUS_DATA_TERKIRIM, Meeting::STATUS_PROSES_PEMBUATAN_NOTULEN], true),
             'can_finalize_minutes' => $canManageMinutes
                 && in_array($status, [Meeting::STATUS_PROSES_PEMBUATAN_NOTULEN, Meeting::STATUS_PROSES_SIRKULASI_TANDATANGAN], true),
-            'can_input_followup' => in_array($status, [Meeting::STATUS_NOTULEN_FINAL, Meeting::STATUS_PROSES_TINDAKLANJUT_HASIL_RAPAT], true),
+            'can_input_followup' => in_array($status, [Meeting::STATUS_NOTULEN_FINAL, Meeting::STATUS_PROSES_TINDAKLANJUT_HASIL_RAPAT], true)
+                && (!$isDirektoratMeeting || $isAdmin || $isAssignedUser),
             'can_complete_followup' => $canManageMinutes
                 && in_array($status, [Meeting::STATUS_NOTULEN_FINAL, Meeting::STATUS_PROSES_TINDAKLANJUT_HASIL_RAPAT], true)
                 && $allDecisionsDone,
@@ -598,6 +620,7 @@ class CorsecPermissionService
                         'closed',
                         'verified',
                         Meeting::STATUS_DONE_TINDAKLANJUT_HASIL_RAPAT,
+                        Meeting::STATUS_CANCELLED_DIREKTORAT,
                     ]);
             });
 

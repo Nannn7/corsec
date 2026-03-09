@@ -11,6 +11,8 @@ class CorsecDatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // $this->call([]);
+        $this->call([
+            CorsecMasterDataSeeder::class,
+        ]);
     }
 }

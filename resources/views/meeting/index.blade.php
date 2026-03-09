@@ -116,6 +116,50 @@
 @endsection
 
 @push('scripts')
+    <script type="text/javascript">
+        function deleteData(rowKey) {
+            const element = document.querySelector('#meeting-table');
+            if (!element) {
+                return;
+            }
+
+            const baseUrl = element.getAttribute('data-base-url');
+            if (!baseUrl) {
+                return;
+            }
+
+            Swal.fire({
+                title: 'Apakah Anda yakin?',
+                text: 'Meeting yang dihapus tidak dapat dikembalikan!',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Ya, hapus!',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (!result.isConfirmed) return;
+
+                $.ajaxSetup({
+                    headers: {
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                });
+
+                $.ajax(`${baseUrl}/${rowKey}`, {
+                    type: 'DELETE'
+                }).then((response) => {
+                    Swal.fire('Terhapus!', response.message ?? 'Meeting berhasil dihapus.', 'success').then(() => {
+                        window.location.reload();
+                    });
+                }).catch((error) => {
+                    const message = error?.responseJSON?.message ?? 'Terjadi kesalahan saat menghapus meeting.';
+                    Swal.fire('Error!', message, 'error');
+                });
+            });
+        }
+    </script>
+
     <script type="module">
         const bootstrapMeetingTable = () => {
             const element = document.querySelector('#meeting-table');
@@ -131,6 +175,7 @@
             const actorId = @json((int) ($permissionFlags['actor_id'] ?? 0));
             const canRead = @json((bool) ($permissionFlags['can_read'] ?? false));
             const canEditAction = @json((bool) ($permissionFlags['can_edit_action'] ?? false));
+            const canDelete = @json((bool) ($permissionFlags['can_delete'] ?? false));
 
             const statusBadgeClass = (status) => {
                 const val = (status ?? '').toString().toLowerCase();
@@ -148,12 +193,14 @@
                     proses_tindaklanjut_hasil_rapat: 'badge-primary',
                     notulen_final: 'badge-success',
                     done_tindaklanjut_hasil_rapat: 'badge-success',
+                    cancelled_direktorat: 'badge-danger',
                 };
 
                 return map[val] ?? 'badge-light';
             };
 
             const editableStatuses = ['draft', 'returned_by_corsec', 'returned_by_direktorat'];
+            const deletableStatuses = ['draft', 'returned_by_corsec', 'returned_by_direktorat'];
             const dataTableOptions = {
                 apiEndpoint: apiUrl,
                 pageSize: 10,
@@ -194,6 +241,7 @@
                             const status = (data.status ?? '').toString().toLowerCase();
                             const canEdit = (isAdmin || Number(data.created_by) === Number(actorId)) &&
                                 editableStatuses.includes(status);
+                            const canDeleteStatus = isAdmin || deletableStatuses.includes(status);
                             const rowKey = data.uuid ?? data.id;
                             let html = `<div class="flex flex-nowrap justify-center">`;
 
@@ -209,6 +257,12 @@
                                         <i class="ki-outline ki-notepad-edit"></i>
                                     </a>`;
                                 }
+                            }
+
+                            if (canDelete && canDeleteStatus) {
+                                html += `<a onclick="deleteData('${rowKey}')" class="btn btn-sm btn-icon btn-clear btn-danger" title="Hapus">
+                                    <i class="ki-outline ki-trash"></i>
+                                </a>`;
                             }
 
                             html += `</div>`;

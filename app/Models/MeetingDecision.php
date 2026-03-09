@@ -24,6 +24,9 @@ class MeetingDecision extends Model
 
     protected $fillable = [
         'meeting_id',
+        'decision_key',
+        'root_decision_id',
+        'source_decision_id',
         'decision_text',
         'owner_directorate_id',
         'pic_user_id',
@@ -38,6 +41,8 @@ class MeetingDecision extends Model
     protected $casts = [
         'target_date' => 'date',
         'closed_at' => 'datetime',
+        'root_decision_id' => 'integer',
+        'source_decision_id' => 'integer',
         'deleted_at' => 'datetime',
     ];
 
@@ -59,6 +64,16 @@ class MeetingDecision extends Model
     public function updates(): HasMany
     {
         return $this->hasMany(DecisionUpdate::class, 'meeting_decision_id');
+    }
+
+    public function rootDecision(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'root_decision_id');
+    }
+
+    public function sourceDecision(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'source_decision_id');
     }
 
     public function comments(): MorphMany
