@@ -210,6 +210,8 @@ class MeetingController extends Controller
 
         return view('corsec::meeting.create', [
             'typeOptions' => Meeting::typeOptionsFromMasterData(true),
+            'direktoratTypeCodes' => Meeting::direktoratTypeCodes(),
+            'mandatoryDirectorateIds' => $this->resolveMandatoryDirectorateIds(),
             ...$options,
         ]);
     }
@@ -230,7 +232,7 @@ class MeetingController extends Controller
             $meetingDates = collect([(string) $payload['meeting_date']]);
         }
 
-        $isDirektoratMeeting = (string) ($payload['meeting_type'] ?? '') === Meeting::TYPE_DIREKTORAT;
+        $isDirektoratMeeting = Meeting::isDirektoratTypeCode((string) ($payload['meeting_type'] ?? ''));
         if (!$isDirektoratMeeting) {
             $meetingDates = $meetingDates->take(1)->values();
         }
@@ -259,7 +261,7 @@ class MeetingController extends Controller
                 );
                 $this->syncAgendas(
                     $meeting,
-                    (string) ($payload['meeting_type'] ?? '') === Meeting::TYPE_DIREKTORAT
+                    Meeting::isDirektoratTypeCode((string) ($payload['meeting_type'] ?? ''))
                         ? []
                         : (array) ($payload['agendas'] ?? [])
                 );
@@ -391,6 +393,8 @@ class MeetingController extends Controller
         return view('corsec::meeting.create', [
             'meeting' => $meeting,
             'typeOptions' => Meeting::typeOptionsFromMasterData(true),
+            'direktoratTypeCodes' => Meeting::direktoratTypeCodes(),
+            'mandatoryDirectorateIds' => $this->resolveMandatoryDirectorateIds(),
             ...$options,
         ]);
     }
@@ -424,7 +428,7 @@ class MeetingController extends Controller
             );
             $this->syncAgendas(
                 $meeting,
-                (string) ($payload['meeting_type'] ?? '') === Meeting::TYPE_DIREKTORAT
+                Meeting::isDirektoratTypeCode((string) ($payload['meeting_type'] ?? ''))
                     ? []
                     : (array) ($payload['agendas'] ?? [])
             );
@@ -932,8 +936,14 @@ class MeetingController extends Controller
             ->unique()
             ->values();
 
-        if ($meetingType === Meeting::TYPE_DIREKTORAT) {
-            $participantCount = collect((array) ($payload['participants'] ?? []))->filter()->count();
+        if (Meeting::isDirektoratTypeCode($meetingType)) {
+            $participantCount = collect((array) ($payload['participants'] ?? []))
+                ->filter()
+                ->map(fn($id) => (int) $id)
+                ->merge($this->resolveMandatoryDirectorateIds())
+                ->filter()
+                ->unique()
+                ->count();
             if ($participantCount === 0) {
                 throw ValidationException::withMessages([
                     'participants' => 'Untuk rapat direktorat, minimal 1 peserta direktorat wajib dipilih.',
@@ -942,7 +952,7 @@ class MeetingController extends Controller
 
             if ($meetingDates->isEmpty() && empty($payload['meeting_date'])) {
                 throw ValidationException::withMessages([
-                    'meeting_date' => 'Tanggal rapat wajib diisi.',
+                    'meeting_dates' => 'Minimal 1 tanggal rapat wajib diisi untuk rapat direktorat.',
                 ]);
             }
         } elseif (empty($payload['meeting_date'])) {
@@ -973,10 +983,17 @@ class MeetingController extends Controller
             ->map(fn($id) => (int) $id)
             ->unique()
             ->values();
+        $mandatoryDirectorateIds = collect();
 
-        if ($meetingType === Meeting::TYPE_DIREKTORAT) {
+        if (Meeting::isDirektoratTypeCode($meetingType)) {
+            $mandatoryDirectorateIds = collect($this->resolveMandatoryDirectorateIds())
+                ->filter()
+                ->map(fn($id) => (int) $id)
+                ->unique()
+                ->values();
+
             $cleanDirectorateIds = $cleanDirectorateIds
-                ->merge($this->resolveMandatoryDirectorateIds())
+                ->merge($mandatoryDirectorateIds)
                 ->unique()
                 ->values();
         }
@@ -987,14 +1004,30 @@ class MeetingController extends Controller
             ->unique()
             ->values();
 
-        if ($meetingType === Meeting::TYPE_DIREKTORAT) {
-            $autoPicUsersByDirectorate = $this->resolveStaffPicUserIdsByDirectorate($cleanDirectorateIds->all(), true);
-            $cleanUserIds = $cleanUserIds
-                ->merge(array_values($autoPicUsersByDirectorate))
-                ->filter()
-                ->map(fn($id) => (int) $id)
-                ->unique()
+        if (Meeting::isDirektoratTypeCode($meetingType)) {
+            $autoPicDirectorateIds = $cleanDirectorateIds
+                ->reject(fn($id) => $mandatoryDirectorateIds->contains((int) $id))
                 ->values();
+
+            if ($autoPicDirectorateIds->isNotEmpty()) {
+                $operationalAutoPicDirectorateIds = $this->filterOperationalMeetingDirectorateIds($autoPicDirectorateIds->all());
+                if ($operationalAutoPicDirectorateIds->isEmpty()) {
+                    throw ValidationException::withMessages([
+                        'participants' => 'Peserta terpilih hanya unit monitoring. Pilih minimal 1 unit operasional untuk rapat direktorat.',
+                    ]);
+                }
+
+                $autoPicUsersByDirectorate = $this->resolveStaffPicUserIdsByDirectorate(
+                    $operationalAutoPicDirectorateIds->all(),
+                    true
+                );
+                $cleanUserIds = $cleanUserIds
+                    ->merge(array_values($autoPicUsersByDirectorate))
+                    ->filter()
+                    ->map(fn($id) => (int) $id)
+                    ->unique()
+                    ->values();
+            }
         }
 
         $participantUsers = $cleanUserIds->isEmpty()
@@ -1029,10 +1062,17 @@ class MeetingController extends Controller
             ->map(fn($id) => (int) $id)
             ->unique()
             ->values();
+        $mandatoryDirectorateIds = collect();
 
-        if ($meetingType === Meeting::TYPE_DIREKTORAT) {
+        if (Meeting::isDirektoratTypeCode($meetingType)) {
+            $mandatoryDirectorateIds = collect($this->resolveMandatoryDirectorateIds())
+                ->filter()
+                ->map(fn($id) => (int) $id)
+                ->unique()
+                ->values();
+
             $cleanDirectorateIds = $cleanDirectorateIds
-                ->merge($this->resolveMandatoryDirectorateIds())
+                ->merge($mandatoryDirectorateIds)
                 ->unique()
                 ->values();
         }
@@ -1050,11 +1090,23 @@ class MeetingController extends Controller
             );
         }
 
-        if ($meetingType !== Meeting::TYPE_DIREKTORAT || $cleanDirectorateIds->isEmpty()) {
+        if (!Meeting::isDirektoratTypeCode($meetingType) || $cleanDirectorateIds->isEmpty()) {
             return;
         }
 
-        $autoPicUsersByDirectorate = $this->resolveStaffPicUserIdsByDirectorate($cleanDirectorateIds->all(), true);
+        $autoPicDirectorateIds = $cleanDirectorateIds
+            ->reject(fn($id) => $mandatoryDirectorateIds->contains((int) $id))
+            ->values();
+        if ($autoPicDirectorateIds->isEmpty()) {
+            return;
+        }
+
+        $operationalAutoPicDirectorateIds = $this->filterOperationalMeetingDirectorateIds($autoPicDirectorateIds->all());
+        if ($operationalAutoPicDirectorateIds->isEmpty()) {
+            return;
+        }
+
+        $autoPicUsersByDirectorate = $this->resolveStaffPicUserIdsByDirectorate($operationalAutoPicDirectorateIds->all(), true);
         if (empty($autoPicUsersByDirectorate)) {
             return;
         }
@@ -1112,6 +1164,25 @@ class MeetingController extends Controller
         return $ids->filter()->unique()->values()->all();
     }
 
+    private function filterOperationalMeetingDirectorateIds(array $directorateIds): \Illuminate\Support\Collection
+    {
+        $directorateIds = collect($directorateIds)
+            ->filter()
+            ->map(fn($id) => (int) $id)
+            ->unique()
+            ->values();
+        if ($directorateIds->isEmpty()) {
+            return collect();
+        }
+
+        return Directorate::query()
+            ->whereIn('id', $directorateIds->all())
+            ->where('is_meeting_operational', true)
+            ->pluck('id')
+            ->map(fn($id) => (int) $id)
+            ->values();
+    }
+
     private function resolveStaffPicUserIdsByDirectorate(array $directorateIds, bool $failWhenMissing = false): array
     {
         $directorateIds = collect($directorateIds)
@@ -1124,54 +1195,70 @@ class MeetingController extends Controller
             return [];
         }
 
-        $staffUsers = User::query()
+        $operationalRoleNames = ['maker', 'checker', 'approver'];
+        $candidateUsers = User::query()
             ->whereIn('directorate_id', $directorateIds->all())
-            ->whereHas('position', function ($query) {
-                $query->where('name', 'ilike', '%staff%');
+            ->whereHas('roles', function ($query) use ($operationalRoleNames) {
+                $query->whereIn('name', $operationalRoleNames);
             })
+            ->with('position:id,name')
             ->orderBy('id')
-            ->get(['id', 'directorate_id']);
+            ->get(['id', 'directorate_id', 'position_id']);
 
         $mapping = [];
-        foreach ($staffUsers as $staffUser) {
-            $directorateId = (int) ($staffUser->directorate_id ?? 0);
-            if ($directorateId <= 0 || isset($mapping[$directorateId])) {
+        $scoreByDirectorate = [];
+        foreach ($candidateUsers as $candidateUser) {
+            $directorateId = (int) ($candidateUser->directorate_id ?? 0);
+            if ($directorateId <= 0) {
                 continue;
             }
-            $mapping[$directorateId] = (int) $staffUser->id;
-        }
 
-        $missingDirectorateIds = $directorateIds->filter(fn($id) => !isset($mapping[(int) $id]))->values();
-        if ($missingDirectorateIds->isNotEmpty()) {
-            $fallbackUsers = User::query()
-                ->whereIn('directorate_id', $missingDirectorateIds->all())
-                ->orderBy('id')
-                ->get(['id', 'directorate_id']);
+            $positionName = strtolower(trim((string) ($candidateUser->position?->name ?? '')));
+            $candidateScore = $this->resolveAutoPicCandidateScore($positionName);
 
-            foreach ($fallbackUsers as $fallbackUser) {
-                $directorateId = (int) ($fallbackUser->directorate_id ?? 0);
-                if ($directorateId <= 0 || isset($mapping[$directorateId])) {
-                    continue;
-                }
-                $mapping[$directorateId] = (int) $fallbackUser->id;
+            if (
+                !isset($mapping[$directorateId])
+                || $candidateScore < ($scoreByDirectorate[$directorateId] ?? PHP_INT_MAX)
+                || (
+                    $candidateScore === ($scoreByDirectorate[$directorateId] ?? PHP_INT_MAX)
+                    && (int) $candidateUser->id < (int) $mapping[$directorateId]
+                )
+            ) {
+                $mapping[$directorateId] = (int) $candidateUser->id;
+                $scoreByDirectorate[$directorateId] = $candidateScore;
             }
         }
 
         if ($failWhenMissing) {
             $missingDirectorateIds = $directorateIds->filter(fn($id) => !isset($mapping[(int) $id]))->values();
-            if ($missingDirectorateIds->isNotEmpty()) {
+            if ($missingDirectorateIds->isNotEmpty() && empty($mapping)) {
                 $missingNames = Directorate::query()
                     ->whereIn('id', $missingDirectorateIds->all())
                     ->pluck('name')
                     ->values()
                     ->all();
                 throw ValidationException::withMessages([
-                    'participants' => 'Belum ada user yang bisa dijadikan PIC untuk direktorat: ' . implode(', ', $missingNames),
+                    'participants' => 'Belum ada user operasional (maker/checker/approver) untuk direktorat terpilih: ' . implode(', ', $missingNames),
                 ]);
             }
         }
 
         return $mapping;
+    }
+
+    private function resolveAutoPicCandidateScore(string $positionName): int
+    {
+        if ($positionName !== '' && str_contains($positionName, 'staff')) {
+            return 1;
+        }
+        if ($positionName !== '' && str_contains($positionName, 'executive officer')) {
+            return 2;
+        }
+        if ($positionName !== '' && str_contains($positionName, 'deputy director')) {
+            return 3;
+        }
+
+        return 4;
     }
 
     private function syncAgendas(Meeting $meeting, array $agendas): void
@@ -1498,7 +1585,7 @@ class MeetingController extends Controller
     {
         $directorates = Directorate::query()
             ->orderBy('name')
-            ->get(['id', 'name', 'code']);
+            ->get(['id', 'name', 'code', 'is_meeting_operational']);
 
         $users = User::query()
             ->with(['directorate:id,name', 'position:id,name'])

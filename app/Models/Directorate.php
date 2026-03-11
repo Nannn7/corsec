@@ -19,6 +19,7 @@ class Directorate extends Model
         'name',
         'description',
         'status',
+        'is_meeting_operational',
         'authorized_at',
         'authorized_status',
         'authorized_by',
@@ -29,6 +30,7 @@ class Directorate extends Model
 
     protected $casts = [
         'status' => 'boolean',
+        'is_meeting_operational' => 'boolean',
         'authorized_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',

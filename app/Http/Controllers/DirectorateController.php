@@ -100,6 +100,7 @@ class DirectorateController extends Controller
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
                 'status' => $request->boolean('status', true),
+                'is_meeting_operational' => $request->boolean('is_meeting_operational', false),
                 'created_by' => $user->id,
                 'updated_by' => $user->id,
             ];
@@ -167,6 +168,10 @@ class DirectorateController extends Controller
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
                 'status' => $request->boolean('status', $directorate->status),
+                'is_meeting_operational' => $request->boolean(
+                    'is_meeting_operational',
+                    (bool) ($directorate->is_meeting_operational ?? false)
+                ),
                 'updated_by' => $user->id,
             ];
 
@@ -347,6 +352,7 @@ class DirectorateController extends Controller
                 'name',
                 'description',
                 'status',
+                'is_meeting_operational',
                 'created_at',
             ];
 

@@ -35,6 +35,7 @@ class DirectorateExport implements FromCollection, WithHeadings, WithMapping
             'Kode',
             'Nama',
             'Deskripsi',
+            'Tipe Unit Meeting',
             'Status',
             'Dibuat',
         ];
@@ -46,6 +47,7 @@ class DirectorateExport implements FromCollection, WithHeadings, WithMapping
             $row->code ?? '-',
             $row->name ?? '-',
             $row->description ?? '-',
+            (bool) ($row->is_meeting_operational ?? false) ? 'Unit Operasional' : 'Monitoring Only',
             $row->status ? 'Aktif' : 'Non-Aktif',
             $row->created_at ? $row->created_at->format('Y-m-d H:i:s') : '-',
         ];

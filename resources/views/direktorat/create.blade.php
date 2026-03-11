@@ -67,6 +67,28 @@
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
                         </div>
+
+                        <div class="flex flex-col">
+                            <label class="form-label">Tipe Unit Meeting</label>
+                            @php
+                                $meetingOperationalValue = old(
+                                    'is_meeting_operational',
+                                    isset($directorate) ? (int) ($directorate->is_meeting_operational ?? 0) : 0,
+                                );
+                            @endphp
+                            <select class="select @error('is_meeting_operational') border-danger bg-danger-light @enderror"
+                                name="is_meeting_operational">
+                                <option value="0" {{ (string) $meetingOperationalValue === '0' ? 'selected' : '' }}>
+                                    Monitoring Only
+                                </option>
+                                <option value="1" {{ (string) $meetingOperationalValue === '1' ? 'selected' : '' }}>
+                                    Unit Operasional
+                                </option>
+                            </select>
+                            @error('is_meeting_operational')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
                     </div>
 
                     <div class="flex justify-end mt-7 gap-2">

@@ -20,6 +20,7 @@ return new class extends Migration {
                 $table->string('name', 150);
                 $table->text('description')->nullable();
                 $table->boolean('status')->default(true)->index();
+                $table->boolean('is_meeting_operational')->default(false)->index();
 
                 // authorized fields
                 $table->timestamp('authorized_at')->nullable();
@@ -32,6 +33,13 @@ return new class extends Migration {
                 $table->foreignId('deleted_by')->nullable()->constrained('users')->nullOnDelete();
                 $table->softDeletes();
                 $table->timestamps();
+            });
+        }
+
+        // Compatibility guard: ensure flag column exists on legacy table shape.
+        if (Schema::hasTable('corsec_directorates') && !Schema::hasColumn('corsec_directorates', 'is_meeting_operational')) {
+            Schema::table('corsec_directorates', function (Blueprint $table) {
+                $table->boolean('is_meeting_operational')->default(false)->index();
             });
         }
 

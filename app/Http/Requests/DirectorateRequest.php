@@ -26,6 +26,7 @@ class DirectorateRequest extends FormRequest
             'name'        => ['required', 'string', 'max:150'],
             'description' => ['nullable', 'string'],
             'status'      => ['nullable', 'boolean'],
+            'is_meeting_operational' => ['nullable', 'boolean'],
         ];
     }
 
@@ -63,6 +64,7 @@ class DirectorateRequest extends FormRequest
             'name.string'   => 'Nama direktorat harus berupa teks.',
             'name.max'      => 'Nama direktorat maksimal 150 karakter.',
             'status.boolean' => 'Status harus bernilai aktif atau non-aktif.',
+            'is_meeting_operational.boolean' => 'Tipe unit meeting harus bernilai valid.',
         ];
     }
 }

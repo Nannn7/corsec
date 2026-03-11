@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Support\Str;
 use Modules\Corsec\Models\Concerns\HasAuditUsers;
 use Modules\Corsec\Models\Concerns\HasAuthorizedUsers;
 use Modules\Corsec\Models\Concerns\HasUuidColumn;
@@ -146,9 +147,55 @@ class Meeting extends Model
         ];
     }
 
+    public static function direktoratTypeCodes(): array
+    {
+        static $resolvedCodes = null;
+
+        if (is_array($resolvedCodes)) {
+            return $resolvedCodes;
+        }
+
+        $codes = collect([
+            self::TYPE_DIREKTORAT,
+        ]);
+
+        try {
+            $codes = $codes->merge(
+                MeetingType::query()
+                    ->where(function ($query) {
+                        $query->where('code', self::TYPE_DIREKTORAT)
+                            ->orWhereRaw('LOWER(name) LIKE ?', ['%rapat direktorat%']);
+                    })
+                    ->pluck('code')
+                    ->all()
+            );
+        } catch (\Throwable) {
+            // Ignore lookup failures and fallback to the constant value.
+        }
+
+        $resolvedCodes = $codes
+            ->filter(fn($code) => trim((string) $code) !== '')
+            ->map(fn($code) => Str::lower(trim((string) $code)))
+            ->unique()
+            ->values()
+            ->all();
+
+        return $resolvedCodes;
+    }
+
+    public static function isDirektoratTypeCode(?string $meetingType): bool
+    {
+        $normalizedMeetingType = Str::lower(trim((string) $meetingType));
+        if ($normalizedMeetingType === '') {
+            return false;
+        }
+
+        return in_array($normalizedMeetingType, self::direktoratTypeCodes(), true);
+    }
+
     public function isDirektoratType(): bool
     {
-        return (string) $this->meeting_type === self::TYPE_DIREKTORAT;
+        return self::isDirektoratTypeCode((string) $this->meeting_type);
     }
 
     public function getRouteKeyName(): string
