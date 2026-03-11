@@ -12,17 +12,28 @@
     @php
         $meeting = $meeting ?? null;
         $isEdit = isset($meeting);
-        $isEditableStatus = !$isEdit || in_array((string) $meeting->status, ['draft', 'returned_by_corsec', 'returned_by_direktorat'], true);
+        $isEditableStatus =
+            !$isEdit ||
+            in_array((string) $meeting->status, ['draft', 'returned_by_corsec', 'returned_by_direktorat'], true);
         $meetingAt = $meeting?->meeting_at;
         $selectedMeetingType = old('meeting_type', $meeting?->meeting_type);
 
         $selectedDirectorates = old(
             'participants',
-            $isEdit ? $meeting->participants->pluck('directorate_id')->filter()->map(fn($id) => (string) $id)->values()->all() : []
+            $isEdit
+                ? $meeting->participants
+                    ->pluck('directorate_id')
+                    ->filter()
+                    ->map(fn($id) => (string) $id)
+                    ->values()
+                    ->all()
+                : [],
         );
         $selectedUsers = old(
             'participant_users',
-            $isEdit ? $meeting->participants->pluck('user_id')->filter()->map(fn($id) => (string) $id)->values()->all() : []
+            $isEdit
+                ? $meeting->participants->pluck('user_id')->filter()->map(fn($id) => (string) $id)->values()->all()
+                : [],
         );
 
         $agendas = old('agendas');
@@ -61,10 +72,12 @@
         }
 
         $directorateOptions = $directorates
-            ->map(fn($d) => [
-                'id' => $d->id,
-                'name' => $d->name,
-            ])
+            ->map(
+                fn($d) => [
+                    'id' => $d->id,
+                    'name' => $d->name,
+                ],
+            )
             ->values();
 
         $userOptions = $users
@@ -76,6 +89,26 @@
                 ];
             })
             ->values();
+
+        $direktoratTypeCodes = collect($direktoratTypeCodes ?? [\Modules\Corsec\Models\Meeting::TYPE_DIREKTORAT])
+            ->map(fn($code) => strtolower(trim((string) $code)))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $mandatoryDirectorateIds = collect($mandatoryDirectorateIds ?? [])
+            ->filter()
+            ->map(fn($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $isDirektoratMeetingSelected = in_array(
+            strtolower(trim((string) $selectedMeetingType)),
+            $direktoratTypeCodes,
+            true,
+        );
     @endphp
 
     <div class="grid gap-5 lg:gap-7.5">
@@ -96,6 +129,17 @@
 
                     <input type="hidden" name="submit_for_approval" id="submit_for_approval"
                         value="{{ old('submit_for_approval', 0) }}">
+
+                    @if ($errors->any())
+                        <div class="rounded-lg border border-danger/30 bg-danger-light p-3">
+                            <div class="text-sm font-medium text-danger mb-1">Gagal menyimpan meeting:</div>
+                            <ul class="list-disc pl-5 text-sm text-danger space-y-0.5">
+                                @foreach ($errors->all() as $errorMessage)
+                                    <li>{{ $errorMessage }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endif
 
                     <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
                         <div class="flex flex-col">
@@ -143,9 +187,8 @@
                         </div>
                         <div class="flex flex-col md:col-span-2">
                             <label class="form-label">Tempat Rapat</label>
-                            <input class="input @error('location') border-danger bg-danger-light @enderror"
-                                type="text" name="location" maxlength="255"
-                                value="{{ old('location', $meeting?->location) }}"
+                            <input class="input @error('location') border-danger bg-danger-light @enderror" type="text"
+                                name="location" maxlength="255" value="{{ old('location', $meeting?->location) }}"
                                 placeholder="Contoh: Ruang Rapat Lantai 10">
                             @error('location')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
@@ -165,23 +208,31 @@
                                 <div class="border border-gray-200 rounded-xl p-4 grid gap-3">
                                     <div class="flex items-center justify-between gap-2">
                                         <div>
-                                            <div class="font-semibold text-gray-800">Batch Jadwal Rapat (Khusus Direktorat)</div>
-                                            <div class="text-xs text-gray-500">Bisa input beberapa tanggal sekaligus (maksimal 31).</div>
+                                            <div class="font-semibold text-gray-800">Batch Jadwal Rapat (Khusus Direktorat)
+                                            </div>
+                                            <div class="text-xs text-gray-500">Bisa input beberapa tanggal sekaligus
+                                                (maksimal 31).</div>
                                         </div>
-                                        <button type="button" class="btn btn-sm btn-light-primary" id="add-meeting-date-row">
+                                        <button type="button" class="btn btn-sm btn-light-primary"
+                                            id="add-meeting-date-row">
                                             <i class="ki-filled ki-plus"></i> Tambah Tanggal
                                         </button>
                                     </div>
                                     <div id="meeting-date-rows" class="grid gap-2">
                                         @foreach ($meetingDates as $index => $meetingDate)
                                             <div class="flex items-center gap-2 meeting-date-row">
-                                                <input class="input flex-1 @error('meeting_dates.' . $index) border-danger bg-danger-light @enderror"
+                                                <input
+                                                    class="input flex-1 @error('meeting_dates.' . $index) border-danger bg-danger-light @enderror"
                                                     type="date" name="meeting_dates[]" value="{{ $meetingDate }}">
-                                                <button type="button" class="btn btn-xs btn-danger remove-meeting-date-row">Hapus</button>
+                                                <button type="button"
+                                                    class="btn btn-xs btn-danger remove-meeting-date-row">Hapus</button>
                                             </div>
                                         @endforeach
                                     </div>
                                     @error('meeting_dates')
+                                        <em class="text-sm alert text-danger">{{ $message }}</em>
+                                    @enderror
+                                    @error('meeting_date')
                                         <em class="text-sm alert text-danger">{{ $message }}</em>
                                     @enderror
                                     @foreach ($errors->get('meeting_dates.*') as $messages)
@@ -197,22 +248,45 @@
                     <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
                         <div class="card card-grid border border-gray-200">
                             <div class="card-header py-3">
-                                <h4 class="card-title text-sm">Peserta Direktorat</h4>
+                                <h4 class="card-title text-sm">Pilih Peserta Rapat</h4>
                             </div>
                             <div class="card-body max-h-[260px] overflow-auto grid gap-2">
                                 @foreach ($directorates as $directorate)
+                                    @php
+                                        $isMandatoryDirectorate = in_array(
+                                            (int) $directorate->id,
+                                            $mandatoryDirectorateIds,
+                                            true,
+                                        );
+                                        $isOperationalDirectorate = (bool) ($directorate->is_meeting_operational ?? false);
+                                        $isCheckedDirectorate =
+                                            in_array((string) $directorate->id, $selectedDirectorates, true) ||
+                                            ($isDirektoratMeetingSelected && $isMandatoryDirectorate);
+                                    @endphp
                                     <label class="flex items-center gap-2 text-sm">
                                         <input class="checkbox checkbox-sm" type="checkbox" name="participants[]"
                                             value="{{ $directorate->id }}"
-                                            {{ in_array((string) $directorate->id, $selectedDirectorates, true) ? 'checked' : '' }}>
-                                        <span>{{ $directorate->name }}</span>
+                                            data-is-mandatory="{{ $isMandatoryDirectorate ? '1' : '0' }}"
+                                            {{ $isCheckedDirectorate ? 'checked' : '' }}
+                                            {{ $isDirektoratMeetingSelected && $isMandatoryDirectorate ? 'disabled' : '' }}>
+                                        <span>
+                                            {{ $directorate->name }}
+                                            @if (!$isOperationalDirectorate)
+                                                <span class="text-gray-500">(Monitoring Only)</span>
+                                            @endif
+                                        </span>
                                     </label>
                                 @endforeach
                             </div>
+                            @error('participants')
+                                <div class="px-3 pb-3">
+                                    <em class="text-sm alert text-danger">{{ $message }}</em>
+                                </div>
+                            @enderror
                         </div>
                         <div class="card card-grid border border-gray-200" id="participant-users-card">
                             <div class="card-header py-3">
-                                <h4 class="card-title text-sm">Peserta User (Opsional)</h4>
+                                <h4 class="card-title text-sm">Pilih User (Opsional)</h4>
                             </div>
                             <div class="card-body max-h-[260px] overflow-auto grid gap-2">
                                 @foreach ($users as $optionUser)
@@ -245,7 +319,8 @@
                                 <div class="p-4 border rounded-xl border-gray-200 agenda-row">
                                     <div class="flex justify-between items-center mb-3">
                                         <div class="font-medium text-gray-800">Agenda #{{ $index + 1 }}</div>
-                                        <button type="button" class="btn btn-xs btn-danger remove-agenda-row">Hapus</button>
+                                        <button type="button"
+                                            class="btn btn-xs btn-danger remove-agenda-row">Hapus</button>
                                     </div>
                                     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <div class="flex flex-col md:col-span-2">
@@ -311,7 +386,8 @@
                     </div>
 
                     <div class="flex justify-end gap-2">
-                        <button type="submit" class="btn btn-light" data-submit-mode="draft" {{ !$isEditableStatus ? 'disabled' : '' }}>
+                        <button type="submit" class="btn btn-light" data-submit-mode="draft"
+                            {{ !$isEditableStatus ? 'disabled' : '' }}>
                             Simpan Draft
                         </button>
                         <button type="submit" class="btn btn-primary" data-submit-mode="approval"
@@ -328,12 +404,15 @@
 @push('scripts')
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const DIREKTORAT_TYPE = 'rapat_direktorat';
+            const DIREKTORAT_TYPES = new Set(@json($direktoratTypeCodes));
             const agendaRows = document.getElementById('agenda-rows');
             const addAgendaButton = document.getElementById('add-agenda-row');
             const submitInput = document.getElementById('submit_for_approval');
             const meetingForm = document.getElementById('meeting-form');
             const meetingTypeSelect = document.getElementById('meeting_type');
+            const singleMeetingDateWrap = document.getElementById('single-meeting-date-wrap');
+            const singleMeetingDateInput = singleMeetingDateWrap ? singleMeetingDateWrap.querySelector(
+                'input[name="meeting_date"]') : null;
             const participantUsersCard = document.getElementById('participant-users-card');
             const agendaSection = document.getElementById('agenda-section');
             const batchMeetingDatesWrap = document.getElementById('batch-meeting-dates-wrap');
@@ -346,6 +425,8 @@
 
             const directorateOptions = @json($directorateOptions);
             const userOptions = @json($userOptions);
+            const mandatoryDirectorateIds = new Set(@json($mandatoryDirectorateIds));
+            const participantDirectorateCheckboxes = meetingForm.querySelectorAll('input[name="participants[]"]');
 
             const buildSelectOptions = (options, placeholder) => {
                 let html = `<option value=\"\">${placeholder}</option>`;
@@ -362,6 +443,25 @@
                     html += `<option value=\"${item.id}\">${label}</option>`;
                 });
                 return html;
+            };
+
+            const normalizeMeetingType = (value) => String(value ?? '').trim().toLowerCase();
+
+            const toggleMandatoryDirectorateParticipants = (isDirektoratMeeting) => {
+                participantDirectorateCheckboxes.forEach((checkbox) => {
+                    const directorateId = Number(checkbox.value);
+                    if (!mandatoryDirectorateIds.has(directorateId)) {
+                        return;
+                    }
+
+                    if (isDirektoratMeeting) {
+                        checkbox.checked = true;
+                        checkbox.disabled = true;
+                        return;
+                    }
+
+                    checkbox.disabled = false;
+                });
             };
 
             const setSectionDisabled = (section, disabled) => {
@@ -385,8 +485,9 @@
                     }
 
                     row.querySelectorAll('[name]').forEach((input) => {
-                            input.name = input.name.replace(/agendas\\[\\d+\\]/, `agendas[${index}]`);
-                        });
+                        input.name = input.name.replace(/agendas\\[\\d+\\]/,
+                            `agendas[${index}]`);
+                    });
                 });
             };
 
@@ -410,7 +511,8 @@
             };
 
             const toggleDirektoratMode = () => {
-                const isDirektoratMeeting = meetingTypeSelect.value === DIREKTORAT_TYPE;
+                const isDirektoratMeeting = DIREKTORAT_TYPES.has(normalizeMeetingType(meetingTypeSelect.value));
+                toggleMandatoryDirectorateParticipants(isDirektoratMeeting);
 
                 if (participantUsersCard) {
                     participantUsersCard.classList.toggle('hidden', isDirektoratMeeting);
@@ -438,6 +540,13 @@
                     if (isDirektoratMeeting) {
                         ensureMeetingDateRow();
                     }
+                }
+
+                if (singleMeetingDateWrap && batchMeetingDatesWrap) {
+                    singleMeetingDateWrap.classList.toggle('hidden', isDirektoratMeeting);
+                }
+                if (singleMeetingDateInput && batchMeetingDatesWrap) {
+                    singleMeetingDateInput.disabled = isDirektoratMeeting;
                 }
             };
 
@@ -521,7 +630,8 @@
 
             meetingForm.querySelectorAll('button[data-submit-mode]').forEach((button) => {
                 button.addEventListener('click', function() {
-                    submitInput.value = this.getAttribute('data-submit-mode') === 'approval' ? '1' : '0';
+                    submitInput.value = this.getAttribute('data-submit-mode') === 'approval' ? '1' :
+                        '0';
                 });
             });
 

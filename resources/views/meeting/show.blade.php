@@ -171,7 +171,7 @@
                             <span
                                 class="badge {{ $statusBadgeClass }}">{{ $statusLabels[$status] ?? ($status ?? '-') }}</span>
                         </div>
-                        @if ((string) ($meeting->meeting_type ?? '') === 'rapat_direktorat')
+                        @if ($meeting->isDirektoratType())
                             <div class="flex justify-between items-center">
                                 <span class="text-gray-600">Tanggapan Direktorat:</span>
                                 <span

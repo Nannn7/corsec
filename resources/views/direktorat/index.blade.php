@@ -56,6 +56,9 @@
                                     <span class="sort"> <span class="sort-label"> Deskripsi </span>
                                         <span class="sort-icon"> </span> </span>
                                 </th>
+                                <th class="min-w-[180px]" data-datatable-column="is_meeting_operational">
+                                    <span class="sort-label"> Tipe Unit Meeting </span>
+                                </th>
                                 <th class="min-w-[100px]" data-datatable-column="status">
                                     <span class="sort-label"> Status </span>
                                 </th>
@@ -194,6 +197,13 @@
                 },
                 description: {
                     title: 'Deskripsi',
+                },
+                is_meeting_operational: {
+                    title: 'Tipe Unit Meeting',
+                    render: (item, data) => {
+                        const isOperational = Number(data.is_meeting_operational) === 1;
+                        return `<span class="badge badge-${isOperational ? 'info' : 'secondary'}">${isOperational ? 'Unit Operasional' : 'Monitoring Only'}</span>`;
+                    }
                 },
                 status: {
                     title: 'Status',

@@ -31,6 +31,7 @@ class CorsecMasterDataSeeder extends Seeder
                     'name' => $data['name'],
                     'description' => $this->nullableText($data['description'] ?? null),
                     'status' => (bool) ($data['status'] ?? true),
+                    'is_meeting_operational' => (bool) ($data['is_meeting_operational'] ?? false),
                     'authorized_status' => 'authorized',
                     'deleted_by' => null,
                 ]
@@ -113,7 +114,7 @@ class CorsecMasterDataSeeder extends Seeder
     }
 
     /**
-     * @return array<int, array{code:string, name:string, description:string, status:bool}>
+     * @return array<int, array{code:string, name:string, description:string, status:bool, is_meeting_operational?:bool}>
      */
     private function directorates(): array
     {

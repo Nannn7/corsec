@@ -393,7 +393,7 @@ class CorsecPermissionService
     public function meetingDetailFlags(Meeting $meeting, Collection $approvals, ?User $user): array
     {
         $status = (string) ($meeting->status ?? '');
-        $isDirektoratMeeting = (string) ($meeting->meeting_type ?? '') === Meeting::TYPE_DIREKTORAT;
+        $isDirektoratMeeting = Meeting::isDirektoratTypeCode((string) ($meeting->meeting_type ?? ''));
         $hasOnScheduleResponse = (string) ($meeting->directorate_response_status ?? '') === Meeting::RESPONSE_ON_SCHEDULE;
         $isCancelledByDirektorat = (string) ($meeting->directorate_response_status ?? '') === Meeting::RESPONSE_CANCEL
             || $status === Meeting::STATUS_CANCELLED_DIREKTORAT;
