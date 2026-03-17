@@ -12,6 +12,7 @@ class CorsecDatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
+            PermissionSeeder::class,
             CorsecMasterDataSeeder::class,
         ]);
     }

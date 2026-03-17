@@ -19,6 +19,7 @@ class MeetingAgenda extends Model
         'description',
         'owner_directorate_id',
         'pic_user_id',
+        'source_decision_id',
     ];
 
     public function meeting(): BelongsTo
@@ -34,6 +35,11 @@ class MeetingAgenda extends Model
     public function picUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'pic_user_id');
+    }
+
+    public function sourceDecision(): BelongsTo
+    {
+        return $this->belongsTo(MeetingDecision::class, 'source_decision_id');
     }
 
     public function materials(): HasMany

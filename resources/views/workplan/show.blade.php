@@ -63,20 +63,7 @@
             ($workplan->created_at ? $workplan->created_at->format('Ymd') : now()->format('Ymd')) .
             '-' .
             str_pad((string) $workplan->id, 6, '0', STR_PAD_LEFT);
-
-        $allUpdates = $workplan->items
-            ->flatMap(function ($item) {
-                return $item->updates->map(function ($update) use ($item) {
-                    return [
-                        'item' => $item,
-                        'update' => $update,
-                    ];
-                });
-            })
-            ->sortByDesc(function ($row) {
-                return $row['update']->created_at;
-            })
-            ->values();
+        $allUpdates = $allUpdates ?? collect();
     @endphp
 
     <div class="grid gap-5 lg:gap-7.5">

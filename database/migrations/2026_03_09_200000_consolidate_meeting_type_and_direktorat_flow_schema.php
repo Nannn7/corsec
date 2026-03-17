@@ -34,7 +34,12 @@ return new class extends Migration {
         }
 
         if (Schema::hasTable('corsec_meetings')) {
+            DB::statement('DROP INDEX IF EXISTS corsec_meetings_dir_reminder_sent_idx');
+
             Schema::table('corsec_meetings', function (Blueprint $table) {
+                if (Schema::hasColumn('corsec_meetings', 'directorate_reminder_sent_at')) {
+                    $table->dropColumn('directorate_reminder_sent_at');
+                }
                 if (Schema::hasColumn('corsec_meetings', 'directorate_responded_by')) {
                     $table->dropConstrainedForeignId('directorate_responded_by');
                 }
@@ -138,6 +143,9 @@ return new class extends Migration {
         }
 
         Schema::table('corsec_meetings', function (Blueprint $table) {
+            if (!Schema::hasColumn('corsec_meetings', 'directorate_reminder_sent_at')) {
+                $table->timestamp('directorate_reminder_sent_at')->nullable()->index('corsec_meetings_dir_reminder_sent_idx');
+            }
             if (!Schema::hasColumn('corsec_meetings', 'directorate_response_status')) {
                 $table->string('directorate_response_status')->nullable()->index('corsec_meetings_dir_response_status_idx');
             }

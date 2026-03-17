@@ -29,13 +29,6 @@
                     ->all()
                 : [],
         );
-        $selectedUsers = old(
-            'participant_users',
-            $isEdit
-                ? $meeting->participants->pluck('user_id')->filter()->map(fn($id) => (string) $id)->values()->all()
-                : [],
-        );
-
         $agendas = old('agendas');
         if (!is_array($agendas)) {
             if ($isEdit) {
@@ -89,6 +82,8 @@
                 ];
             })
             ->values();
+
+        $meetingPicUsers = collect($meetingPicUsers ?? []);
 
         $direktoratTypeCodes = collect($direktoratTypeCodes ?? [\Modules\Corsec\Models\Meeting::TYPE_DIREKTORAT])
             ->map(fn($code) => strtolower(trim((string) $code)))
@@ -258,17 +253,18 @@
                                             $mandatoryDirectorateIds,
                                             true,
                                         );
-                                        $isOperationalDirectorate = (bool) ($directorate->is_meeting_operational ?? false);
+                                        $isOperationalDirectorate =
+                                            (bool) ($directorate->is_meeting_operational ?? false);
                                         $isCheckedDirectorate =
                                             in_array((string) $directorate->id, $selectedDirectorates, true) ||
-                                            ($isDirektoratMeetingSelected && $isMandatoryDirectorate);
+                                            $isMandatoryDirectorate;
                                     @endphp
                                     <label class="flex items-center gap-2 text-sm">
                                         <input class="checkbox checkbox-sm" type="checkbox" name="participants[]"
                                             value="{{ $directorate->id }}"
                                             data-is-mandatory="{{ $isMandatoryDirectorate ? '1' : '0' }}"
                                             {{ $isCheckedDirectorate ? 'checked' : '' }}
-                                            {{ $isDirektoratMeetingSelected && $isMandatoryDirectorate ? 'disabled' : '' }}>
+                                            {{ $isMandatoryDirectorate ? 'disabled' : '' }}>
                                         <span>
                                             {{ $directorate->name }}
                                             @if (!$isOperationalDirectorate)
@@ -286,23 +282,35 @@
                         </div>
                         <div class="card card-grid border border-gray-200" id="participant-users-card">
                             <div class="card-header py-3">
-                                <h4 class="card-title text-sm">Pilih User (Opsional)</h4>
+                                <h4 class="card-title text-sm">PIC Otomatis Corporate Secretary</h4>
                             </div>
                             <div class="card-body max-h-[260px] overflow-auto grid gap-2">
-                                @foreach ($users as $optionUser)
-                                    <label class="flex items-center gap-2 text-sm">
-                                        <input class="checkbox checkbox-sm" type="checkbox" name="participant_users[]"
-                                            value="{{ $optionUser->id }}"
-                                            {{ in_array((string) $optionUser->id, $selectedUsers, true) ? 'checked' : '' }}>
-                                        <span>
-                                            {{ $optionUser->name }}
-                                            @if ($optionUser->directorate?->name)
-                                                <span class="text-gray-500">({{ $optionUser->directorate->name }})</span>
-                                            @endif
-                                        </span>
-                                    </label>
-                                @endforeach
+                                <div class="text-xs text-gray-500 mb-1">
+                                    Untuk rapat non-direktorat, PIC otomatis di-assign ke user Corporate Secretary.
+                                </div>
+                                @forelse ($meetingPicUsers as $optionUser)
+                                    <div class="text-sm">
+                                        <span class="font-medium">{{ $optionUser->name }}</span>
+                                        @if ($optionUser->position?->name || $optionUser->directorate?->name)
+                                            <span class="text-gray-500">
+                                                ({{ $optionUser->position?->name ?? '-' }}
+                                                @if ($optionUser->directorate?->name)
+                                                    - {{ $optionUser->directorate->name }}
+                                                @endif)
+                                            </span>
+                                        @endif
+                                    </div>
+                                @empty
+                                    <div class="text-sm text-danger">
+                                        Belum ada user Corporate Secretary.
+                                    </div>
+                                @endforelse
                             </div>
+                            @error('participant_users')
+                                <div class="px-3 pb-3">
+                                    <em class="text-sm alert text-danger">{{ $message }}</em>
+                                </div>
+                            @enderror
                         </div>
                     </div>
 
@@ -447,20 +455,15 @@
 
             const normalizeMeetingType = (value) => String(value ?? '').trim().toLowerCase();
 
-            const toggleMandatoryDirectorateParticipants = (isDirektoratMeeting) => {
+            const toggleMandatoryDirectorateParticipants = () => {
                 participantDirectorateCheckboxes.forEach((checkbox) => {
                     const directorateId = Number(checkbox.value);
                     if (!mandatoryDirectorateIds.has(directorateId)) {
                         return;
                     }
 
-                    if (isDirektoratMeeting) {
-                        checkbox.checked = true;
-                        checkbox.disabled = true;
-                        return;
-                    }
-
-                    checkbox.disabled = false;
+                    checkbox.checked = true;
+                    checkbox.disabled = true;
                 });
             };
 
@@ -512,16 +515,10 @@
 
             const toggleDirektoratMode = () => {
                 const isDirektoratMeeting = DIREKTORAT_TYPES.has(normalizeMeetingType(meetingTypeSelect.value));
-                toggleMandatoryDirectorateParticipants(isDirektoratMeeting);
+                toggleMandatoryDirectorateParticipants();
 
                 if (participantUsersCard) {
                     participantUsersCard.classList.toggle('hidden', isDirektoratMeeting);
-                    participantUsersCard.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
-                        checkbox.disabled = isDirektoratMeeting;
-                        if (isDirektoratMeeting) {
-                            checkbox.checked = false;
-                        }
-                    });
                 }
 
                 if (agendaSection) {

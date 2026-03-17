@@ -23,6 +23,24 @@
         $canInputFollowup = (bool) ($permissionFlags['can_input_followup'] ?? false);
         $canCompleteFollowup = (bool) ($permissionFlags['can_complete_followup'] ?? false);
         $updatableDecisionIds = collect($permissionFlags['updatable_decision_ids'] ?? []);
+        $directorateResponseStatus = (string) ($meeting->directorate_response_status ?? '');
+        $isOnScheduleResponse = $directorateResponseStatus === \Modules\Corsec\Models\Meeting::RESPONSE_ON_SCHEDULE;
+        $isRescheduleResponse = $directorateResponseStatus === \Modules\Corsec\Models\Meeting::RESPONSE_RESCHEDULE;
+        $isCancelResponse = $directorateResponseStatus === \Modules\Corsec\Models\Meeting::RESPONSE_CANCEL;
+        $isNoResponse = $directorateResponseStatus === \Modules\Corsec\Models\Meeting::RESPONSE_NO_RESPONSE;
+        $isAwaitingDirectorateResponse = $meeting->isAwaitingDirectorateResponse();
+        $isReminderWindow = $meeting->isDirectorateResponseReminderWindow();
+        $isClosedNotConducted = $meeting->isDirectorateScheduleNotConducted();
+        $directorateResponseSummaryClass = $isOnScheduleResponse
+            ? 'text-success'
+            : ($isRescheduleResponse || $isNoResponse ? 'text-warning' : 'text-danger');
+        $directorateResponseSummaryMessage = match (true) {
+            $isOnScheduleResponse => 'Meeting sudah ditandai on schedule oleh PIC direktorat.',
+            $isRescheduleResponse => 'PIC direktorat meminta reschedule jadwal rapat ini.',
+            $isCancelResponse => 'Meeting dibatalkan oleh PIC direktorat.',
+            $isNoResponse => 'Meeting ditutup otomatis karena tidak ada tanggapan dari direktorat sampai hari H.',
+            default => '',
+        };
 
         $statusBadgeClass = match ($status) {
             'draft' => 'badge-light',
@@ -35,6 +53,7 @@
                 => 'badge-primary',
             'notulen_final', 'done_tindaklanjut_hasil_rapat' => 'badge-success',
             'cancelled_direktorat' => 'badge-danger',
+            'closed_not_conducted' => 'badge-warning',
             default => 'badge-light',
         };
 
@@ -68,7 +87,11 @@
             'returned_by_corsec' => 'Revisi Corsec',
             'returned_by_direktorat' => 'Revisi Direktorat',
             'cancelled_direktorat' => 'Batal Direktorat',
+            'closed_not_conducted' => 'Closed - Tidak Dilaksanakan',
         ];
+        $decisionUpdates = $decisionUpdates ?? collect();
+        $decisionProgressById = $decisionProgressById ?? [];
+        $sortedComments = $sortedComments ?? collect();
 
         $additionalAgendas = old('additional_agendas', []);
         if (!is_array($additionalAgendas)) {
@@ -100,20 +123,6 @@
                 'target_date' => '',
             ];
         }
-
-        $decisionUpdates = $meeting->decisions
-            ->flatMap(function ($decision) {
-                return $decision->updates->map(function ($update) use ($decision) {
-                    return [
-                        'decision' => $decision,
-                        'update' => $update,
-                    ];
-                });
-            })
-            ->sortByDesc(function ($row) {
-                return $row['update']->created_at;
-            })
-            ->values();
     @endphp
 
     <div class="grid gap-5 lg:gap-7.5">
@@ -121,6 +130,20 @@
             @foreach ($errors->all() as $error)
                 <em class="hidden toastr" data-type="error" data-message=" {{ $error }}"></em>
             @endforeach
+        @endif
+
+        @if ($meeting->isDirektoratType() && $isAwaitingDirectorateResponse && $isReminderWindow)
+            <div class="alert alert-warning">
+                H-1 jadwal rapat. PIC/user terkait direktorat harus segera memberikan tanggapan
+                <strong>On Schedule</strong>, <strong>Cancel</strong>, atau <strong>Reschedule</strong>
+                sebelum {{ $meeting->directorateResponseDeadlineLabel() ?? 'deadline H-1' }}.
+            </div>
+        @endif
+
+        @if ($meeting->isDirektoratType() && $isClosedNotConducted)
+            <div class="alert alert-warning">
+                Jadwal rapat ini tidak dijalankan karena tidak ada tanggapan dari direktorat sampai hari H.
+            </div>
         @endif
 
         <div class="card">
@@ -223,7 +246,7 @@
                                     <tr>
                                         <th class="min-w-[40px]">No</th>
                                         <th class="min-w-[220px]">Direktorat</th>
-                                        <th class="min-w-[200px]">User</th>
+                                        <th class="min-w-[200px]">PIC</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -257,6 +280,8 @@
                                         <th class="min-w-[220px]">Agenda</th>
                                         <th class="min-w-[180px]">PIC Direktorat</th>
                                         <th class="min-w-[180px]">PIC User</th>
+                                        <th class="min-w-[220px]">Sumber</th>
+                                        <th class="min-w-[120px]">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -264,13 +289,43 @@
                                         <tr>
                                             <td>{{ $agenda->order_no ?? $loop->iteration }}</td>
                                             <td>
-                                                <div class="font-medium">{{ $agenda->title }}</div>
+                                                <div class="font-medium">
+                                                    {{ $agenda->title }}
+                                                    @if ($agenda->sourceDecision)
+                                                        <span class="badge badge-light-info ms-2">Agenda Sistem</span>
+                                                    @endif
+                                                </div>
                                                 @if ($agenda->description)
                                                     <div class="text-xs text-gray-500">{{ $agenda->description }}</div>
                                                 @endif
                                             </td>
                                             <td>{{ $agenda->ownerDirectorate?->name ?? '-' }}</td>
                                             <td>{{ $agenda->picUser?->name ?? '-' }}</td>
+                                            <td>
+                                                @if ($agenda->sourceDecision)
+                                                    <div class="font-medium">
+                                                        {{ $agenda->sourceDecision->meeting?->title ?? '-' }}
+                                                    </div>
+                                                    <div class="text-xs text-gray-500">
+                                                        {{ $agenda->sourceDecision->decision_key ?? '-' }}
+                                                        @if ($agenda->sourceDecision->meeting?->meeting_at)
+                                                            | {{ $agenda->sourceDecision->meeting->meeting_at->format('d/m/Y H:i') }}
+                                                        @endif
+                                                    </div>
+                                                @else
+                                                    -
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @if ($agenda->sourceDecision)
+                                                    <span
+                                                        class="badge {{ $decisionStatusClass((string) $agenda->sourceDecision->status) }}">
+                                                        {{ $decisionStatusLabel((string) $agenda->sourceDecision->status) }}
+                                                    </span>
+                                                @else
+                                                    -
+                                                @endif
+                                            </td>
                                         </tr>
                                     @endforeach
                                 </tbody>
@@ -380,20 +435,58 @@
                     <h3 class="card-title">Tanggapan Jadwal Direktorat</h3>
                 </div>
                 <div class="card-body">
-                    <form method="POST" action="{{ route('meeting.directorate.response', $meeting) }}" class="grid gap-4">
+                    <form method="POST" action="{{ route('meeting.directorate.response', $meeting) }}"
+                        class="grid gap-4">
                         @csrf
-                        <div class="text-sm text-gray-600">
-                            PIC direktorat wajib memilih tanggapan sebelum input agenda/persiapan rapat.
-                        </div>
+                            <div class="text-sm text-gray-600">
+                                PIC direktorat wajib memilih tanggapan sebelum input agenda/persiapan rapat.
+                            </div>
+                        @if ($meeting->isDirektoratType() && $meeting->directorateResponseDeadlineLabel())
+                            <div class="text-sm text-gray-600">
+                                Target tanggapan jadwal (H-1):
+                                <span class="font-medium">{{ $meeting->directorateResponseDeadlineLabel() }}</span>
+                            </div>
+                        @endif
                         <div class="flex flex-col">
                             <label class="form-label">Catatan (opsional)</label>
                             <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan tanggapan..."></textarea>
                         </div>
                         <div class="flex justify-end gap-2">
                             <button type="submit" class="btn btn-danger" name="action" value="cancel">Cancel</button>
-                            <button type="submit" class="btn btn-success" name="action" value="on_schedule">On Schedule</button>
+                            <button type="submit" class="btn btn-warning" name="action" value="reschedule">Reschedule</button>
+                            <button type="submit" class="btn btn-success" name="action" value="on_schedule">On
+                                Schedule</button>
                         </div>
                     </form>
+                </div>
+            </div>
+        @endif
+
+        @if ($canCorsecUpdateAction && $meeting->isDirektoratType() && !$canDirectorateResponse && ($isOnScheduleResponse || $isRescheduleResponse || $isCancelResponse || $isNoResponse))
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Tanggapan Jadwal Direktorat</h3>
+                </div>
+                <div class="card-body grid gap-2">
+                    <div class="text-sm {{ $directorateResponseSummaryClass }}">
+                        {{ $directorateResponseSummaryMessage }}
+                        @if (!$isNoResponse)
+                            <span class="font-medium">{{ $responseLabels[$directorateResponseStatus] ?? '-' }}</span>.
+                        @endif
+                    </div>
+                    <div class="text-xs text-gray-600">
+                        Ditanggapi oleh: <span class="font-medium">{{ $meeting->directorateRespondedBy?->name ?? '-' }}</span>
+                    </div>
+                    <div class="text-xs text-gray-600">
+                        Waktu tanggapan:
+                        <span class="font-medium">{{ $meeting->directorate_responded_at ? $meeting->directorate_responded_at->format('d/m/Y H:i') : '-' }}</span>
+                    </div>
+                    @if ($meeting->directorate_response_note)
+                        <div class="text-xs text-gray-600">
+                            Catatan:
+                            <span class="font-medium">{{ $meeting->directorate_response_note }}</span>
+                        </div>
+                    @endif
                 </div>
             </div>
         @endif
@@ -427,6 +520,9 @@
                                             <option value="{{ $agenda->id }}"
                                                 {{ (string) old('material_agenda_id') === (string) $agenda->id ? 'selected' : '' }}>
                                                 {{ $agenda->order_no ? 'Agenda #' . $agenda->order_no . ' - ' : '' }}{{ $agenda->title }}
+                                                @if ($agenda->sourceDecision)
+                                                    {{ ' [' . ($agenda->sourceDecision->decision_key ?? '-') . ' - ' . $decisionStatusLabel((string) $agenda->sourceDecision->status) . ']' }}
+                                                @endif
                                             </option>
                                         @endforeach
                                     </select>
@@ -443,8 +539,8 @@
                                 <div class="grid gap-2 max-h-[180px] overflow-auto">
                                     @foreach ($directorates as $directorate)
                                         <label class="flex items-center gap-2 text-sm">
-                                            <input class="checkbox checkbox-sm" type="checkbox" name="additional_participants[]"
-                                                value="{{ $directorate->id }}">
+                                            <input class="checkbox checkbox-sm" type="checkbox"
+                                                name="additional_participants[]" value="{{ $directorate->id }}">
                                             <span>{{ $directorate->name }}</span>
                                         </label>
                                     @endforeach
@@ -802,12 +898,6 @@
                             </thead>
                             <tbody>
                                 @foreach ($meeting->decisions as $index => $decision)
-                                    @php
-                                        $latestUpdate = $decision->updates->sortByDesc('id')->first();
-                                        $progressValue =
-                                            $latestUpdate?->progress_percent ??
-                                            ((string) $decision->status === 'done' ? 100 : 0);
-                                    @endphp
                                     <tr>
                                         <td>{{ $index + 1 }}</td>
                                         <td>{{ $decision->decision_key ?? '-' }}</td>
@@ -816,7 +906,7 @@
                                         <td>{{ $decision->picUser?->name ?? '-' }}</td>
                                         <td>{{ $decision->target_date ? $decision->target_date->format('d/m/Y') : '-' }}
                                         </td>
-                                        <td>{{ $progressValue }}%</td>
+                                        <td>{{ $decisionProgressById[$decision->id] ?? ((string) $decision->status === 'done' ? 100 : 0) }}%</td>
                                         <td>
                                             <span
                                                 class="badge {{ $decisionStatusClass((string) $decision->status) }}">{{ $decisionStatusLabel((string) $decision->status) }}</span>
@@ -832,97 +922,100 @@
             </div>
         </div>
 
-        @if ($canCorsecUpdateAction)
-            @if ($canInputFollowup && $meeting->decisions->count() > 0)
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Update Progress Tindaklanjut</h3>
-                    </div>
-                    <div class="card-body grid gap-4">
-                        @foreach ($meeting->decisions as $decision)
-                            @php
-                                $decisionStatus = (string) ($decision->status ?? '');
-                                $canUpdateThisDecision =
-                                    $updatableDecisionIds->contains((int) ($decision->id ?? 0)) &&
-                                    !in_array($decisionStatus, ['done', 'dropped'], true);
-                            @endphp
-                            @if ($canUpdateThisDecision)
-                                <form method="POST" action="{{ route('meeting.decision.update', [$meeting, $decision]) }}"
-                                    enctype="multipart/form-data"
-                                    class="p-4 border rounded-xl border-gray-200 grid gap-4 followup-update-form">
-                                    @csrf
-                                    <div class="font-medium text-gray-800">{{ $decision->decision_text }}</div>
-                                    <div class="text-xs text-gray-500">
-                                        Target: {{ $decision->target_date ? $decision->target_date->format('d/m/Y') : '-' }} |
-                                        PIC: {{ $decision->picUser?->name ?? ($decision->ownerDirectorate?->name ?? '-') }}
-                                    </div>
-
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div class="flex flex-col">
-                                            <label class="form-label">Jenis Update <span class="text-danger">*</span></label>
-                                            <select class="select js-update-type" name="update_type" required>
-                                                <option value="progress">Progress</option>
-                                                <option value="done">Selesai</option>
-                                            </select>
-                                        </div>
-                                        <div class="flex flex-col js-progress-wrap">
-                                            <label class="form-label">Progress (%)</label>
-                                            <input class="input" type="number" min="0" max="100"
-                                                name="progress_percent" value="0">
-                                        </div>
-                                        <div class="flex flex-col">
-                                            <label class="form-label">Tanggal Realisasi <span
-                                                    class="text-danger">*</span></label>
-                                            <input class="input" type="date" name="happened_at"
-                                                value="{{ now()->format('Y-m-d') }}" required>
-                                        </div>
-                                        <div class="flex flex-col">
-                                            <label class="form-label">Sesuai Target? <span
-                                                    class="text-danger">*</span></label>
-                                            <select class="select js-on-target" name="is_on_target" required>
-                                                <option value="1">Ya</option>
-                                                <option value="0">Tidak</option>
-                                            </select>
-                                        </div>
-                                        <div class="flex flex-col md:col-span-2 js-reason-wrap hidden">
-                                            <label class="form-label">Alasan Tidak Sesuai Target <span
-                                                    class="text-danger">*</span></label>
-                                            <textarea class="textarea w-full" name="reason" rows="2" placeholder="Wajib diisi jika tidak sesuai target"></textarea>
-                                        </div>
-                                        <div class="flex flex-col md:col-span-2">
-                                            <label class="form-label">Catatan</label>
-                                            <textarea class="textarea w-full" name="note" rows="2" placeholder="Catatan update progress"></textarea>
-                                        </div>
-                                        <div class="flex flex-col md:col-span-2">
-                                            <label class="form-label">Bukti Progress <span
-                                                    class="text-danger">*</span></label>
-                                            <input class="file-input" type="file" name="evidence_files[]"
-                                                accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx,.ppt,.pptx" multiple
-                                                required>
-                                        </div>
-                                    </div>
-                                    <div class="flex justify-end">
-                                        <button type="submit" class="btn btn-primary">Submit Update</button>
-                                    </div>
-                                </form>
-                            @endif
-                        @endforeach
-
-                        @if ($canCompleteFollowup)
-                            <form method="POST" action="{{ route('meeting.followup.complete', $meeting) }}">
+        @if ($canInputFollowup && $meeting->decisions->count() > 0)
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Update Progress Tindaklanjut</h3>
+                </div>
+                <div class="card-body grid gap-4">
+                    @foreach ($meeting->decisions as $decision)
+                        @php
+                            $decisionStatus = (string) ($decision->status ?? '');
+                            $canUpdateThisDecision =
+                                $updatableDecisionIds->contains((int) ($decision->id ?? 0)) &&
+                                !in_array($decisionStatus, ['done', 'dropped'], true);
+                        @endphp
+                        @if ($canUpdateThisDecision)
+                            <form method="POST"
+                                action="{{ route('meeting.decision.update', [$meeting, $decision]) }}"
+                                enctype="multipart/form-data"
+                                class="p-4 border rounded-xl border-gray-200 grid gap-4 followup-update-form">
                                 @csrf
+                                <div class="font-medium text-gray-800">{{ $decision->decision_text }}</div>
+                                <div class="text-xs text-gray-500">
+                                    Target:
+                                    {{ $decision->target_date ? $decision->target_date->format('d/m/Y') : '-' }} |
+                                    PIC:
+                                    {{ $decision->picUser?->name ?? ($decision->ownerDirectorate?->name ?? '-') }}
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="flex flex-col">
+                                        <label class="form-label">Jenis Update <span
+                                                class="text-danger">*</span></label>
+                                        <select class="select js-update-type" name="update_type" required>
+                                            <option value="progress">Progress</option>
+                                            <option value="done">Selesai</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex flex-col js-progress-wrap">
+                                        <label class="form-label">Progress (%)</label>
+                                        <input class="input" type="number" min="0" max="100"
+                                            name="progress_percent" value="0">
+                                    </div>
+                                    <div class="flex flex-col">
+                                        <label class="form-label">Tanggal Realisasi <span
+                                                class="text-danger">*</span></label>
+                                        <input class="input" type="date" name="happened_at"
+                                            value="{{ now()->format('Y-m-d') }}" required>
+                                    </div>
+                                    <div class="flex flex-col">
+                                        <label class="form-label">Sesuai Target? <span
+                                                class="text-danger">*</span></label>
+                                        <select class="select js-on-target" name="is_on_target" required>
+                                            <option value="1">Ya</option>
+                                            <option value="0">Tidak</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex flex-col md:col-span-2 js-reason-wrap hidden">
+                                        <label class="form-label">Alasan Tidak Sesuai Target <span
+                                                class="text-danger">*</span></label>
+                                        <textarea class="textarea w-full" name="reason" rows="2" placeholder="Wajib diisi jika tidak sesuai target"></textarea>
+                                    </div>
+                                    <div class="flex flex-col md:col-span-2">
+                                        <label class="form-label">Catatan</label>
+                                        <textarea class="textarea w-full" name="note" rows="2" placeholder="Catatan update progress"></textarea>
+                                    </div>
+                                    <div class="flex flex-col md:col-span-2">
+                                        <label class="form-label">Bukti Progress <span
+                                                class="text-danger">*</span></label>
+                                        <input class="file-input" type="file" name="evidence_files[]"
+                                            accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx,.ppt,.pptx" multiple
+                                            required>
+                                    </div>
+                                </div>
                                 <div class="flex justify-end">
-                                    <button type="submit" class="btn btn-success">Tandai Tindaklanjut Selesai</button>
+                                    <button type="submit" class="btn btn-primary">Submit Update</button>
                                 </div>
                             </form>
-                        @elseif (in_array($status, ['notulen_final', 'proses_tindaklanjut_hasil_rapat'], true))
-                            <div class="text-sm text-gray-500">
-                                Tindaklanjut dapat ditandai selesai setelah semua item statusnya <strong>done/dropped</strong>.
-                            </div>
                         @endif
-                    </div>
+                    @endforeach
+
+                    @if ($canCompleteFollowup)
+                        <form method="POST" action="{{ route('meeting.followup.complete', $meeting) }}">
+                            @csrf
+                            <div class="flex justify-end">
+                                <button type="submit" class="btn btn-success">Tandai Tindaklanjut Selesai</button>
+                            </div>
+                        </form>
+                    @elseif (in_array($status, ['notulen_final', 'proses_tindaklanjut_hasil_rapat'], true))
+                        <div class="text-sm text-gray-500">
+                            Tindaklanjut dapat ditandai selesai setelah semua item statusnya
+                            <strong>done/dropped</strong>.
+                        </div>
+                    @endif
                 </div>
-            @endif
+            </div>
         @endif
 
         @if ($decisionUpdates->count() > 0)
@@ -1041,10 +1134,7 @@
                 <h3 class="card-title">Riwayat Catatan</h3>
             </div>
             <div class="card-body">
-                @php
-                    $comments = $meeting->comments->sortByDesc('created_at')->values();
-                @endphp
-                @if ($comments->count() > 0)
+                @if ($sortedComments->count() > 0)
                     <div class="overflow-x-auto">
                         <table class="table table-striped">
                             <thead>
@@ -1055,7 +1145,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach ($comments as $comment)
+                                @foreach ($sortedComments as $comment)
                                     <tr>
                                         <td>{{ $comment->body ?? '-' }}</td>
                                         <td>{{ $comment->createdBy?->name ?? '-' }}</td>

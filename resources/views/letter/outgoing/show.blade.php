@@ -20,6 +20,7 @@
         $canVerify = (bool) ($permissionFlags['can_verify'] ?? false);
         $canCancelRequest = (bool) ($permissionFlags['can_cancel_request'] ?? false);
         $canCancelApproval = (bool) ($permissionFlags['can_cancel_approval'] ?? false);
+        $sortedComments = $sortedComments ?? collect();
         $statusSteps = $permissionFlags['status_steps'] ?? [
             'draft' => 'Draft',
             'waiting_dir_approval' => 'Approval EO dan DD Direktorat',
@@ -317,11 +318,7 @@
                 <h3 class="card-title">Riwayat Catatan</h3>
             </div>
             <div class="card-body">
-                @php
-                    $comments = $outgoingLetter->comments->sortByDesc('created_at')->values();
-                @endphp
-
-                @if ($comments->count() > 0)
+                @if ($sortedComments->count() > 0)
                     <div class="overflow-x-auto">
                         <table class="table table-striped">
                             <thead>
@@ -332,7 +329,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach ($comments as $comment)
+                                @foreach ($sortedComments as $comment)
                                     <tr>
                                         <td>{{ $comment->body ?? '-' }}</td>
                                         <td>{{ $comment->createdBy?->name ?? '-' }}</td>

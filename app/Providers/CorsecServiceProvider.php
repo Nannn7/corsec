@@ -2,6 +2,7 @@
 
 namespace Modules\Corsec\Providers;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
@@ -15,6 +16,7 @@ use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use Spatie\Activitylog\Traits\LogsActivity;
 use Throwable;
+use Modules\Corsec\Console\SyncDirectorateMeetingScheduleCommand;
 
 class CorsecServiceProvider extends ServiceProvider
 {
@@ -55,7 +57,9 @@ class CorsecServiceProvider extends ServiceProvider
      */
     protected function registerCommands(): void
     {
-        // $this->commands([]);
+        $this->commands([
+            SyncDirectorateMeetingScheduleCommand::class,
+        ]);
     }
 
     /**
@@ -63,10 +67,12 @@ class CorsecServiceProvider extends ServiceProvider
      */
     protected function registerCommandSchedules(): void
     {
-        // $this->app->booted(function () {
-        //     $schedule = $this->app->make(Schedule::class);
-        //     $schedule->command('inspire')->hourly();
-        // });
+        $this->app->booted(function () {
+            $schedule = $this->app->make(Schedule::class);
+            $schedule->command('corsec:meetings:sync-directorate-schedule')
+                ->hourly()
+                ->withoutOverlapping();
+        });
     }
 
     /**
