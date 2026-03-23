@@ -98,6 +98,7 @@ class DirectorateController extends Controller
             $payload = [
                 'code' => $validated['code'],
                 'name' => $validated['name'],
+                'tabulation_label' => $validated['tabulation_label'] ?? $validated['name'],
                 'description' => $validated['description'] ?? null,
                 'status' => $request->boolean('status', true),
                 'is_meeting_operational' => $request->boolean('is_meeting_operational', false),
@@ -166,6 +167,7 @@ class DirectorateController extends Controller
             $payload = [
                 'code' => $validated['code'],
                 'name' => $validated['name'],
+                'tabulation_label' => $validated['tabulation_label'] ?? $validated['name'],
                 'description' => $validated['description'] ?? null,
                 'status' => $request->boolean('status', $directorate->status),
                 'is_meeting_operational' => $request->boolean(
@@ -334,6 +336,7 @@ class DirectorateController extends Controller
                 $query->where(function ($q) use ($search) {
                     $q->where('code', 'ilike', "%{$search}%")
                         ->orWhere('name', 'ilike', "%{$search}%")
+                        ->orWhere('tabulation_label', 'ilike', "%{$search}%")
                         ->orWhere('description', 'ilike', "%{$search}%");
                 });
             }
@@ -350,6 +353,7 @@ class DirectorateController extends Controller
                 'id',
                 'code',
                 'name',
+                'tabulation_label',
                 'description',
                 'status',
                 'is_meeting_operational',

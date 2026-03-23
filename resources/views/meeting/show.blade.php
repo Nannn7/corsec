@@ -9,6 +9,7 @@
 
         $permissionFlags = $permissionFlags ?? [];
         $status = (string) ($meeting->status ?? '');
+        $supportsSupportUserAssignments = (bool) ($supportsSupportUserAssignments ?? false);
         $canCorsecUpdateAction = (bool) ($permissionFlags['can_corsec_update_action'] ?? false);
         $canEdit = (bool) ($permissionFlags['can_edit'] ?? false);
         $canSubmitPlan = (bool) ($permissionFlags['can_submit_plan'] ?? false);
@@ -60,15 +61,17 @@
         $decisionStatusClass = fn(string $decisionStatus) => match ($decisionStatus) {
             'pending' => 'badge-warning',
             'in_progress' => 'badge-info',
+            'continuous' => 'badge-primary',
             'done' => 'badge-success',
             'dropped' => 'badge-danger',
             default => 'badge-light',
         };
         $decisionStatusLabel = fn(string $decisionStatus) => match ($decisionStatus) {
             'pending' => 'Pending',
-            'in_progress' => 'In Progress',
+            'in_progress' => 'Proses',
+            'continuous' => 'Berkelanjutan',
             'done' => 'Done',
-            'dropped' => 'Dropped',
+            'dropped' => 'Drop',
             default => $decisionStatus ?: '-',
         };
 
@@ -76,7 +79,7 @@
             'draft' => 'Draft Jadwal Rapat',
             'waiting_corsec_approval' => 'Approval EO Corp Affair',
             'jadwal_terkirim' => 'Jadwal Terkirim',
-            'pending_direktorat' => 'Pending Direktorat',
+            'pending_direktorat' => 'Koordinasi Unit Rapat',
             'waiting_direktorat_approval' => 'Approval EO + DD Direktorat',
             'data_terkirim' => 'Data/Bahan Terkirim',
             'proses_pembuatan_notulen' => 'Input Notulen + Tindaklanjut',
@@ -92,6 +95,21 @@
         $decisionUpdates = $decisionUpdates ?? collect();
         $decisionProgressById = $decisionProgressById ?? [];
         $sortedComments = $sortedComments ?? collect();
+        $linkableDecisions = $linkableDecisions ?? collect();
+        $agingLabels = [
+            'cat_1' => 'CAT 1 (< 30 hari)',
+            'cat_2' => 'CAT 2 (30 - 90 hari)',
+            'cat_3' => 'CAT 3 (91 - 180 hari)',
+            'cat_4' => 'CAT 4 (181 - 270 hari)',
+            'cat_5' => 'CAT 5 (> 270 hari)',
+        ];
+        $getDecisionSupportUsers = function ($decision) use ($supportsSupportUserAssignments) {
+            if (!$supportsSupportUserAssignments) {
+                return collect();
+            }
+
+            return $decision->supportUsers ?? collect();
+        };
 
         $additionalAgendas = old('additional_agendas', []);
         if (!is_array($additionalAgendas)) {
@@ -105,10 +123,22 @@
                 ->map(function ($decision) {
                     return [
                         'id' => $decision->id,
+                        'existing_decision_id' => '',
                         'decision_text' => $decision->decision_text,
                         'owner_directorate_id' => $decision->owner_directorate_id,
                         'pic_user_id' => $decision->pic_user_id,
+                        'status' => $decision->status,
                         'target_date' => optional($decision->target_date)->format('Y-m-d'),
+                        'support_directorate_ids' => $decision->supportDirectorates
+                            ->pluck('id')
+                            ->map(fn($id) => (int) $id)
+                            ->values()
+                            ->all(),
+                        'support_user_ids' => $getDecisionSupportUsers($decision)
+                            ->pluck('id')
+                            ->map(fn($id) => (int) $id)
+                            ->values()
+                            ->all(),
                     ];
                 })
                 ->values()
@@ -117,10 +147,14 @@
         if (count($minutesDecisionRows) === 0) {
             $minutesDecisionRows[] = [
                 'id' => '',
+                'existing_decision_id' => '',
                 'decision_text' => '',
                 'owner_directorate_id' => '',
                 'pic_user_id' => '',
+                'status' => 'pending',
                 'target_date' => '',
+                'support_directorate_ids' => [],
+                'support_user_ids' => [],
             ];
         }
     @endphp
@@ -152,6 +186,9 @@
                 <div class="flex gap-2">
                     <a href="{{ route('meeting.index') }}" class="btn btn-sm btn-light">
                         <i class="ki-filled ki-arrow-left"></i> Kembali
+                    </a>
+                    <a href="{{ route('meeting.tabulation') }}" class="btn btn-sm btn-light-info">
+                        Tabulasi
                     </a>
                     @if ($canEdit)
                         <a href="{{ route('meeting.edit', $meeting) }}" class="btn btn-sm btn-info">Edit</a>
@@ -253,7 +290,7 @@
                                     @foreach ($meeting->participants as $index => $participant)
                                         <tr>
                                             <td>{{ $index + 1 }}</td>
-                                            <td>{{ $participant->directorate?->name ?? '-' }}</td>
+                                            <td>{{ $participant->directorate?->displayName() ?? '-' }}</td>
                                             <td>{{ $participant->participantUser?->name ?? '-' }}</td>
                                         </tr>
                                     @endforeach
@@ -299,7 +336,7 @@
                                                     <div class="text-xs text-gray-500">{{ $agenda->description }}</div>
                                                 @endif
                                             </td>
-                                            <td>{{ $agenda->ownerDirectorate?->name ?? '-' }}</td>
+                                            <td>{{ $agenda->ownerDirectorate?->displayName() ?? '-' }}</td>
                                             <td>{{ $agenda->picUser?->name ?? '-' }}</td>
                                             <td>
                                                 @if ($agenda->sourceDecision)
@@ -495,7 +532,7 @@
             @if ($canDirectorateSubmit)
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">Persiapan Rapat Direktorat</h3>
+                        <h3 class="card-title">Persiapan Rapat dan Distribusi Bahan</h3>
                     </div>
                     <div class="card-body grid gap-5">
                         @if ($canMarkPendingDirectorate && $status !== 'pending_direktorat')
@@ -541,7 +578,7 @@
                                         <label class="flex items-center gap-2 text-sm">
                                             <input class="checkbox checkbox-sm" type="checkbox"
                                                 name="additional_participants[]" value="{{ $directorate->id }}">
-                                            <span>{{ $directorate->name }}</span>
+                                            <span>{{ $directorate->displayName() }}</span>
                                         </label>
                                     @endforeach
                                 </div>
@@ -581,7 +618,7 @@
                                                         @foreach ($directorates as $directorate)
                                                             <option value="{{ $directorate->id }}"
                                                                 {{ (string) old('additional_agendas.' . $index . '.owner_directorate_id', $agenda['owner_directorate_id'] ?? '') === (string) $directorate->id ? 'selected' : '' }}>
-                                                                {{ $directorate->name }}
+                                                                {{ $directorate->displayName() }}
                                                             </option>
                                                         @endforeach
                                                     </select>
@@ -595,8 +632,8 @@
                                                             <option value="{{ $optionUser->id }}"
                                                                 {{ (string) old('additional_agendas.' . $index . '.pic_user_id', $agenda['pic_user_id'] ?? '') === (string) $optionUser->id ? 'selected' : '' }}>
                                                                 {{ $optionUser->name }}
-                                                                @if ($optionUser->directorate?->name)
-                                                                    ({{ $optionUser->directorate->name }})
+                                                                @if ($optionUser->directorate)
+                                                                    ({{ $optionUser->directorate->displayName() }})
                                                                 @endif
                                                             </option>
                                                         @endforeach
@@ -680,11 +717,46 @@
                                 </div>
                                 <div id="decision-rows" class="grid gap-3">
                                     @foreach ($minutesDecisionRows as $index => $decision)
+                                        @php
+                                            $selectedSupportDirectorateIds = collect(
+                                                old(
+                                                    'decisions.' . $index . '.support_directorate_ids',
+                                                    $decision['support_directorate_ids'] ?? [],
+                                                ),
+                                            )
+                                                ->filter()
+                                                ->map(fn($id) => (string) $id)
+                                                ->values()
+                                                ->all();
+                                            $selectedSupportUserIds = collect(
+                                                old(
+                                                    'decisions.' . $index . '.support_user_ids',
+                                                    $decision['support_user_ids'] ?? [],
+                                                ),
+                                            )
+                                                ->filter()
+                                                ->map(fn($id) => (string) $id)
+                                                ->values()
+                                                ->all();
+                                        @endphp
                                         <div class="p-3 border rounded-xl border-gray-200 decision-row">
                                             <input type="hidden" name="decisions[{{ $index }}][id]"
                                                 value="{{ old('decisions.' . $index . '.id', $decision['id'] ?? '') }}">
-                                            <div class="grid gap-3 md:grid-cols-2">
-                                                <div class="flex flex-col md:col-span-2">
+                                            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                                <div class="flex flex-col md:col-span-2 xl:col-span-3">
+                                                    <label class="form-label">Link Issue Existing</label>
+                                                    <select class="select" name="decisions[{{ $index }}][existing_decision_id]">
+                                                        <option value="">- Buat issue baru -</option>
+                                                        @foreach ($linkableDecisions as $linkableDecision)
+                                                            <option value="{{ $linkableDecision->id }}"
+                                                                {{ (string) old('decisions.' . $index . '.existing_decision_id', $decision['existing_decision_id'] ?? '') === (string) $linkableDecision->id ? 'selected' : '' }}>
+                                                                {{ $linkableDecision->issue_key ?? $linkableDecision->decision_key }}
+                                                                | {{ \Illuminate\Support\Str::limit($linkableDecision->decision_text, 90) }}
+                                                            </option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+                                                <div class="flex flex-col md:col-span-2 xl:col-span-3">
                                                     <label class="form-label">Item Tindaklanjut <span
                                                             class="text-danger">*</span></label>
                                                     <textarea class="textarea w-full" rows="2" name="decisions[{{ $index }}][decision_text]">{{ old('decisions.' . $index . '.decision_text', $decision['decision_text'] ?? '') }}</textarea>
@@ -697,7 +769,7 @@
                                                         @foreach ($directorates as $directorate)
                                                             <option value="{{ $directorate->id }}"
                                                                 {{ (string) old('decisions.' . $index . '.owner_directorate_id', $decision['owner_directorate_id'] ?? '') === (string) $directorate->id ? 'selected' : '' }}>
-                                                                {{ $directorate->name }}
+                                                                {{ $directorate->displayName() }}
                                                             </option>
                                                         @endforeach
                                                     </select>
@@ -711,14 +783,56 @@
                                                             <option value="{{ $optionUser->id }}"
                                                                 {{ (string) old('decisions.' . $index . '.pic_user_id', $decision['pic_user_id'] ?? '') === (string) $optionUser->id ? 'selected' : '' }}>
                                                                 {{ $optionUser->name }}
-                                                                @if ($optionUser->directorate?->name)
-                                                                    ({{ $optionUser->directorate->name }})
+                                                                @if ($optionUser->directorate)
+                                                                    ({{ $optionUser->directorate->displayName() }})
                                                                 @endif
                                                             </option>
                                                         @endforeach
                                                     </select>
                                                 </div>
-                                                <div class="flex flex-col md:col-span-2">
+                                                <div class="flex flex-col">
+                                                    <label class="form-label">Status Issue</label>
+                                                    <select class="select" name="decisions[{{ $index }}][status]">
+                                                        @foreach (['pending' => 'Pending', 'in_progress' => 'Proses', 'continuous' => 'Berkelanjutan', 'done' => 'Done', 'dropped' => 'Drop'] as $statusValue => $statusLabel)
+                                                            <option value="{{ $statusValue }}"
+                                                                {{ (string) old('decisions.' . $index . '.status', $decision['status'] ?? 'pending') === $statusValue ? 'selected' : '' }}>
+                                                                {{ $statusLabel }}
+                                                            </option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+                                                <div class="flex flex-col md:col-span-2 xl:col-span-3">
+                                                    <label class="form-label">Support Direktorat</label>
+                                                    <select class="select" name="decisions[{{ $index }}][support_directorate_ids][]"
+                                                        multiple size="4">
+                                                        @foreach ($directorates as $directorate)
+                                                            <option value="{{ $directorate->id }}"
+                                                                {{ in_array((string) $directorate->id, $selectedSupportDirectorateIds, true) ? 'selected' : '' }}>
+                                                                {{ $directorate->displayName() }}
+                                                            </option>
+                                                        @endforeach
+                                                    </select>
+                                                    <small class="mt-1 text-xs text-gray-500">Gunakan Ctrl / Cmd untuk pilih lebih dari satu support.</small>
+                                                </div>
+                                                @if ($supportsSupportUserAssignments)
+                                                    <div class="flex flex-col md:col-span-2 xl:col-span-3">
+                                                        <label class="form-label">Support User yang Boleh Update</label>
+                                                        <select class="select" name="decisions[{{ $index }}][support_user_ids][]"
+                                                            multiple size="5">
+                                                            @foreach ($users as $optionUser)
+                                                                <option value="{{ $optionUser->id }}"
+                                                                    {{ in_array((string) $optionUser->id, $selectedSupportUserIds, true) ? 'selected' : '' }}>
+                                                                    {{ $optionUser->name }}
+                                                                    @if ($optionUser->directorate)
+                                                                        ({{ $optionUser->directorate->displayName() }})
+                                                                    @endif
+                                                                </option>
+                                                            @endforeach
+                                                        </select>
+                                                        <small class="mt-1 text-xs text-gray-500">Hanya user yang dipilih di sini yang boleh submit update sebagai support actor.</small>
+                                                    </div>
+                                                @endif
+                                                <div class="flex flex-col md:col-span-2 xl:col-span-3">
                                                     <label class="form-label">Target Penyelesaian <span
                                                             class="text-danger">*</span></label>
                                                     <input class="input" type="date"
@@ -847,7 +961,7 @@
                             <table class="table table-striped">
                                 <thead>
                                     <tr>
-                                        <th class="min-w-[120px]">Key</th>
+                                        <th class="min-w-[120px]">Issue Key</th>
                                         <th class="min-w-[220px]">Sumber Rapat</th>
                                         <th class="min-w-[260px]">Tindaklanjut</th>
                                         <th class="min-w-[160px]">PIC</th>
@@ -857,7 +971,10 @@
                                 <tbody>
                                     @foreach ($crossMeetingOpenDecisions as $openDecision)
                                         <tr>
-                                            <td>{{ $openDecision->decision_key ?? '-' }}</td>
+                                            <td>
+                                                <div class="font-medium">{{ $openDecision->issue_key ?? '-' }}</div>
+                                                <div class="text-xs text-gray-500">{{ $openDecision->decision_key ?? '-' }}</div>
+                                            </td>
                                             <td>
                                                 {{ $openDecision->meeting?->title ?? '-' }}
                                                 @if ($openDecision->meeting?->meeting_at)
@@ -867,7 +984,7 @@
                                                 @endif
                                             </td>
                                             <td>{{ $openDecision->decision_text }}</td>
-                                            <td>{{ $openDecision->picUser?->name ?? ($openDecision->ownerDirectorate?->name ?? '-') }}
+                                            <td>{{ $openDecision->picUser?->name ?? ($openDecision->ownerDirectorate?->displayName() ?? '-') }}
                                             </td>
                                             <td>
                                                 <span
@@ -887,12 +1004,15 @@
                             <thead>
                                 <tr>
                                     <th class="min-w-[40px]">No</th>
-                                    <th class="min-w-[120px]">Key</th>
-                                    <th class="min-w-[280px]">Tindaklanjut</th>
-                                    <th class="min-w-[180px]">PIC Direktorat</th>
-                                    <th class="min-w-[180px]">PIC User</th>
+                                    <th class="min-w-[140px]">Issue Key</th>
+                                    <th class="min-w-[260px]">Tindaklanjut</th>
+                                    <th class="min-w-[180px]">PIC</th>
+                                    <th class="min-w-[180px]">Support</th>
+                                    <th class="min-w-[160px]">Tgl Radir Awal / Frekuensi</th>
                                     <th class="min-w-[130px]">Target</th>
                                     <th class="min-w-[120px]">Progress</th>
+                                    <th class="min-w-[220px]">Update Terkini</th>
+                                    <th class="min-w-[130px]">Aging</th>
                                     <th class="min-w-[140px]">Status</th>
                                 </tr>
                             </thead>
@@ -900,13 +1020,61 @@
                                 @foreach ($meeting->decisions as $index => $decision)
                                     <tr>
                                         <td>{{ $index + 1 }}</td>
-                                        <td>{{ $decision->decision_key ?? '-' }}</td>
+                                        <td>
+                                            <div class="font-medium">{{ $decision->issue_key ?? '-' }}</div>
+                                            <div class="text-xs text-gray-500">{{ $decision->decision_key ?? '-' }}</div>
+                                        </td>
                                         <td>{{ $decision->decision_text }}</td>
-                                        <td>{{ $decision->ownerDirectorate?->name ?? '-' }}</td>
-                                        <td>{{ $decision->picUser?->name ?? '-' }}</td>
+                                        <td>
+                                            <div>{{ $decision->ownerDirectorate?->displayName() ?? '-' }}</div>
+                                            <div class="text-xs text-gray-500">{{ $decision->picUser?->name ?? '-' }}</div>
+                                        </td>
+                                        <td>
+                                            @php($supportUsers = $getDecisionSupportUsers($decision))
+                                            @if ($decision->supportDirectorates->count() > 0)
+                                                <div class="flex flex-col gap-1">
+                                                    @foreach ($decision->supportDirectorates as $supportDirectorate)
+                                                        <span class="text-xs text-gray-700">{{ $supportDirectorate->displayName() }}</span>
+                                                    @endforeach
+                                                </div>
+                                            @endif
+                                            @if ($supportUsers->count() > 0)
+                                                <div class="mt-2 flex flex-col gap-1">
+                                                    @foreach ($supportUsers as $supportUser)
+                                                        <span class="text-xs text-gray-500">
+                                                            {{ $supportUser->name }}
+                                                            @if ($supportUser->directorate)
+                                                                ({{ $supportUser->directorate->displayName() }})
+                                                            @endif
+                                                        </span>
+                                                    @endforeach
+                                                </div>
+                                            @endif
+                                            @if ($decision->supportDirectorates->count() === 0 && $supportUsers->count() === 0)
+                                                -
+                                            @endif
+                                        </td>
+                                        <td>
+                                            <div>{{ $decision->first_discussed_at?->format('d/m/Y') ?? '-' }}</div>
+                                            <div class="text-xs text-gray-500">{{ $decision->discussion_count ?? 0 }}x</div>
+                                        </td>
                                         <td>{{ $decision->target_date ? $decision->target_date->format('d/m/Y') : '-' }}
                                         </td>
                                         <td>{{ $decisionProgressById[$decision->id] ?? ((string) $decision->status === 'done' ? 100 : 0) }}%</td>
+                                        <td>
+                                            <div>{{ \Illuminate\Support\Str::limit($decision->latest_update_note ?? '-', 120) }}</div>
+                                            <div class="text-xs text-gray-500">
+                                                {{ $decision->latest_update_at?->format('d/m/Y') ?? '-' }}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            @if ($decision->aging_bucket)
+                                                <div>{{ $agingLabels[$decision->aging_bucket] ?? strtoupper($decision->aging_bucket) }}</div>
+                                                <div class="text-xs text-gray-500">{{ $decision->aging_days ?? 0 }} hari</div>
+                                            @else
+                                                -
+                                            @endif
+                                        </td>
                                         <td>
                                             <span
                                                 class="badge {{ $decisionStatusClass((string) $decision->status) }}">{{ $decisionStatusLabel((string) $decision->status) }}</span>
@@ -943,11 +1111,22 @@
                                 @csrf
                                 <div class="font-medium text-gray-800">{{ $decision->decision_text }}</div>
                                 <div class="text-xs text-gray-500">
+                                    Issue:
+                                    {{ $decision->issue_key ?? '-' }} |
                                     Target:
                                     {{ $decision->target_date ? $decision->target_date->format('d/m/Y') : '-' }} |
                                     PIC:
-                                    {{ $decision->picUser?->name ?? ($decision->ownerDirectorate?->name ?? '-') }}
+                                    {{ $decision->picUser?->name ?? ($decision->ownerDirectorate?->displayName() ?? '-') }}
                                 </div>
+                                @php($supportUsers = $getDecisionSupportUsers($decision))
+                                @if ($supportUsers->count() > 0)
+                                    <div class="text-xs text-gray-500">
+                                        Support Actor:
+                                        {{ $supportUsers->map(function ($supportUser) {
+                                            return $supportUser->name . ($supportUser->directorate ? ' (' . $supportUser->directorate->displayName() . ')' : '');
+                                        })->implode(', ') }}
+                                    </div>
+                                @endif
 
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div class="flex flex-col">
@@ -955,13 +1134,16 @@
                                                 class="text-danger">*</span></label>
                                         <select class="select js-update-type" name="update_type" required>
                                             <option value="progress">Progress</option>
+                                            <option value="continuous">Berkelanjutan</option>
                                             <option value="done">Selesai</option>
+                                            <option value="drop">Drop</option>
                                         </select>
                                     </div>
                                     <div class="flex flex-col js-progress-wrap">
                                         <label class="form-label">Progress (%)</label>
                                         <input class="input" type="number" min="0" max="100"
-                                            name="progress_percent" value="0">
+                                            name="progress_percent"
+                                            value="{{ $decisionProgressById[$decision->id] ?? 0 }}">
                                     </div>
                                     <div class="flex flex-col">
                                         <label class="form-label">Tanggal Realisasi <span
@@ -1046,7 +1228,14 @@
                                     @endphp
                                     <tr>
                                         <td>{{ $decision->decision_text }}</td>
-                                        <td>{{ (string) $update->update_type === 'done' ? 'Selesai' : 'Progress' }}</td>
+                                        <td>
+                                            {{ match ((string) $update->update_type) {
+                                                'done' => 'Selesai',
+                                                'continuous' => 'Berkelanjutan',
+                                                'drop' => 'Drop',
+                                                default => 'Progress',
+                                            } }}
+                                        </td>
                                         <td>{{ $update->progress_percent ?? 0 }}%</td>
                                         <td>{{ $update->happened_at ? $update->happened_at->format('d/m/Y') : '-' }}</td>
                                         <td>
@@ -1111,9 +1300,9 @@
                                         <td>{{ $approval->status ?? '-' }}</td>
                                         <td>
                                             {{ $approval->actor?->name ?? '-' }}
-                                            @if ($approval->actor?->directorate?->name)
+                                            @if ($approval->actor?->directorate)
                                                 <span
-                                                    class="text-xs text-gray-500">({{ $approval->actor->directorate->name }})</span>
+                                                    class="text-xs text-gray-500">({{ $approval->actor->directorate->displayName() }})</span>
                                             @endif
                                         </td>
                                         <td>{{ $approval->note ?? '-' }}</td>
@@ -1166,14 +1355,24 @@
 
 @push('scripts')
     @php
-        $directorateJsOptions = $directorates->map(fn($d) => ['id' => $d->id, 'name' => $d->name])->values();
+        $directorateJsOptions = $directorates
+            ->map(fn($d) => ['id' => $d->id, 'name' => $d->displayName()])
+            ->values();
 
         $userJsOptions = $users
             ->map(function ($u) {
                 return [
                     'id' => $u->id,
                     'name' => $u->name,
-                    'directorate' => $u->directorate?->name,
+                    'directorate' => $u->directorate?->displayName(),
+                ];
+            })
+            ->values();
+        $existingIssueJsOptions = $linkableDecisions
+            ->map(function ($decision) {
+                return [
+                    'id' => $decision->id,
+                    'label' => trim((string) (($decision->issue_key ?? $decision->decision_key ?? '-') . ' | ' . \Illuminate\Support\Str::limit($decision->decision_text, 90))),
                 ];
             })
             ->values();
@@ -1182,9 +1381,19 @@
         document.addEventListener('DOMContentLoaded', function() {
             const directorateOptions = @json($directorateJsOptions);
             const userOptions = @json($userJsOptions);
+            const existingIssueOptions = @json($existingIssueJsOptions);
+            const supportsSupportUserAssignments = @json($supportsSupportUserAssignments);
 
             const buildDirectorateOptions = () => {
                 let html = '<option value="">- Pilih Direktorat -</option>';
+                directorateOptions.forEach((item) => {
+                    html += `<option value="${item.id}">${item.name}</option>`;
+                });
+                return html;
+            };
+
+            const buildSupportDirectorateOptions = () => {
+                let html = '';
                 directorateOptions.forEach((item) => {
                     html += `<option value="${item.id}">${item.name}</option>`;
                 });
@@ -1196,6 +1405,27 @@
                 userOptions.forEach((item) => {
                     const label = item.directorate ? `${item.name} (${item.directorate})` : item.name;
                     html += `<option value="${item.id}">${label}</option>`;
+                });
+                return html;
+            };
+
+            const buildSupportUserOptions = () => {
+                if (!supportsSupportUserAssignments) {
+                    return '';
+                }
+
+                let html = '';
+                userOptions.forEach((item) => {
+                    const label = item.directorate ? `${item.name} (${item.directorate})` : item.name;
+                    html += `<option value="${item.id}">${label}</option>`;
+                });
+                return html;
+            };
+
+            const buildExistingIssueOptions = () => {
+                let html = '<option value="">- Buat issue baru -</option>';
+                existingIssueOptions.forEach((item) => {
+                    html += `<option value="${item.id}">${item.label}</option>`;
                 });
                 return html;
             };
@@ -1277,8 +1507,14 @@
                     wrapper.className = 'p-3 border rounded-xl border-gray-200 decision-row';
                     wrapper.innerHTML = `
                         <input type="hidden" name="decisions[${index}][id]" value="">
-                        <div class="grid gap-3 md:grid-cols-2">
-                            <div class="flex flex-col md:col-span-2">
+                        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                            <div class="flex flex-col md:col-span-2 xl:col-span-3">
+                                <label class="form-label">Link Issue Existing</label>
+                                <select class="select" name="decisions[${index}][existing_decision_id]">
+                                    ${buildExistingIssueOptions()}
+                                </select>
+                            </div>
+                            <div class="flex flex-col md:col-span-2 xl:col-span-3">
                                 <label class="form-label">Item Tindaklanjut <span class="text-danger">*</span></label>
                                 <textarea class="textarea w-full" rows="2" name="decisions[${index}][decision_text]"></textarea>
                             </div>
@@ -1294,7 +1530,32 @@
                                     ${buildUserOptions()}
                                 </select>
                             </div>
-                            <div class="flex flex-col md:col-span-2">
+                            <div class="flex flex-col">
+                                <label class="form-label">Status Issue</label>
+                                <select class="select" name="decisions[${index}][status]">
+                                    <option value="pending">Pending</option>
+                                    <option value="in_progress">Proses</option>
+                                    <option value="continuous">Berkelanjutan</option>
+                                    <option value="done">Done</option>
+                                    <option value="dropped">Drop</option>
+                                </select>
+                            </div>
+                            <div class="flex flex-col md:col-span-2 xl:col-span-3">
+                                <label class="form-label">Support Direktorat</label>
+                                <select class="select" name="decisions[${index}][support_directorate_ids][]" multiple size="4">
+                                    ${buildSupportDirectorateOptions()}
+                                </select>
+                                <small class="mt-1 text-xs text-gray-500">Gunakan Ctrl / Cmd untuk pilih lebih dari satu support.</small>
+                            </div>
+                            ${supportsSupportUserAssignments ? `
+                            <div class="flex flex-col md:col-span-2 xl:col-span-3">
+                                <label class="form-label">Support User yang Boleh Update</label>
+                                <select class="select" name="decisions[${index}][support_user_ids][]" multiple size="5">
+                                    ${buildSupportUserOptions()}
+                                </select>
+                                <small class="mt-1 text-xs text-gray-500">Hanya user yang dipilih di sini yang boleh submit update sebagai support actor.</small>
+                            </div>` : ''}
+                            <div class="flex flex-col md:col-span-2 xl:col-span-3">
                                 <label class="form-label">Target Penyelesaian <span class="text-danger">*</span></label>
                                 <input class="input" type="date" name="decisions[${index}][target_date]">
                             </div>

@@ -52,6 +52,10 @@
                                     <span class="sort"> <span class="sort-label"> Nama Direktorat </span>
                                         <span class="sort-icon"> </span> </span>
                                 </th>
+                                <th class="min-w-[220px]" data-datatable-column="tabulation_label">
+                                    <span class="sort"> <span class="sort-label"> Label Tabulasi </span>
+                                        <span class="sort-icon"> </span> </span>
+                                </th>
                                 <th class="min-w-[250px]" data-datatable-column="description">
                                     <span class="sort"> <span class="sort-label"> Deskripsi </span>
                                         <span class="sort-icon"> </span> </span>
@@ -194,6 +198,10 @@
                 },
                 name: {
                     title: 'Nama Directorate',
+                },
+                tabulation_label: {
+                    title: 'Label Tabulasi',
+                    render: (item, data) => data.tabulation_label ?? data.name ?? '-',
                 },
                 description: {
                     title: 'Deskripsi',

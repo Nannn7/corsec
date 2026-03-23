@@ -68,7 +68,7 @@
             ->map(
                 fn($d) => [
                     'id' => $d->id,
-                    'name' => $d->name,
+                    'name' => $d->displayName(),
                 ],
             )
             ->values();
@@ -78,7 +78,7 @@
                 return [
                     'id' => $u->id,
                     'name' => $u->name,
-                    'directorate' => $u->directorate?->name,
+                    'directorate' => $u->directorate?->displayName(),
                 ];
             })
             ->values();
@@ -266,7 +266,7 @@
                                             {{ $isCheckedDirectorate ? 'checked' : '' }}
                                             {{ $isMandatoryDirectorate ? 'disabled' : '' }}>
                                         <span>
-                                            {{ $directorate->name }}
+                                            {{ $directorate->displayName() }}
                                             @if (!$isOperationalDirectorate)
                                                 <span class="text-gray-500">(Monitoring Only)</span>
                                             @endif
@@ -291,11 +291,11 @@
                                 @forelse ($meetingPicUsers as $optionUser)
                                     <div class="text-sm">
                                         <span class="font-medium">{{ $optionUser->name }}</span>
-                                        @if ($optionUser->position?->name || $optionUser->directorate?->name)
+                                        @if ($optionUser->position?->name || $optionUser->directorate)
                                             <span class="text-gray-500">
                                                 ({{ $optionUser->position?->name ?? '-' }}
-                                                @if ($optionUser->directorate?->name)
-                                                    - {{ $optionUser->directorate->name }}
+                                                @if ($optionUser->directorate)
+                                                    - {{ $optionUser->directorate->displayName() }}
                                                 @endif)
                                             </span>
                                         @endif
@@ -353,7 +353,7 @@
                                                 @foreach ($directorates as $directorate)
                                                     <option value="{{ $directorate->id }}"
                                                         {{ (string) old('agendas.' . $index . '.owner_directorate_id', $agenda['owner_directorate_id'] ?? '') === (string) $directorate->id ? 'selected' : '' }}>
-                                                        {{ $directorate->name }}
+                                                        {{ $directorate->displayName() }}
                                                     </option>
                                                 @endforeach
                                             </select>
@@ -368,8 +368,8 @@
                                                     <option value="{{ $optionUser->id }}"
                                                         {{ (string) old('agendas.' . $index . '.pic_user_id', $agenda['pic_user_id'] ?? '') === (string) $optionUser->id ? 'selected' : '' }}>
                                                         {{ $optionUser->name }}
-                                                        @if ($optionUser->directorate?->name)
-                                                            ({{ $optionUser->directorate->name }})
+                                                        @if ($optionUser->directorate)
+                                                            ({{ $optionUser->directorate->displayName() }})
                                                         @endif
                                                     </option>
                                                 @endforeach

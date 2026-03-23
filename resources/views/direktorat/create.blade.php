@@ -45,6 +45,20 @@
                             @enderror
                         </div>
 
+                        <div class="flex flex-col">
+                            <label class="form-label">Label Tabulasi</label>
+                            <input class="input @error('tabulation_label') border-danger bg-danger-light @enderror"
+                                type="text" name="tabulation_label"
+                                value="{{ old('tabulation_label', $directorate->tabulation_label ?? '') }}"
+                                maxlength="150" placeholder="Nama yang tampil di tabulasi">
+                            <small class="mt-1 text-xs text-gray-500">
+                                Kosongkan jika ingin mengikuti nama direktorat resmi.
+                            </small>
+                            @error('tabulation_label')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+
                         <div class="flex flex-col md:col-span-2">
                             <label class="form-label">Deskripsi</label>
                             <textarea class="textarea @error('description') border-danger bg-danger-light @enderror" name="description"

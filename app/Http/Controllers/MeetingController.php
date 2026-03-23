@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -22,6 +23,7 @@ use Modules\Corsec\Models\DecisionUpdate;
 use Modules\Corsec\Models\Meeting;
 use Modules\Corsec\Models\MeetingAgenda;
 use Modules\Corsec\Models\MeetingDecision;
+use Modules\Corsec\Models\MeetingDecisionOccurrence;
 use Modules\Corsec\Models\MeetingMaterial;
 use Modules\Corsec\Models\MeetingMinutes;
 use Modules\Corsec\Models\MeetingParticipant;
@@ -85,6 +87,75 @@ class MeetingController extends Controller
             'statusLabels' => Meeting::statusLabels(),
             'typeOptions' => Meeting::typeOptions(),
             'permissionFlags' => $permissionFlags,
+        ]);
+    }
+
+    public function tabulation(Request $request)
+    {
+        $this->authorizeRead();
+
+        $user = Auth::user();
+        $supportUsersEnabled = $this->supportsDecisionSupportUsers();
+        $latestDecisionIds = MeetingDecision::query()
+            ->whereIn('meeting_id', $this->scopedMeetingsQuery($user)->select('id'))
+            ->selectRaw('MAX(corsec_meeting_decisions.id)')
+            ->groupBy(DB::raw('COALESCE(root_decision_id, id)'));
+
+        $decisionRelations = [
+            'meeting:id,uuid,title,meeting_type,meeting_at',
+            'ownerDirectorate:id,name,tabulation_label',
+            'picUser:id,name,directorate_id',
+            'picUser.directorate:id,name,tabulation_label',
+            'supportDirectorates:id,name,tabulation_label',
+        ];
+        if ($supportUsersEnabled) {
+            $decisionRelations[] = 'supportUsers:id,name,directorate_id';
+            $decisionRelations[] = 'supportUsers.directorate:id,name,tabulation_label';
+        }
+
+        $query = MeetingDecision::query()
+            ->with($decisionRelations)
+            ->whereIn('id', $latestDecisionIds);
+
+        $this->applyTabulationFilters($query, $request);
+
+        $summaryRows = (clone $query)->get();
+        $summary = [
+            'total' => $summaryRows->count(),
+            'open' => $summaryRows->filter(fn(MeetingDecision $decision) => $decision->isOpenStatus())->count(),
+            'continuous' => $summaryRows->where('status', MeetingDecision::STATUS_CONTINUOUS)->count(),
+            'done' => $summaryRows->where('status', MeetingDecision::STATUS_DONE)->count(),
+            'dropped' => $summaryRows->where('status', MeetingDecision::STATUS_DROPPED)->count(),
+        ];
+
+        $tabulations = $query
+            ->orderByRaw(
+                "CASE WHEN status IN (?, ?, ?) THEN 0 ELSE 1 END",
+                $this->openDecisionStatuses()
+            )
+            ->orderByDesc(DB::raw('COALESCE(aging_days, 0)'))
+            ->orderByDesc('last_discussed_at')
+            ->orderByDesc('id')
+            ->paginate(25)
+            ->withQueryString();
+
+        return view('corsec::meeting.tabulation', [
+            'tabulations' => $tabulations,
+            'summary' => $summary,
+            'statusLabels' => Meeting::statusLabels(),
+            'typeOptions' => Meeting::typeOptions(),
+            'filters' => $request->only([
+                'keyword',
+                'meeting_type',
+                'directorate_id',
+                'status',
+                'aging_bucket',
+                'period_start',
+                'period_end',
+                'only_open',
+            ]),
+            'supportsSupportUserAssignments' => $supportUsersEnabled,
+            ...$this->meetingFormOptions(),
         ]);
     }
 
@@ -323,7 +394,7 @@ class MeetingController extends Controller
 
         $this->syncInheritedDirectorateAgendas($meeting);
 
-        $meeting->load([
+        $meetingRelations = [
             'createdBy',
             'updatedBy',
             'authorizedBy',
@@ -341,10 +412,16 @@ class MeetingController extends Controller
             'minutes.finalMinutesAttachment',
             'decisions.ownerDirectorate',
             'decisions.picUser',
+            'decisions.supportDirectorates',
+            'decisions.occurrences.meeting',
             'decisions.updates.updater',
             'decisions.updates.attachables.attachment',
             'comments.createdBy',
-        ]);
+        ];
+        if ($this->supportsDecisionSupportUsers()) {
+            $meetingRelations[] = 'decisions.supportUsers.directorate';
+        }
+        $meeting->load($meetingRelations);
 
         if ($request->expectsJson() || $request->ajax()) {
             return response()->json([
@@ -366,6 +443,15 @@ class MeetingController extends Controller
             ->get();
         $permissionFlags = $this->permissionService->meetingDetailFlags($meeting, $approvals, $user);
         $crossMeetingOpenDecisions = $this->crossMeetingOpenDecisions($meeting);
+        $linkableDecisions = $crossMeetingOpenDecisions
+            ->sortByDesc(function (MeetingDecision $decision) {
+                return sprintf(
+                    '%010d-%010d',
+                    $decision->last_discussed_at?->timestamp ?? 0,
+                    (int) $decision->id
+                );
+            })
+            ->values();
         $decisionUpdates = $meeting->decisions
             ->flatMap(function (MeetingDecision $decision) {
                 return $decision->updates->map(function (DecisionUpdate $update) use ($decision) {
@@ -382,7 +468,11 @@ class MeetingController extends Controller
         $decisionProgressById = $meeting->decisions
             ->mapWithKeys(function (MeetingDecision $decision) {
                 $latestUpdate = $decision->updates->sortByDesc('id')->first();
-                $progressValue = (int) ($latestUpdate?->progress_percent ?? ((string) $decision->status === 'done' ? 100 : 0));
+                $progressValue = (int) (
+                    $latestUpdate?->progress_percent
+                    ?? $decision->latest_progress_percent
+                    ?? ((string) $decision->status === MeetingDecision::STATUS_DONE ? 100 : 0)
+                );
 
                 return [(int) $decision->id => $progressValue];
             })
@@ -397,9 +487,11 @@ class MeetingController extends Controller
             'approvals' => $approvals,
             'permissionFlags' => $permissionFlags,
             'crossMeetingOpenDecisions' => $crossMeetingOpenDecisions,
+            'linkableDecisions' => $linkableDecisions,
             'decisionUpdates' => $decisionUpdates,
             'decisionProgressById' => $decisionProgressById,
             'sortedComments' => $sortedComments,
+            'supportsSupportUserAssignments' => $this->supportsDecisionSupportUsers(),
             ...$options,
         ]);
     }
@@ -686,10 +778,16 @@ class MeetingController extends Controller
             'submit_for_signature' => ['nullable', 'boolean'],
             'decisions' => ['nullable', 'array'],
             'decisions.*.id' => ['nullable', 'integer'],
+            'decisions.*.existing_decision_id' => ['nullable', 'integer', 'exists:corsec_meeting_decisions,id'],
             'decisions.*.decision_text' => ['required_with:decisions', 'string'],
             'decisions.*.owner_directorate_id' => ['nullable', 'exists:corsec_directorates,id'],
             'decisions.*.pic_user_id' => ['nullable', 'exists:users,id'],
             'decisions.*.target_date' => ['nullable', 'date'],
+            'decisions.*.status' => ['nullable', Rule::in($this->allDecisionStatuses())],
+            'decisions.*.support_directorate_ids' => ['nullable', 'array'],
+            'decisions.*.support_directorate_ids.*' => ['nullable', 'integer', 'exists:corsec_directorates,id'],
+            'decisions.*.support_user_ids' => ['nullable', 'array'],
+            'decisions.*.support_user_ids.*' => ['nullable', 'integer', 'exists:users,id'],
         ]);
 
         $user = Auth::user();
@@ -707,6 +805,7 @@ class MeetingController extends Controller
                 $minutes->save();
             }
 
+            $touchedRootDecisionIds = [];
             foreach ((array) $request->input('decisions', []) as $decisionPayload) {
                 $decisionText = trim((string) ($decisionPayload['decision_text'] ?? ''));
                 if ($decisionText === '') {
@@ -733,52 +832,147 @@ class MeetingController extends Controller
                     ]);
                 }
 
+                $linkedDecisionId = isset($decisionPayload['existing_decision_id']) && $decisionPayload['existing_decision_id'] !== ''
+                    ? (int) $decisionPayload['existing_decision_id']
+                    : null;
+                $linkedDecision = $linkedDecisionId
+                    ? MeetingDecision::query()->find($linkedDecisionId)
+                    : null;
+                $linkedRootDecisionId = $this->resolveDecisionFamilyRootId($linkedDecision);
+                $supportDirectorateIds = $this->normalizeDirectorateIds(
+                    (array) ($decisionPayload['support_directorate_ids'] ?? [])
+                );
+                $supportUserIds = collect((array) ($decisionPayload['support_user_ids'] ?? []))
+                    ->filter(fn($id) => $id !== null && $id !== '')
+                    ->map(fn($id) => (int) $id)
+                    ->filter(fn($id) => $id > 0)
+                    ->unique()
+                    ->values()
+                    ->all();
+                if ($this->supportsDecisionSupportUsers() && !empty($supportUserIds)) {
+                    $supportUserDirectorateIds = User::query()
+                        ->whereIn('id', $supportUserIds)
+                        ->whereNotNull('directorate_id')
+                        ->pluck('directorate_id')
+                        ->map(fn($id) => (int) $id)
+                        ->filter(fn($id) => $id > 0)
+                        ->unique()
+                        ->values()
+                        ->all();
+
+                    $supportDirectorateIds = collect($supportDirectorateIds)
+                        ->merge($supportUserDirectorateIds)
+                        ->map(fn($id) => (int) $id)
+                        ->filter(fn($id) => $id > 0)
+                        ->unique()
+                        ->values()
+                        ->all();
+                }
+                $decisionStatus = $this->normalizeDecisionStatus((string) ($decisionPayload['status'] ?? ''));
                 $decisionId = (int) ($decisionPayload['id'] ?? 0);
+                $existingDecision = null;
                 if ($decisionId > 0) {
                     $existingDecision = MeetingDecision::query()
                         ->where('meeting_id', $meeting->id)
                         ->where('id', $decisionId)
                         ->first();
-
-                    if ($existingDecision) {
-                        $updatePayload = [
-                            'decision_text' => $decisionText,
-                            'owner_directorate_id' => $ownerDirectorateId,
-                            'pic_user_id' => $picUserId,
-                            'target_date' => $targetDate,
-                            'updated_by' => $user->id,
-                        ];
-                        if (!$existingDecision->decision_key) {
-                            $updatePayload['decision_key'] = $this->buildDecisionKey((int) $existingDecision->id);
-                        }
-                        if (!$existingDecision->root_decision_id) {
-                            $updatePayload['root_decision_id'] = (int) $existingDecision->id;
-                        }
-                        $existingDecision->update($updatePayload);
-                        continue;
-                    }
+                }
+                if (!$existingDecision && $linkedRootDecisionId) {
+                    $existingDecision = MeetingDecision::query()
+                        ->where('meeting_id', $meeting->id)
+                        ->where(function ($query) use ($linkedRootDecisionId) {
+                            $query->where('id', $linkedRootDecisionId)
+                                ->orWhere('root_decision_id', $linkedRootDecisionId);
+                        })
+                        ->first();
                 }
 
-                $createdDecision = MeetingDecision::create([
-                    'meeting_id' => $meeting->id,
+                $decisionAttributes = [
                     'decision_text' => $decisionText,
-                    'decision_key' => null,
-                    'root_decision_id' => null,
-                    'source_decision_id' => null,
                     'owner_directorate_id' => $ownerDirectorateId,
                     'pic_user_id' => $picUserId,
                     'target_date' => $targetDate,
-                    'status' => MeetingDecision::STATUS_PENDING,
-                    'created_by' => $user->id,
+                    'status' => $decisionStatus,
+                    'closed_at' => in_array($decisionStatus, [
+                        MeetingDecision::STATUS_DONE,
+                        MeetingDecision::STATUS_DROPPED,
+                    ], true) ? now() : null,
                     'updated_by' => $user->id,
-                ]);
-                if (!$createdDecision->decision_key || !$createdDecision->root_decision_id) {
-                    $createdDecision->update([
-                        'decision_key' => $createdDecision->decision_key ?: $this->buildDecisionKey((int) $createdDecision->id),
-                        'root_decision_id' => $createdDecision->root_decision_id ?: (int) $createdDecision->id,
+                ];
+                if ($linkedDecision && $linkedRootDecisionId) {
+                    $decisionAttributes['root_decision_id'] = $linkedRootDecisionId;
+                    $decisionAttributes['source_decision_id'] = $linkedDecision->id;
+                    $decisionAttributes['issue_key'] = $linkedDecision->issue_key ?: $this->buildIssueKey($linkedRootDecisionId);
+                }
+
+                if ($existingDecision) {
+                    if (!$existingDecision->decision_key) {
+                        $decisionAttributes['decision_key'] = $this->buildDecisionKey((int) $existingDecision->id);
+                    }
+                    if (!$existingDecision->root_decision_id && !$linkedRootDecisionId) {
+                        $decisionAttributes['root_decision_id'] = (int) $existingDecision->id;
+                    }
+                    if (!$existingDecision->issue_key && !$linkedRootDecisionId) {
+                        $decisionAttributes['issue_key'] = $this->buildIssueKey((int) $existingDecision->id);
+                    }
+
+                    $existingDecision->update($decisionAttributes);
+                    $decision = $existingDecision->fresh();
+                } else {
+                    $decision = MeetingDecision::create([
+                        'meeting_id' => $meeting->id,
+                        'decision_text' => $decisionText,
+                        'decision_key' => null,
+                        'issue_key' => $linkedDecision?->issue_key,
+                        'root_decision_id' => $linkedRootDecisionId,
+                        'source_decision_id' => $linkedDecision?->id,
+                        'owner_directorate_id' => $ownerDirectorateId,
+                        'pic_user_id' => $picUserId,
+                        'target_date' => $targetDate,
+                        'status' => $decisionStatus,
+                        'closed_at' => in_array($decisionStatus, [
+                            MeetingDecision::STATUS_DONE,
+                            MeetingDecision::STATUS_DROPPED,
+                        ], true) ? now() : null,
+                        'created_by' => $user->id,
+                        'updated_by' => $user->id,
                     ]);
                 }
+
+                $rootDecisionId = $this->resolveDecisionFamilyRootId($decision);
+                $keyPayload = [];
+                if (!$decision->decision_key) {
+                    $keyPayload['decision_key'] = $this->buildDecisionKey((int) $decision->id);
+                }
+                if (!$rootDecisionId) {
+                    $rootDecisionId = (int) $decision->id;
+                    $keyPayload['root_decision_id'] = $rootDecisionId;
+                }
+                if (!$decision->issue_key) {
+                    $keyPayload['issue_key'] = $this->buildIssueKey($rootDecisionId);
+                }
+                if (!empty($keyPayload)) {
+                    $decision->update($keyPayload);
+                    $decision = $decision->fresh();
+                }
+
+                $decision->supportDirectorates()->sync($supportDirectorateIds);
+                if ($this->supportsDecisionSupportUsers()) {
+                    $decision->supportUsers()->sync($supportUserIds);
+                }
+                $this->recordDecisionOccurrence($decision, $linkedDecision, $user);
+                $touchedRootDecisionIds[] = $this->resolveDecisionFamilyRootId($decision) ?? (int) $decision->id;
             }
+
+            collect($touchedRootDecisionIds)
+                ->filter()
+                ->map(fn($id) => (int) $id)
+                ->unique()
+                ->each(function (int $rootDecisionId) {
+                    $this->syncDecisionFamilySummaryByRootDecisionId($rootDecisionId);
+                });
+
+            $this->syncMeetingDecisionFamilySummaries($meeting);
         });
 
         $this->workflow->startMinutes($meeting, $user);
@@ -859,7 +1053,12 @@ class MeetingController extends Controller
         }
 
         $request->validate([
-            'update_type' => ['required', Rule::in([DecisionUpdate::TYPE_PROGRESS, DecisionUpdate::TYPE_DONE])],
+            'update_type' => ['required', Rule::in([
+                DecisionUpdate::TYPE_PROGRESS,
+                DecisionUpdate::TYPE_DONE,
+                DecisionUpdate::TYPE_CONTINUOUS,
+                DecisionUpdate::TYPE_DROP,
+            ])],
             'progress_percent' => ['nullable', 'integer', 'min:0', 'max:100'],
             'happened_at' => ['required', 'date'],
             'is_on_target' => ['required', 'boolean'],
@@ -876,18 +1075,40 @@ class MeetingController extends Controller
         }
 
         $updateType = (string) $request->input('update_type');
-        $progress = $updateType === DecisionUpdate::TYPE_DONE
-            ? 100
-            : ($request->filled('progress_percent') ? (int) $request->input('progress_percent') : 0);
+        $defaultProgress = (int) (
+            $decision->latest_progress_percent
+            ?? optional($decision->updates()->latest('id')->first())->progress_percent
+            ?? 0
+        );
+        $progress = match ($updateType) {
+            DecisionUpdate::TYPE_DONE => 100,
+            DecisionUpdate::TYPE_DROP => $request->filled('progress_percent')
+                ? (int) $request->input('progress_percent')
+                : $defaultProgress,
+            default => $request->filled('progress_percent')
+                ? (int) $request->input('progress_percent')
+                : $defaultProgress,
+        };
 
         DB::transaction(function () use ($request, $meeting, $decision, $user, $updateType, $progress) {
+            $updateStatus = match ($updateType) {
+                DecisionUpdate::TYPE_DONE => DecisionUpdate::STATUS_DONE,
+                DecisionUpdate::TYPE_CONTINUOUS => DecisionUpdate::STATUS_CONTINUOUS,
+                DecisionUpdate::TYPE_DROP => DecisionUpdate::STATUS_DROPPED,
+                default => DecisionUpdate::STATUS_IN_PROGRESS,
+            };
+            $decisionStatus = match ($updateType) {
+                DecisionUpdate::TYPE_DONE => MeetingDecision::STATUS_DONE,
+                DecisionUpdate::TYPE_CONTINUOUS => MeetingDecision::STATUS_CONTINUOUS,
+                DecisionUpdate::TYPE_DROP => MeetingDecision::STATUS_DROPPED,
+                default => MeetingDecision::STATUS_IN_PROGRESS,
+            };
+
             $update = DecisionUpdate::create([
                 'meeting_decision_id' => $decision->id,
                 'progress_percent' => $progress,
                 'update_type' => $updateType,
-                'status' => $updateType === DecisionUpdate::TYPE_DONE
-                    ? DecisionUpdate::STATUS_DONE
-                    : DecisionUpdate::STATUS_IN_PROGRESS,
+                'status' => $updateStatus,
                 'note' => $request->input('note'),
                 'happened_at' => $request->input('happened_at'),
                 'is_on_target' => $request->filled('is_on_target')
@@ -916,13 +1137,19 @@ class MeetingController extends Controller
             }
 
             $decision->update([
-                'status' => $updateType === DecisionUpdate::TYPE_DONE
-                    ? MeetingDecision::STATUS_DONE
-                    : MeetingDecision::STATUS_IN_PROGRESS,
-                'closed_at' => $updateType === DecisionUpdate::TYPE_DONE ? now() : null,
+                'status' => $decisionStatus,
+                'closed_at' => in_array($decisionStatus, [
+                    MeetingDecision::STATUS_DONE,
+                    MeetingDecision::STATUS_DROPPED,
+                ], true) ? now() : null,
                 'updated_by' => $user->id,
             ]);
 
+            $decision = $decision->fresh(['updates']);
+            $this->recordDecisionOccurrence($decision, null, $user);
+            $rootDecisionId = $this->resolveDecisionFamilyRootId($decision) ?? (int) $decision->id;
+            $this->syncDecisionFamilySummaryByRootDecisionId($rootDecisionId);
+            $this->syncMeetingDecisionFamilySummaries($meeting);
             $this->workflow->startFollowup($meeting, $user);
             $this->workflow->syncFollowupStatusFromDecisions($meeting, $user);
         });
@@ -1256,7 +1483,33 @@ class MeetingController extends Controller
         }
 
         $operationalRoleNames = ['maker', 'checker', 'approver'];
-        $candidateUsers = User::query()
+        $mapping = [];
+        $scoreByDirectorate = [];
+        $assignCandidateUsers = function (Collection $candidateUsers) use (&$mapping, &$scoreByDirectorate) {
+            foreach ($candidateUsers as $candidateUser) {
+                $directorateId = (int) ($candidateUser->directorate_id ?? 0);
+                if ($directorateId <= 0) {
+                    continue;
+                }
+
+                $positionName = strtolower(trim((string) ($candidateUser->position?->name ?? '')));
+                $candidateScore = $this->resolveAutoPicCandidateScore($positionName);
+
+                if (
+                    !isset($mapping[$directorateId])
+                    || $candidateScore < ($scoreByDirectorate[$directorateId] ?? PHP_INT_MAX)
+                    || (
+                        $candidateScore === ($scoreByDirectorate[$directorateId] ?? PHP_INT_MAX)
+                        && (int) $candidateUser->id < (int) $mapping[$directorateId]
+                    )
+                ) {
+                    $mapping[$directorateId] = (int) $candidateUser->id;
+                    $scoreByDirectorate[$directorateId] = $candidateScore;
+                }
+            }
+        };
+
+        $preferredUsers = User::query()
             ->whereIn('directorate_id', $directorateIds->all())
             ->whereHas('roles', function ($query) use ($operationalRoleNames) {
                 $query->whereIn('name', $operationalRoleNames);
@@ -1264,29 +1517,16 @@ class MeetingController extends Controller
             ->with('position:id,name')
             ->orderBy('id')
             ->get(['id', 'directorate_id', 'position_id']);
+        $assignCandidateUsers($preferredUsers);
 
-        $mapping = [];
-        $scoreByDirectorate = [];
-        foreach ($candidateUsers as $candidateUser) {
-            $directorateId = (int) ($candidateUser->directorate_id ?? 0);
-            if ($directorateId <= 0) {
-                continue;
-            }
-
-            $positionName = strtolower(trim((string) ($candidateUser->position?->name ?? '')));
-            $candidateScore = $this->resolveAutoPicCandidateScore($positionName);
-
-            if (
-                !isset($mapping[$directorateId])
-                || $candidateScore < ($scoreByDirectorate[$directorateId] ?? PHP_INT_MAX)
-                || (
-                    $candidateScore === ($scoreByDirectorate[$directorateId] ?? PHP_INT_MAX)
-                    && (int) $candidateUser->id < (int) $mapping[$directorateId]
-                )
-            ) {
-                $mapping[$directorateId] = (int) $candidateUser->id;
-                $scoreByDirectorate[$directorateId] = $candidateScore;
-            }
+        $missingDirectorateIds = $directorateIds->filter(fn($id) => !isset($mapping[(int) $id]))->values();
+        if ($missingDirectorateIds->isNotEmpty()) {
+            $fallbackUsers = User::query()
+                ->whereIn('directorate_id', $missingDirectorateIds->all())
+                ->with('position:id,name')
+                ->orderBy('id')
+                ->get(['id', 'directorate_id', 'position_id']);
+            $assignCandidateUsers($fallbackUsers);
         }
 
         if ($failWhenMissing) {
@@ -1294,11 +1534,12 @@ class MeetingController extends Controller
             if ($missingDirectorateIds->isNotEmpty() && empty($mapping)) {
                 $missingNames = Directorate::query()
                     ->whereIn('id', $missingDirectorateIds->all())
-                    ->pluck('name')
+                    ->get(['id', 'name', 'tabulation_label'])
+                    ->map(fn(Directorate $directorate) => $directorate->displayName())
                     ->values()
                     ->all();
                 throw ValidationException::withMessages([
-                    'participants' => 'Belum ada user operasional (maker/checker/approver) untuk direktorat terpilih: ' . implode(', ', $missingNames),
+                    'participants' => 'Belum ada user PIC yang dapat dipilih untuk direktorat terpilih: ' . implode(', ', $missingNames),
                 ]);
             }
         }
@@ -1494,6 +1735,11 @@ class MeetingController extends Controller
             $w->orWhereHas('decisions', function ($q) use ($user) {
                 $q->where('pic_user_id', (int) $user->id);
             });
+            if ($this->supportsDecisionSupportUsers()) {
+                $w->orWhereHas('decisions.supportUsers', function ($q) use ($user) {
+                    $q->where('users.id', (int) $user->id);
+                });
+            }
             if ($directorateId > 0) {
                 $w->orWhereHas('participants', function ($q) use ($directorateId) {
                     $q->where('directorate_id', $directorateId);
@@ -1503,6 +1749,9 @@ class MeetingController extends Controller
                 });
                 $w->orWhereHas('decisions', function ($q) use ($directorateId) {
                     $q->where('owner_directorate_id', $directorateId);
+                });
+                $w->orWhereHas('decisions.supportDirectorates', function ($q) use ($directorateId) {
+                    $q->where('corsec_directorates.id', $directorateId);
                 });
             }
         });
@@ -1522,6 +1771,14 @@ class MeetingController extends Controller
             return true;
         }
 
+        if ($this->supportsDecisionSupportUsers()) {
+            if ($meeting->decisions()->whereHas('supportUsers', function ($query) use ($user) {
+                $query->where('users.id', (int) $user->id);
+            })->exists()) {
+                return true;
+            }
+        }
+
         $directorateId = (int) ($user->directorate_id ?? 0);
         if ($directorateId <= 0) {
             return false;
@@ -1531,7 +1788,15 @@ class MeetingController extends Controller
             return true;
         }
 
-        return $meeting->agendas()->where('owner_directorate_id', $directorateId)->exists();
+        if ($meeting->agendas()->where('owner_directorate_id', $directorateId)->exists()) {
+            return true;
+        }
+
+        return $meeting->decisions()
+            ->whereHas('supportDirectorates', function ($query) use ($directorateId) {
+                $query->where('corsec_directorates.id', $directorateId);
+            })
+            ->exists();
     }
 
     private function canActAsMeetingDirectorate(Meeting $meeting, User $user): bool
@@ -1552,6 +1817,9 @@ class MeetingController extends Controller
         return $meeting->participants()->where('directorate_id', $directorateId)->exists()
             || $meeting->agendas()->where('owner_directorate_id', $directorateId)->exists()
             || $meeting->decisions()->where('owner_directorate_id', $directorateId)->exists()
+            || $meeting->decisions()->whereHas('supportDirectorates', function ($query) use ($directorateId) {
+                $query->where('corsec_directorates.id', $directorateId);
+            })->exists()
             || $this->isMeetingAssignedToUser($meeting, $user);
     }
 
@@ -1559,6 +1827,12 @@ class MeetingController extends Controller
     {
         if ($user->hasRole('administrator')) {
             return true;
+        }
+
+        if ($this->supportsDecisionSupportUsers()) {
+            if ($decision->supportUsers()->where('users.id', (int) $user->id)->exists()) {
+                return true;
+            }
         }
 
         if ((int) ($decision->pic_user_id ?? 0) > 0) {
@@ -1583,6 +1857,11 @@ class MeetingController extends Controller
         return $meeting->participants()->where('user_id', (int) $user->id)->exists()
             || $meeting->agendas()->where('pic_user_id', (int) $user->id)->exists()
             || $meeting->decisions()->where('pic_user_id', (int) $user->id)->exists();
+    }
+
+    private function supportsDecisionSupportUsers(): bool
+    {
+        return MeetingDecision::supportsSupportUsersTable();
     }
 
     private function resolveOwnerDirectorateId(?int $ownerDirectorateId, ?int $picUserId): ?int
@@ -1685,9 +1964,12 @@ class MeetingController extends Controller
     private function inheritedDecisionBacklogQuery(Meeting $meeting, \Illuminate\Support\Collection $targetDirectorateIds)
     {
         return MeetingDecision::query()
+            ->whereIn('id', MeetingDecision::query()
+                ->selectRaw('MAX(corsec_meeting_decisions.id)')
+                ->groupBy(DB::raw('COALESCE(root_decision_id, id)')))
             ->where('meeting_id', '!=', $meeting->id)
             ->whereIn('owner_directorate_id', $targetDirectorateIds->all())
-            ->whereIn('status', [MeetingDecision::STATUS_PENDING, MeetingDecision::STATUS_IN_PROGRESS])
+            ->whereIn('status', $this->openDecisionStatuses())
             ->whereHas('meeting', function ($query) {
                 $query->whereIn('meeting_type', [
                     Meeting::TYPE_KOMISARIS,
@@ -1701,8 +1983,11 @@ class MeetingController extends Controller
     {
         $query = MeetingDecision::query()
             ->with(['meeting:id,uuid,title,meeting_type,meeting_at', 'ownerDirectorate', 'picUser'])
+            ->whereIn('id', MeetingDecision::query()
+                ->selectRaw('MAX(corsec_meeting_decisions.id)')
+                ->groupBy(DB::raw('COALESCE(root_decision_id, id)')))
             ->where('meeting_id', '!=', $meeting->id)
-            ->whereIn('status', [MeetingDecision::STATUS_PENDING, MeetingDecision::STATUS_IN_PROGRESS]);
+            ->whereIn('status', $this->openDecisionStatuses());
 
         if ($meeting->isDirektoratType()) {
             $targetDirectorateIds = $this->meetingBacklogDirectorateIds($meeting);
@@ -1757,9 +2042,262 @@ class MeetingController extends Controller
             ->values();
     }
 
+    private function applyTabulationFilters($query, Request $request): void
+    {
+        $keyword = trim((string) $request->input('keyword', ''));
+        if ($keyword !== '') {
+            $query->where(function ($builder) use ($keyword) {
+                $builder->where('issue_key', 'ilike', '%' . $keyword . '%')
+                    ->orWhere('decision_key', 'ilike', '%' . $keyword . '%')
+                    ->orWhere('decision_text', 'ilike', '%' . $keyword . '%')
+                    ->orWhere('latest_update_note', 'ilike', '%' . $keyword . '%');
+            });
+        }
+
+        $status = trim((string) $request->input('status', ''));
+        if ($status !== '' && in_array($status, $this->allDecisionStatuses(), true)) {
+            $query->where('status', $status);
+        } elseif ($request->boolean('only_open')) {
+            $query->whereIn('status', $this->openDecisionStatuses());
+        }
+
+        $meetingType = trim((string) $request->input('meeting_type', ''));
+        if ($meetingType !== '') {
+            $query->whereHas('meeting', function ($builder) use ($meetingType) {
+                $builder->where('meeting_type', $meetingType);
+            });
+        }
+
+        $directorateId = (int) $request->input('directorate_id', 0);
+        if ($directorateId > 0) {
+            $query->where(function ($builder) use ($directorateId) {
+                $builder->where('owner_directorate_id', $directorateId)
+                    ->orWhereHas('supportDirectorates', function ($supportQuery) use ($directorateId) {
+                        $supportQuery->where('corsec_directorates.id', $directorateId);
+                    });
+            });
+        }
+
+        $agingBucket = trim((string) $request->input('aging_bucket', ''));
+        if (in_array($agingBucket, ['cat_1', 'cat_2', 'cat_3', 'cat_4', 'cat_5'], true)) {
+            $query->where('aging_bucket', $agingBucket);
+        }
+
+        $periodStart = $request->input('period_start');
+        if ($periodStart) {
+            $query->whereHas('meeting', function ($builder) use ($periodStart) {
+                $builder->whereDate('meeting_at', '>=', $periodStart);
+            });
+        }
+
+        $periodEnd = $request->input('period_end');
+        if ($periodEnd) {
+            $query->whereHas('meeting', function ($builder) use ($periodEnd) {
+                $builder->whereDate('meeting_at', '<=', $periodEnd);
+            });
+        }
+    }
+
+    private function allDecisionStatuses(): array
+    {
+        return [
+            MeetingDecision::STATUS_PENDING,
+            MeetingDecision::STATUS_IN_PROGRESS,
+            MeetingDecision::STATUS_CONTINUOUS,
+            MeetingDecision::STATUS_DONE,
+            MeetingDecision::STATUS_DROPPED,
+        ];
+    }
+
+    private function openDecisionStatuses(): array
+    {
+        return [
+            MeetingDecision::STATUS_PENDING,
+            MeetingDecision::STATUS_IN_PROGRESS,
+            MeetingDecision::STATUS_CONTINUOUS,
+        ];
+    }
+
+    private function normalizeDirectorateIds(array $directorateIds): array
+    {
+        return collect($directorateIds)
+            ->filter(fn($id) => $id !== null && $id !== '')
+            ->map(fn($id) => (int) $id)
+            ->filter(fn($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function normalizeDecisionStatus(string $status): string
+    {
+        $status = trim($status);
+
+        return in_array($status, $this->allDecisionStatuses(), true)
+            ? $status
+            : MeetingDecision::STATUS_PENDING;
+    }
+
+    private function resolveDecisionFamilyRootId(?MeetingDecision $decision): ?int
+    {
+        if (!$decision) {
+            return null;
+        }
+
+        $rootDecisionId = (int) ($decision->root_decision_id ?? 0);
+        if ($rootDecisionId > 0) {
+            return $rootDecisionId;
+        }
+
+        $decisionId = (int) ($decision->id ?? 0);
+
+        return $decisionId > 0 ? $decisionId : null;
+    }
+
+    private function recordDecisionOccurrence(MeetingDecision $decision, ?MeetingDecision $sourceDecision, User $user): void
+    {
+        $decision->loadMissing('meeting');
+        $latestUpdate = $decision->relationLoaded('updates')
+            ? $decision->updates->sortByDesc('id')->first()
+            : $decision->updates()->latest('id')->first();
+
+        $progressSnapshot = (int) (
+            $latestUpdate?->progress_percent
+            ?? $decision->latest_progress_percent
+            ?? ((string) $decision->status === MeetingDecision::STATUS_DONE ? 100 : 0)
+        );
+        $noteSnapshot = trim((string) (
+            $latestUpdate?->note
+            ?? $decision->latest_update_note
+            ?? $decision->decision_text
+        ));
+
+        MeetingDecisionOccurrence::query()->updateOrCreate(
+            ['meeting_decision_id' => $decision->id],
+            [
+                'root_decision_id' => $this->resolveDecisionFamilyRootId($decision) ?? (int) $decision->id,
+                'meeting_id' => (int) $decision->meeting_id,
+                'source_decision_id' => $sourceDecision?->id ?: ($decision->source_decision_id ?: null),
+                'occurred_at' => $decision->meeting?->meeting_at?->toDateString() ?? now()->toDateString(),
+                'status_snapshot' => $decision->status,
+                'progress_snapshot' => $progressSnapshot,
+                'note_snapshot' => $noteSnapshot !== '' ? $noteSnapshot : null,
+                'created_by' => $user->id,
+            ]
+        );
+    }
+
+    private function syncDecisionFamilySummaryByRootDecisionId(int $rootDecisionId): void
+    {
+        $familyDecisions = MeetingDecision::query()
+            ->with(['meeting:id,meeting_at'])
+            ->where(function ($query) use ($rootDecisionId) {
+                $query->where('id', $rootDecisionId)
+                    ->orWhere('root_decision_id', $rootDecisionId);
+            })
+            ->get();
+
+        if ($familyDecisions->isEmpty()) {
+            return;
+        }
+
+        $issueKey = $familyDecisions->pluck('issue_key')->filter()->first() ?: $this->buildIssueKey($rootDecisionId);
+        $meetingDates = $familyDecisions
+            ->map(fn(MeetingDecision $decision) => $decision->meeting?->meeting_at?->copy()->startOfDay())
+            ->filter();
+        $firstDiscussedAt = $meetingDates->sortBy(fn($date) => $date?->timestamp ?? 0)->first();
+        $lastDiscussedAt = $meetingDates->sortByDesc(fn($date) => $date?->timestamp ?? 0)->first();
+        $latestDecision = $familyDecisions
+            ->sortByDesc(function (MeetingDecision $decision) {
+                $meetingTimestamp = $decision->meeting?->meeting_at?->timestamp ?? 0;
+
+                return sprintf('%010d-%010d', $meetingTimestamp, (int) $decision->id);
+            })
+            ->first();
+        $latestUpdate = DecisionUpdate::query()
+            ->whereIn('meeting_decision_id', $familyDecisions->pluck('id')->all())
+            ->orderByDesc('happened_at')
+            ->orderByDesc('id')
+            ->first();
+
+        $latestStatus = (string) ($latestDecision?->status ?? MeetingDecision::STATUS_PENDING);
+        $latestUpdateAt = $latestUpdate?->happened_at ?? $lastDiscussedAt;
+        $latestProgress = $latestUpdate?->progress_percent;
+        if ($latestProgress === null) {
+            $latestProgress = $latestDecision?->latest_progress_percent;
+        }
+        if ($latestProgress === null && $latestStatus === MeetingDecision::STATUS_DONE) {
+            $latestProgress = 100;
+        }
+        if ($latestProgress === null) {
+            $latestProgress = 0;
+        }
+
+        $agingDays = null;
+        if ($firstDiscussedAt && in_array($latestStatus, $this->openDecisionStatuses(), true)) {
+            $agingDays = $firstDiscussedAt->diffInDays(now()->startOfDay());
+        }
+
+        $payload = [
+            'issue_key' => $issueKey,
+            'first_discussed_at' => $firstDiscussedAt,
+            'last_discussed_at' => $lastDiscussedAt,
+            'discussion_count' => $familyDecisions->pluck('meeting_id')->filter()->unique()->count(),
+            'latest_update_at' => $latestUpdateAt,
+            'latest_update_note' => trim((string) ($latestUpdate?->note ?? $latestDecision?->decision_text ?? '')) ?: null,
+            'latest_progress_percent' => (int) $latestProgress,
+            'aging_days' => $agingDays,
+            'aging_bucket' => $this->resolveDecisionAgingBucket($agingDays),
+        ];
+
+        MeetingDecision::query()
+            ->where(function ($query) use ($rootDecisionId) {
+                $query->where('id', $rootDecisionId)
+                    ->orWhere('root_decision_id', $rootDecisionId);
+            })
+            ->update($payload);
+    }
+
+    private function syncMeetingDecisionFamilySummaries(Meeting $meeting): void
+    {
+        $rootDecisionIds = MeetingDecision::query()
+            ->where('meeting_id', $meeting->id)
+            ->get(['id', 'root_decision_id'])
+            ->map(function (MeetingDecision $decision) {
+                return (int) ($decision->root_decision_id ?: $decision->id);
+            })
+            ->filter()
+            ->unique()
+            ->values();
+
+        foreach ($rootDecisionIds as $rootDecisionId) {
+            $this->syncDecisionFamilySummaryByRootDecisionId((int) $rootDecisionId);
+        }
+    }
+
+    private function resolveDecisionAgingBucket(?int $agingDays): ?string
+    {
+        if ($agingDays === null) {
+            return null;
+        }
+
+        return match (true) {
+            $agingDays < 30 => 'cat_1',
+            $agingDays < 91 => 'cat_2',
+            $agingDays < 181 => 'cat_3',
+            $agingDays < 271 => 'cat_4',
+            default => 'cat_5',
+        };
+    }
+
     private function buildDecisionKey(int $decisionId): string
     {
         return 'TLR-' . str_pad((string) $decisionId, 6, '0', STR_PAD_LEFT);
+    }
+
+    private function buildIssueKey(int $rootDecisionId): string
+    {
+        return 'ISS-' . str_pad((string) $rootDecisionId, 6, '0', STR_PAD_LEFT);
     }
 
     private function canEditMeeting(Meeting $meeting, User $user): bool
@@ -1844,20 +2382,20 @@ class MeetingController extends Controller
     {
         $directorates = Cache::remember('corsec.meeting.directorates.list', 300, function () {
             return Directorate::query()
-                ->orderBy('name')
-                ->get(['id', 'name', 'code', 'is_meeting_operational']);
+                ->orderByRaw('COALESCE(NULLIF(tabulation_label, \'\'), name)')
+                ->get(['id', 'name', 'tabulation_label', 'code', 'is_meeting_operational']);
         });
 
         $users = Cache::remember('corsec.meeting.users.list', 300, function () {
             return User::query()
-                ->with(['directorate:id,name', 'position:id,name'])
+                ->with(['directorate:id,name,tabulation_label', 'position:id,name'])
                 ->orderBy('name')
                 ->get(['id', 'name', 'directorate_id', 'position_id']);
         });
 
         $meetingPicUsers = Cache::remember('corsec.meeting.pic_users.list', 300, function () {
             return $this->corpSecretaryStaffUsersQuery()
-                ->with(['directorate:id,name', 'position:id,name'])
+                ->with(['directorate:id,name,tabulation_label', 'position:id,name'])
                 ->orderBy('name')
                 ->get(['id', 'name', 'directorate_id', 'position_id']);
         });

@@ -392,6 +392,17 @@ class CorsecPermissionService
 
     public function meetingDetailFlags(Meeting $meeting, Collection $approvals, ?User $user): array
     {
+        $supportUsersEnabled = MeetingDecision::supportsSupportUsersTable();
+        $meetingRelations = [
+            'participants',
+            'agendas',
+            'decisions',
+        ];
+        if ($supportUsersEnabled) {
+            $meetingRelations[] = 'decisions.supportUsers';
+        }
+        $meeting->loadMissing($meetingRelations);
+
         $status = (string) ($meeting->status ?? '');
         $isDirektoratMeeting = Meeting::isDirektoratTypeCode((string) ($meeting->meeting_type ?? ''));
         $responseStatus = (string) ($meeting->directorate_response_status ?? '');
@@ -506,6 +517,12 @@ class CorsecPermissionService
                     return true;
                 }
 
+                if ($supportUsersEnabled && $decision->supportUsers->contains(function ($supportUser) use ($actorUserId) {
+                    return (int) ($supportUser->id ?? 0) === $actorUserId;
+                })) {
+                    return true;
+                }
+
                 $picUserId = (int) ($decision->pic_user_id ?? 0);
                 if ($picUserId > 0) {
                     return $picUserId === $actorUserId;
@@ -522,6 +539,7 @@ class CorsecPermissionService
             ->map(fn($id) => (int) $id)
             ->values()
             ->all();
+        $hasUpdatableDecision = !empty($updatableDecisionIds);
 
         $allDecisionsDone = $meeting->decisions->count() > 0
             && $meeting->decisions->every(function ($decision) {
@@ -565,7 +583,7 @@ class CorsecPermissionService
             'can_finalize_minutes' => $canManageMinutes
                 && in_array($status, [Meeting::STATUS_PROSES_PEMBUATAN_NOTULEN, Meeting::STATUS_PROSES_SIRKULASI_TANDATANGAN], true),
             'can_input_followup' => in_array($status, [Meeting::STATUS_NOTULEN_FINAL, Meeting::STATUS_PROSES_TINDAKLANJUT_HASIL_RAPAT], true)
-                && (!$isDirektoratMeeting || $isAdmin || $isAssignedUser),
+                && ($canManageMinutes || $hasUpdatableDecision),
             'can_complete_followup' => $canManageMinutes
                 && in_array($status, [Meeting::STATUS_NOTULEN_FINAL, Meeting::STATUS_PROSES_TINDAKLANJUT_HASIL_RAPAT], true)
                 && $allDecisionsDone,

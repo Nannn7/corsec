@@ -22,6 +22,7 @@ class DirectorateExport implements FromCollection, WithHeadings, WithMapping
             $query->where(function ($q) use ($s) {
                 $q->where('code', 'ilike', "%{$s}%")
                     ->orWhere('name', 'ilike', "%{$s}%")
+                    ->orWhere('tabulation_label', 'ilike', "%{$s}%")
                     ->orWhere('description', 'ilike', "%{$s}%");
             });
         }
@@ -34,6 +35,7 @@ class DirectorateExport implements FromCollection, WithHeadings, WithMapping
         return [
             'Kode',
             'Nama',
+            'Label Tabulasi',
             'Deskripsi',
             'Tipe Unit Meeting',
             'Status',
@@ -46,6 +48,7 @@ class DirectorateExport implements FromCollection, WithHeadings, WithMapping
         return [
             $row->code ?? '-',
             $row->name ?? '-',
+            $row->displayName(),
             $row->description ?? '-',
             (bool) ($row->is_meeting_operational ?? false) ? 'Unit Operasional' : 'Monitoring Only',
             $row->status ? 'Aktif' : 'Non-Aktif',

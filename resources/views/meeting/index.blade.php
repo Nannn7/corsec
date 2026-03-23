@@ -78,6 +78,9 @@
                         @if (($permissionFlags['can_export'] ?? false) || ($permissionFlags['can_create'] ?? false))
                             <div class="h-[24px] border border-r-gray-200"></div>
                         @endif
+                        <a href="{{ route('meeting.tabulation') }}" class="btn btn-sm btn-light-info">
+                            Tabulasi
+                        </a>
                         @if ($permissionFlags['can_export'] ?? false)
                             <a id="export-btn" class="btn btn-sm btn-light" href="{{ route('meeting.export') }}">
                                 Export to Excel

@@ -51,6 +51,11 @@ Breadcrumbs::for('meeting.create', function (BreadcrumbTrail $trail) {
     $trail->push('Input Meeting', route('meeting.create'));
 });
 
+Breadcrumbs::for('meeting.tabulation', function (BreadcrumbTrail $trail) {
+    $trail->parent('meeting.index');
+    $trail->push('Tabulasi Meeting', route('meeting.tabulation'));
+});
+
 Breadcrumbs::for('meeting.show', function (BreadcrumbTrail $trail, $meeting) {
     $trail->parent('meeting.index');
     $trail->push('Detail Meeting', route('meeting.show', $meeting));

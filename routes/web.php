@@ -79,6 +79,7 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () us
     // Meeting Routes
     Route::prefix('meeting')->name('meeting.')->group(function () use ($datatablesThrottle, $writeHeavyThrottle) {
         Route::get('/', [MeetingController::class, 'index'])->middleware('permission:corsec.read')->name('index');
+        Route::get('/tabulation', [MeetingController::class, 'tabulation'])->middleware('permission:corsec.read')->name('tabulation');
         Route::get('/datatables', [MeetingController::class, 'datatables'])->middleware(['permission:corsec.read', $datatablesThrottle])->name('datatables');
         Route::get('/export', [MeetingController::class, 'export'])->middleware('permission:corsec.export')->name('export');
         Route::get('/create', [MeetingController::class, 'create'])->middleware('permission:corsec.create')->name('create');
