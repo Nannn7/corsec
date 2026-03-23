@@ -13,8 +13,14 @@
         @if (session('info'))
             <div class="alert alert-info">{{ session('info') }}</div>
         @endif
+        @if (($summary['not_conducted'] ?? 0) > 0)
+            <div class="alert alert-warning">
+                Ada {{ $summary['not_conducted'] ?? 0 }} jadwal rapat direktorat yang tidak dijalankan karena tidak ada
+                tanggapan sampai hari H.
+            </div>
+        @endif
 
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
             <div class="card">
                 <div class="card-body">
                     <div class="text-xs uppercase text-gray-500">Total Meeting</div>
@@ -48,6 +54,12 @@
                     <div class="mt-1 text-2xl font-semibold text-emerald-600">{{ $summary['done_followup'] ?? 0 }}</div>
                 </div>
             </div>
+            <div class="card">
+                <div class="card-body">
+                    <div class="text-xs uppercase text-gray-500">Tidak Dilaksanakan</div>
+                    <div class="mt-1 text-2xl font-semibold text-amber-700">{{ $summary['not_conducted'] ?? 0 }}</div>
+                </div>
+            </div>
         </div>
 
         <div class="min-w-full card card-grid" data-datatable="false" data-datatable-page-size="10"
@@ -66,6 +78,9 @@
                         @if (($permissionFlags['can_export'] ?? false) || ($permissionFlags['can_create'] ?? false))
                             <div class="h-[24px] border border-r-gray-200"></div>
                         @endif
+                        <a href="{{ route('meeting.tabulation') }}" class="btn btn-sm btn-light-info">
+                            Tabulasi
+                        </a>
                         @if ($permissionFlags['can_export'] ?? false)
                             <a id="export-btn" class="btn btn-sm btn-light" href="{{ route('meeting.export') }}">
                                 Export to Excel
@@ -194,6 +209,7 @@
                     notulen_final: 'badge-success',
                     done_tindaklanjut_hasil_rapat: 'badge-success',
                     cancelled_direktorat: 'badge-danger',
+                    closed_not_conducted: 'badge-warning',
                 };
 
                 return map[val] ?? 'badge-light';

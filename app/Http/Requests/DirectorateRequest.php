@@ -24,6 +24,7 @@ class DirectorateRequest extends FormRequest
         return [
             'code'        => ['required', 'string', 'max:50', $uniqueCode],
             'name'        => ['required', 'string', 'max:150'],
+            'tabulation_label' => ['nullable', 'string', 'max:150'],
             'description' => ['nullable', 'string'],
             'status'      => ['nullable', 'boolean'],
             'is_meeting_operational' => ['nullable', 'boolean'],
@@ -63,6 +64,8 @@ class DirectorateRequest extends FormRequest
             'name.required' => 'Nama direktorat wajib diisi.',
             'name.string'   => 'Nama direktorat harus berupa teks.',
             'name.max'      => 'Nama direktorat maksimal 150 karakter.',
+            'tabulation_label.string' => 'Label tabulasi harus berupa teks.',
+            'tabulation_label.max' => 'Label tabulasi maksimal 150 karakter.',
             'status.boolean' => 'Status harus bernilai aktif atau non-aktif.',
             'is_meeting_operational.boolean' => 'Tipe unit meeting harus bernilai valid.',
         ];

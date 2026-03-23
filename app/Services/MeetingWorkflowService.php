@@ -2,6 +2,7 @@
 
 namespace Modules\Corsec\Services;
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Corsec\Models\Approval;
@@ -26,6 +27,7 @@ class MeetingWorkflowService
                 'authorized_status' => 'pending',
                 'authorized_at' => null,
                 'authorized_by' => null,
+                'directorate_reminder_sent_at' => null,
                 'directorate_response_status' => $meeting->isDirektoratType() ? Meeting::RESPONSE_PENDING : null,
                 'directorate_response_note' => null,
                 'directorate_responded_at' => null,
@@ -77,6 +79,7 @@ class MeetingWorkflowService
                 $meeting->update([
                     'status' => Meeting::STATUS_JADWAL_TERKIRIM,
                     'schedule_sent_at' => $meeting->schedule_sent_at ?: now(),
+                    'directorate_reminder_sent_at' => null,
                     'authorized_status' => 'authorized',
                     'authorized_at' => now(),
                     'authorized_by' => $actor->id,
@@ -95,6 +98,16 @@ class MeetingWorkflowService
                     ->unique()
                     ->values();
 
+                $directorateResponseDeadlineLabel = $meeting->directorateResponseDeadlineLabel();
+                $corsecApprovalMessage = $meeting->isDirektoratType()
+                    ? 'Rencana rapat disetujui EO Corp Affair. PIC direktorat diminta memberi tanggapan jadwal.'
+                    : 'Rencana rapat disetujui EO Corp Affair.';
+                if ($meeting->isDirektoratType()) {
+                    $corsecApprovalMessage .= $directorateResponseDeadlineLabel
+                        ? " Target tanggapan H-1 ({$directorateResponseDeadlineLabel})."
+                        : ' Target tanggapan H-1 dari tanggal meeting.';
+                }
+
                 $this->notifyUsers(
                     $audienceUserIds,
                     'meeting_corsec_action',
@@ -102,9 +115,8 @@ class MeetingWorkflowService
                         $meeting,
                         $actor,
                         'Approval Corsec',
-                        $meeting->isDirektoratType()
-                            ? 'Rencana rapat disetujui EO Corp Affair. PIC direktorat diminta memberi tanggapan jadwal.'
-                            : 'Rencana rapat disetujui EO Corp Affair.'
+                        $corsecApprovalMessage,
+                        $this->directorateResponseDeadlineNotificationExtra($meeting)
                     )
                 );
 
@@ -137,6 +149,65 @@ class MeetingWorkflowService
                     'Rencana rapat dikembalikan EO Corp Affair.'
                 )
             );
+        });
+    }
+
+    public function sendDirectorateResponseReminder(Meeting $meeting, ?Carbon $referenceTime = null): bool
+    {
+        $referenceTime = $referenceTime ?: now();
+
+        return DB::transaction(function () use ($meeting, $referenceTime) {
+            $meeting = $this->lockMeeting($meeting);
+
+            if (!$meeting->isDirectorateResponseReminderWindow($referenceTime) || $meeting->directorate_reminder_sent_at) {
+                return false;
+            }
+
+            $recipientIds = collect([$meeting->created_by])
+                ->merge($this->getMeetingAssignedPicUserIds($meeting))
+                ->filter()
+                ->unique()
+                ->values();
+
+            $deadlineLabel = $meeting->directorateResponseDeadlineLabel() ?? 'H-1 dari jadwal rapat';
+            $this->notifyUsers(
+                $recipientIds,
+                'meeting_directorate_response_reminder',
+                $this->systemMeetingNotificationData(
+                    $meeting,
+                    'Reminder Tanggapan Jadwal Direktorat',
+                    "H-1 jadwal rapat direktorat. Mohon beri tanggapan on schedule, cancel, atau reschedule sebelum {$deadlineLabel}.",
+                    $this->directorateResponseDeadlineNotificationExtra($meeting)
+                )
+            );
+
+            $meeting->update([
+                'directorate_reminder_sent_at' => $referenceTime,
+            ]);
+
+            return true;
+        });
+    }
+
+    public function autoCloseMissingDirectorateResponse(Meeting $meeting, ?Carbon $referenceTime = null): bool
+    {
+        $referenceTime = $referenceTime ?: now();
+
+        return DB::transaction(function () use ($meeting, $referenceTime) {
+            $meeting = $this->lockMeeting($meeting);
+
+            if (!$meeting->shouldAutoCloseForMissingDirectorateResponse($referenceTime)) {
+                return false;
+            }
+
+            $meeting->update([
+                'status' => Meeting::STATUS_CLOSED_NOT_CONDUCTED,
+                'directorate_response_status' => Meeting::RESPONSE_NO_RESPONSE,
+                'directorate_response_note' => 'Meeting otomatis ditutup karena tidak ada tanggapan dari direktorat sampai hari H.',
+                'directorate_reminder_sent_at' => $meeting->directorate_reminder_sent_at ?: $referenceTime,
+            ]);
+
+            return true;
         });
     }
 
@@ -195,6 +266,34 @@ class MeetingWorkflowService
                         $actor,
                         'Tanggapan Jadwal Direktorat',
                         'Rapat direktorat ditandai cancel oleh PIC direktorat.'
+                    )
+                );
+
+                return;
+            }
+
+            if ($action === Meeting::RESPONSE_RESCHEDULE) {
+                $meeting->update([
+                    'status' => Meeting::STATUS_RETURNED_BY_DIREKTORAT,
+                    'authorized_status' => 'returned',
+                    'authorized_at' => null,
+                    'authorized_by' => null,
+                    'directorate_response_status' => Meeting::RESPONSE_RESCHEDULE,
+                    'directorate_response_note' => $note,
+                    'directorate_responded_at' => now(),
+                    'directorate_responded_by' => $actor->id,
+                    'updated_by' => $actor->id,
+                ]);
+
+                $this->addComment($meeting, $actor, '[TANGGAPAN DIREKTORAT - RESCHEDULE]', $note);
+                $this->notifyUsers(
+                    [$meeting->created_by],
+                    'meeting_directorate_action',
+                    $this->meetingNotificationData(
+                        $meeting,
+                        $actor,
+                        'Tanggapan Jadwal Direktorat',
+                        'PIC direktorat meminta reschedule jadwal rapat.'
                     )
                 );
 
@@ -842,6 +941,33 @@ class MeetingWorkflowService
         $positionName = Str::lower(trim((string) ($user->position?->name ?? '')));
 
         return $positionName !== '' && Str::contains($positionName, 'deputy director');
+    }
+
+    private function directorateResponseDeadlineNotificationExtra(Meeting $meeting): array
+    {
+        if (!$meeting->isDirektoratType()) {
+            return [];
+        }
+
+        return [
+            'directorate_response_deadline_at' => optional($meeting->directorateResponseDeadlineAt())->toDateTimeString(),
+            'directorate_response_deadline_label' => $meeting->directorateResponseDeadlineLabel(),
+        ];
+    }
+
+    private function systemMeetingNotificationData(Meeting $meeting, string $title, string $message, array $extra = []): array
+    {
+        return array_merge([
+            'title' => $title,
+            'message' => $message,
+            'meeting_id' => $meeting->id,
+            'meeting_uuid' => $meeting->uuid,
+            'meeting_title' => $meeting->title,
+            'meeting_type' => $meeting->meeting_type,
+            'meeting_at' => optional($meeting->meeting_at)->toDateTimeString(),
+            'status' => $meeting->status,
+            'created_by' => null,
+        ], $extra);
     }
 
     private function meetingNotificationData(Meeting $meeting, User $actor, string $title, string $message, array $extra = []): array

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Modules\Corsec\Models\Concerns\HasAuditUsers;
 use Modules\Corsec\Models\Concerns\HasAuthorizedUsers;
@@ -36,10 +37,13 @@ class Meeting extends Model
     public const STATUS_PROSES_TINDAKLANJUT_HASIL_RAPAT = 'proses_tindaklanjut_hasil_rapat';
     public const STATUS_DONE_TINDAKLANJUT_HASIL_RAPAT = 'done_tindaklanjut_hasil_rapat';
     public const STATUS_CANCELLED_DIREKTORAT = 'cancelled_direktorat';
+    public const STATUS_CLOSED_NOT_CONDUCTED = 'closed_not_conducted';
 
     public const RESPONSE_PENDING = 'pending';
     public const RESPONSE_ON_SCHEDULE = 'on_schedule';
     public const RESPONSE_CANCEL = 'cancel';
+    public const RESPONSE_RESCHEDULE = 'reschedule';
+    public const RESPONSE_NO_RESPONSE = 'no_response';
 
     protected $table = 'corsec_meetings';
 
@@ -52,6 +56,7 @@ class Meeting extends Model
         'status',
         'description',
         'schedule_sent_at',
+        'directorate_reminder_sent_at',
         'conducted_at',
         'finished_at',
         'authorized_at',
@@ -69,6 +74,7 @@ class Meeting extends Model
     protected $casts = [
         'meeting_at' => 'datetime',
         'schedule_sent_at' => 'datetime',
+        'directorate_reminder_sent_at' => 'datetime',
         'conducted_at' => 'datetime',
         'finished_at' => 'datetime',
         'authorized_at' => 'datetime',
@@ -127,6 +133,7 @@ class Meeting extends Model
             self::STATUS_PROSES_TINDAKLANJUT_HASIL_RAPAT => 'Proses Tindaklanjut Hasil Rapat',
             self::STATUS_DONE_TINDAKLANJUT_HASIL_RAPAT => 'Done Tindaklanjut Hasil Rapat',
             self::STATUS_CANCELLED_DIREKTORAT => 'Dibatalkan Direktorat',
+            self::STATUS_CLOSED_NOT_CONDUCTED => 'Closed - Tidak Dilaksanakan',
         ];
     }
 
@@ -136,6 +143,8 @@ class Meeting extends Model
             self::RESPONSE_PENDING => 'Menunggu Tanggapan Direktorat',
             self::RESPONSE_ON_SCHEDULE => 'On Schedule',
             self::RESPONSE_CANCEL => 'Cancel',
+            self::RESPONSE_RESCHEDULE => 'Reschedule',
+            self::RESPONSE_NO_RESPONSE => 'Tidak Ada Tanggapan',
         ];
     }
 
@@ -144,6 +153,7 @@ class Meeting extends Model
         return [
             self::STATUS_DONE_TINDAKLANJUT_HASIL_RAPAT,
             self::STATUS_CANCELLED_DIREKTORAT,
+            self::STATUS_CLOSED_NOT_CONDUCTED,
         ];
     }
 
@@ -196,6 +206,71 @@ class Meeting extends Model
     public function isDirektoratType(): bool
     {
         return self::isDirektoratTypeCode((string) $this->meeting_type);
+    }
+
+    public function directorateResponseDeadlineAt(): ?Carbon
+    {
+        if (!$this->meeting_at) {
+            return null;
+        }
+
+        return $this->meeting_at->copy()->startOfDay()->subDay()->endOfDay();
+    }
+
+    public function isDirectorateResponseDeadlinePassed(?Carbon $referenceTime = null): bool
+    {
+        $deadline = $this->directorateResponseDeadlineAt();
+        if (!$deadline) {
+            return false;
+        }
+
+        return ($referenceTime ?? now())->greaterThan($deadline);
+    }
+
+    public function directorateResponseDeadlineLabel(string $format = 'd/m/Y H:i'): ?string
+    {
+        $deadline = $this->directorateResponseDeadlineAt();
+        return $deadline ? $deadline->format($format) : null;
+    }
+
+    public function isAwaitingDirectorateResponse(): bool
+    {
+        if (!$this->isDirektoratType()) {
+            return false;
+        }
+
+        $responseStatus = trim((string) ($this->directorate_response_status ?? ''));
+
+        return in_array($responseStatus, ['', self::RESPONSE_PENDING], true)
+            && in_array((string) $this->status, [
+                self::STATUS_JADWAL_TERKIRIM,
+                self::STATUS_PENDING_DIREKTORAT,
+            ], true);
+    }
+
+    public function isDirectorateResponseReminderWindow(?Carbon $referenceTime = null): bool
+    {
+        if (!$this->isAwaitingDirectorateResponse() || !$this->meeting_at) {
+            return false;
+        }
+
+        $reference = ($referenceTime ?? now())->copy();
+
+        return $reference->isSameDay($this->meeting_at->copy()->subDay());
+    }
+
+    public function shouldAutoCloseForMissingDirectorateResponse(?Carbon $referenceTime = null): bool
+    {
+        if (!$this->isAwaitingDirectorateResponse() || !$this->meeting_at) {
+            return false;
+        }
+
+        return ($referenceTime ?? now())->greaterThanOrEqualTo($this->meeting_at->copy()->startOfDay());
+    }
+
+    public function isDirectorateScheduleNotConducted(): bool
+    {
+        return (string) $this->status === self::STATUS_CLOSED_NOT_CONDUCTED;
     }
 
     public function getRouteKeyName(): string

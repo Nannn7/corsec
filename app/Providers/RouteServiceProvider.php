@@ -2,8 +2,11 @@
 
 namespace Modules\Corsec\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\RateLimiter;
 
 class RouteServiceProvider extends ServiceProvider
 {
@@ -16,6 +19,27 @@ class RouteServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        RateLimiter::for('corsec-datatables', function (Request $request) {
+            $userId = (string) ($request->user()?->getAuthIdentifier() ?: 'guest');
+            $route = (string) ($request->route()?->getName() ?: $request->path());
+
+            return Limit::perMinute(60)->by($userId . '|' . $request->ip() . '|' . $route);
+        });
+
+        RateLimiter::for('corsec-preview', function (Request $request) {
+            $userId = (string) ($request->user()?->getAuthIdentifier() ?: 'guest');
+            $route = (string) ($request->route()?->getName() ?: $request->path());
+
+            return Limit::perMinute(30)->by($userId . '|' . $request->ip() . '|' . $route);
+        });
+
+        RateLimiter::for('corsec-write-heavy', function (Request $request) {
+            $userId = (string) ($request->user()?->getAuthIdentifier() ?: 'guest');
+            $route = (string) ($request->route()?->getName() ?: $request->path());
+
+            return Limit::perMinute(20)->by($userId . '|' . $request->ip() . '|' . $route);
+        });
+
         parent::boot();
     }
 

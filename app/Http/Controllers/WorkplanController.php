@@ -7,6 +7,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -38,7 +39,7 @@ class WorkplanController extends Controller
 
         $user = Auth::user();
         $user->loadMissing('directorate');
-        $directorates = Directorate::query()->orderBy('name')->get(['id', 'name', 'code']);
+        $directorates = $this->getCachedDirectorates();
 
         $programSummaryQuery = $this->workflow->scopedProgramsQuery($user);
         $itemSummaryQuery = $this->workflow->scopedItemsQuery($user);
@@ -290,7 +291,7 @@ class WorkplanController extends Controller
     {
         $this->authorizeCreate();
 
-        $directorates = Directorate::query()->orderBy('name')->get(['id', 'name', 'code']);
+        $directorates = $this->getCachedDirectorates();
         return view('corsec::workplan.create', compact('directorates'));
     }
 
@@ -415,6 +416,19 @@ class WorkplanController extends Controller
 
         $pendingApproval = $this->workflow->latestPendingProgramApproval($workplan);
         $approvalFlags = $this->workflow->resolveApprovalPermissionFlags($workplan, $user, $pendingApproval);
+        $allUpdates = $workplan->items
+            ->flatMap(function (WorkProgramItem $item) {
+                return $item->updates->map(function (WorkProgramUpdate $update) use ($item) {
+                    return [
+                        'item' => $item,
+                        'update' => $update,
+                    ];
+                });
+            })
+            ->sortByDesc(function (array $row) {
+                return $row['update']->created_at;
+            })
+            ->values();
 
         $canEdit = $this->workflow->canEditProgram($workplan, $user);
         $canDelete = $this->workflow->canDeleteProgram($workplan, $user);
@@ -440,7 +454,8 @@ class WorkplanController extends Controller
             'canSubmit',
             'canSubmitUpdate',
             'canCheckerApproval',
-            'canApproverApproval'
+            'canApproverApproval',
+            'allUpdates'
         ));
     }
 
@@ -454,7 +469,7 @@ class WorkplanController extends Controller
         }
 
         $workplan->load(['items.attachables.attachment', 'items.comments']);
-        $directorates = Directorate::query()->orderBy('name')->get(['id', 'name', 'code']);
+        $directorates = $this->getCachedDirectorates();
 
         return view('corsec::workplan.create', compact('workplan', 'directorates'));
     }
@@ -818,6 +833,13 @@ class WorkplanController extends Controller
             'category' => $category,
             'created_by' => $user->id,
         ]);
+    }
+
+    private function getCachedDirectorates()
+    {
+        return Cache::remember('corsec.directorates.list', 300, function () {
+            return Directorate::query()->orderBy('name')->get(['id', 'name', 'code']);
+        });
     }
 
     private function deleteProgramItem(WorkProgramItem $item): void

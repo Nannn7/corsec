@@ -14,9 +14,13 @@ class DecisionUpdate extends Model
 
     public const TYPE_PROGRESS = 'progress';
     public const TYPE_DONE = 'done';
+    public const TYPE_CONTINUOUS = 'continuous';
+    public const TYPE_DROP = 'drop';
 
     public const STATUS_IN_PROGRESS = 'in_progress';
+    public const STATUS_CONTINUOUS = 'continuous';
     public const STATUS_DONE = 'done';
+    public const STATUS_DROPPED = 'dropped';
 
     protected $table = 'corsec_decision_updates';
 

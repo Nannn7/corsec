@@ -392,11 +392,24 @@ class CorsecPermissionService
 
     public function meetingDetailFlags(Meeting $meeting, Collection $approvals, ?User $user): array
     {
+        $supportUsersEnabled = MeetingDecision::supportsSupportUsersTable();
+        $meetingRelations = [
+            'participants',
+            'agendas',
+            'decisions',
+        ];
+        if ($supportUsersEnabled) {
+            $meetingRelations[] = 'decisions.supportUsers';
+        }
+        $meeting->loadMissing($meetingRelations);
+
         $status = (string) ($meeting->status ?? '');
         $isDirektoratMeeting = Meeting::isDirektoratTypeCode((string) ($meeting->meeting_type ?? ''));
-        $hasOnScheduleResponse = (string) ($meeting->directorate_response_status ?? '') === Meeting::RESPONSE_ON_SCHEDULE;
-        $isCancelledByDirektorat = (string) ($meeting->directorate_response_status ?? '') === Meeting::RESPONSE_CANCEL
+        $responseStatus = (string) ($meeting->directorate_response_status ?? '');
+        $hasOnScheduleResponse = $responseStatus === Meeting::RESPONSE_ON_SCHEDULE;
+        $isCancelledByDirektorat = $responseStatus === Meeting::RESPONSE_CANCEL
             || $status === Meeting::STATUS_CANCELLED_DIREKTORAT;
+        $isClosedNotConducted = $status === Meeting::STATUS_CLOSED_NOT_CONDUCTED;
 
         $isAdmin = (bool) ($user?->hasRole('administrator') ?? false);
         $isChecker = (bool) ($user?->hasRole('checker') ?? false);
@@ -429,6 +442,12 @@ class CorsecPermissionService
         if ($isDirektoratMeeting) {
             $canDirectorateActor = $isAdmin || $isAssignedUser;
         }
+
+        // Approval EO/DD direktorat mengikuti lingkup direktorat target rapat,
+        // tidak harus user PIC langsung yang assigned.
+        $canDirectorateApprovalActor = $isAdmin
+            || $isAssignedUser
+            || ($actorDirectorateId > 0 && $targetDirectorateIds->contains($actorDirectorateId));
 
         $canEdit = ($isAdmin || (int) ($meeting->created_by ?? 0) === $actorUserId)
             && in_array($status, [
@@ -498,6 +517,12 @@ class CorsecPermissionService
                     return true;
                 }
 
+                if ($supportUsersEnabled && $decision->supportUsers->contains(function ($supportUser) use ($actorUserId) {
+                    return (int) ($supportUser->id ?? 0) === $actorUserId;
+                })) {
+                    return true;
+                }
+
                 $picUserId = (int) ($decision->pic_user_id ?? 0);
                 if ($picUserId > 0) {
                     return $picUserId === $actorUserId;
@@ -514,6 +539,7 @@ class CorsecPermissionService
             ->map(fn($id) => (int) $id)
             ->values()
             ->all();
+        $hasUpdatableDecision = !empty($updatableDecisionIds);
 
         $allDecisionsDone = $meeting->decisions->count() > 0
             && $meeting->decisions->every(function ($decision) {
@@ -534,34 +560,30 @@ class CorsecPermissionService
                 && $canDirectorateActor
                 && in_array($status, [Meeting::STATUS_JADWAL_TERKIRIM, Meeting::STATUS_RETURNED_BY_DIREKTORAT], true),
             'can_directorate_response' => $isDirektoratMeeting
-                && !$isCancelledByDirektorat
+                && $meeting->isAwaitingDirectorateResponse()
                 && $canDirectorateActor
-                && in_array($status, [
-                    Meeting::STATUS_JADWAL_TERKIRIM,
-                    Meeting::STATUS_PENDING_DIREKTORAT,
-                    Meeting::STATUS_RETURNED_BY_DIREKTORAT,
-                ], true),
+                && !$isClosedNotConducted,
             'can_directorate_submit' => $canDirectorateActor
                 && in_array($status, [
                     Meeting::STATUS_JADWAL_TERKIRIM,
                     Meeting::STATUS_PENDING_DIREKTORAT,
                     Meeting::STATUS_RETURNED_BY_DIREKTORAT,
                 ], true)
-                && (!$isDirektoratMeeting || ($hasOnScheduleResponse && !$isCancelledByDirektorat)),
+                && (!$isDirektoratMeeting || ($hasOnScheduleResponse && !$isCancelledByDirektorat && !$isClosedNotConducted)),
             'can_directorate_checker_approval' => $status === Meeting::STATUS_WAITING_DIREKTORAT_APPROVAL
                 && !$checkerApprovedInRound
-                && ($isAdmin || ($isChecker && $isExecutiveOfficer && $canDirectorateActor))
+                && ($isAdmin || ($isChecker && $isExecutiveOfficer && $canDirectorateApprovalActor))
                 && !$hasActedCheckerInRound,
             'can_directorate_approver_approval' => $status === Meeting::STATUS_WAITING_DIREKTORAT_APPROVAL
                 && $checkerApprovedInRound
-                && ($isAdmin || ($isApprover && $isDeputyDirector && $canDirectorateActor))
+                && ($isAdmin || ($isApprover && $isDeputyDirector && $canDirectorateApprovalActor))
                 && !$hasActedApproverInRound,
             'can_save_minutes' => $canManageMinutes
                 && in_array($status, [Meeting::STATUS_DATA_TERKIRIM, Meeting::STATUS_PROSES_PEMBUATAN_NOTULEN], true),
             'can_finalize_minutes' => $canManageMinutes
                 && in_array($status, [Meeting::STATUS_PROSES_PEMBUATAN_NOTULEN, Meeting::STATUS_PROSES_SIRKULASI_TANDATANGAN], true),
             'can_input_followup' => in_array($status, [Meeting::STATUS_NOTULEN_FINAL, Meeting::STATUS_PROSES_TINDAKLANJUT_HASIL_RAPAT], true)
-                && (!$isDirektoratMeeting || $isAdmin || $isAssignedUser),
+                && ($canManageMinutes || $hasUpdatableDecision),
             'can_complete_followup' => $canManageMinutes
                 && in_array($status, [Meeting::STATUS_NOTULEN_FINAL, Meeting::STATUS_PROSES_TINDAKLANJUT_HASIL_RAPAT], true)
                 && $allDecisionsDone,

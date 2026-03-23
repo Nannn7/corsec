@@ -262,7 +262,7 @@ class OutgoingLetterController extends Controller
     public function create(Request $request)
     {
         $this->authorizeCreate();
-        $senders = Sender::query()->orderBy('name')->get(['id', 'name']);
+        $senders = $this->getCachedSenders();
         $letterTypes = $this->getOutgoingLetterTypes();
         $incomingLetters = $this->getIncomingLettersForResponseLetter();
         $prefillIncomingLetterId = null;
@@ -475,11 +475,12 @@ class OutgoingLetterController extends Controller
             ->orderByDesc('created_at')
             ->get();
 
-        $senders = Sender::query()->orderBy('name')->get(['id', 'name']);
+        $senders = $this->getCachedSenders();
         $incomingLetters = $this->getIncomingLettersForResponseLetter($outgoingLetter->perihal_incoming_letter_id);
+        $sortedComments = $outgoingLetter->comments->sortByDesc('created_at')->values();
         $permissionFlags = $this->permissionService->outgoingDetailFlags($outgoingLetter, $approvals, Auth::user());
 
-        return view('corsec::letter.outgoing.show', compact('outgoingLetter', 'approvals', 'senders', 'incomingLetters', 'permissionFlags'));
+        return view('corsec::letter.outgoing.show', compact('outgoingLetter', 'approvals', 'senders', 'incomingLetters', 'permissionFlags', 'sortedComments'));
     }
 
     public function edit(OutgoingLetter $outgoingLetter)
@@ -488,7 +489,7 @@ class OutgoingLetterController extends Controller
         if (!in_array($outgoingLetter->status, [OutgoingLetter::STATUS_DRAFT, OutgoingLetter::STATUS_RETURNED], true)) {
             abort(403, 'Surat keluar tidak dapat diubah pada status ini.');
         }
-        $senders = Sender::query()->orderBy('name')->get(['id', 'name']);
+        $senders = $this->getCachedSenders();
         $letterTypes = $this->getOutgoingLetterTypes();
         $incomingLetters = $this->getIncomingLettersForResponseLetter($outgoingLetter->perihal_incoming_letter_id);
         return view('corsec::letter.outgoing.create', compact('outgoingLetter', 'senders', 'letterTypes', 'incomingLetters'));
@@ -811,6 +812,13 @@ class OutgoingLetterController extends Controller
                 ->forScope(LetterType::SCOPE_OUT)
                 ->orderBy('name')
                 ->get(['id', 'name']);
+        });
+    }
+
+    private function getCachedSenders()
+    {
+        return Cache::remember('corsec.senders.list', 300, function () {
+            return Sender::query()->orderBy('name')->get(['id', 'name']);
         });
     }
 
