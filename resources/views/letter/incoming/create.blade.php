@@ -241,12 +241,23 @@
                         </div>
 
                         <div class="flex flex-col">
-                            <label class="form-label">Due Date<span class="text-danger">*</span></label>
+                            <label class="form-label">Due Date Letter<span class="text-danger">*</span></label>
                             <input class="input @error('target_date') border-danger bg-danger-light @enderror"
-                                type="date" name="target_date"
-                                min="{{ now()->format('Y-m-d') }}"
+                                type="date" name="target_date" min="{{ now()->format('Y-m-d') }}"
                                 value="{{ old('target_date', $incomingLetter?->target_date?->format('Y-m-d')) }}">
                             @error('target_date')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+
+                        <div class="flex flex-col">
+                            <label class="form-label">Due Date Register<span class="text-danger">*</span></label>
+                            <input class="input @error('register_due_date') border-danger bg-danger-light @enderror"
+                                type="date" name="register_due_date" id="register_due_date"
+                                value="{{ old('register_due_date', $incomingLetter?->register_due_date?->format('Y-m-d')) }}">
+                            <div class="mt-1 text-xs text-gray-500">Wajib diisi jika surat yang diterima berupa undangan.
+                            </div>
+                            @error('register_due_date')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
                         </div>
@@ -323,7 +334,7 @@
                                     <i class="ki-filled ki-archive"></i> Save Draft
                                 </button>
                                 <button type="submit" id="submit-approval" class="btn btn-primary">
-                                    <i class="ki-filled ki-check"></i> Request Approval
+                                    <i class="ki-filled ki-check"></i> Submit
                                 </button>
                             @endcan
                         @endif
@@ -359,6 +370,7 @@
             const letterTypeSelect = document.getElementById('letter_type_id');
             const letterTypeOtherWrapper = document.getElementById('letter-type-other-wrapper');
             const letterTypeOtherInput = document.getElementById('letter_type_other');
+            const registerDueDateInput = document.getElementById('register_due_date');
 
             if (saveDraftButton) {
                 saveDraftButton.addEventListener('click', function() {
@@ -418,6 +430,19 @@
                     letterTypeOtherInput.required = false;
                     letterTypeOtherInput.value = '';
                 }
+            }
+
+            function isInvitationLetter() {
+                const subjectValue = form ? (form.querySelector('[name="subject"]')?.value || '').toLowerCase() :
+                    '';
+                const letterTypeLabel = letterTypeSelect && letterTypeSelect.selectedIndex >= 0 ?
+                    (letterTypeSelect.options[letterTypeSelect.selectedIndex]?.text || '').toLowerCase() : '';
+                const letterTypeOtherValue = letterTypeOtherInput ? (letterTypeOtherInput.value || '')
+                    .toLowerCase() : '';
+
+                return subjectValue.includes('undangan') ||
+                    letterTypeLabel.includes('undangan') ||
+                    letterTypeOtherValue.includes('undangan');
             }
 
             if (letterTypeSelect) {
@@ -536,6 +561,9 @@
                         }
                         if (letterTypeValue === 'other' && !$form.find('[name="letter_type_other"]').val()) {
                             errors.letter_type_other = requiredMessage;
+                        }
+                        if (isInvitationLetter() && !$form.find('[name="register_due_date"]').val()) {
+                            errors.register_due_date = 'Due date register wajib diisi untuk surat undangan.';
                         }
                         const targetDateValue = $form.find('[name="target_date"]').val();
                         if (targetDateValue && targetDateValue < todayYmd) {

@@ -64,6 +64,8 @@
             '-' .
             str_pad((string) $workplan->id, 6, '0', STR_PAD_LEFT);
         $allUpdates = $allUpdates ?? collect();
+        $workplanComments = $workplanComments ?? collect();
+        $canDirectorNote = (bool) ($canDirectorNote ?? false);
     @endphp
 
     <div class="grid gap-5 lg:gap-7.5">
@@ -418,6 +420,60 @@
                 </div>
             </div>
         @endif
+
+        @if ($canDirectorNote)
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Komentar Viewer</h3>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ route('workplan.director.note', $workplan) }}" class="grid gap-4">
+                        @csrf
+                        <div class="flex flex-col">
+                            <label class="form-label">Komentar Viewer (Direksi / Sekdir / Corporate Secretary) <span
+                                    class="text-danger">*</span></label>
+                            <textarea class="textarea w-full" name="note" rows="3"
+                                placeholder="Tambahkan komentar viewer..." required></textarea>
+                        </div>
+                        <div class="flex justify-end">
+                            <button class="btn btn-primary" type="submit">Simpan Komentar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        @endif
+
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Riwayat Komentar</h3>
+            </div>
+            <div class="card-body">
+                @if ($workplanComments->count() > 0)
+                    <div class="overflow-x-auto">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th class="min-w-[280px]">Catatan</th>
+                                    <th class="min-w-[200px]">Oleh</th>
+                                    <th class="min-w-[180px]">Waktu</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($workplanComments as $comment)
+                                    <tr>
+                                        <td>{{ $comment->body ?? '-' }}</td>
+                                        <td>{{ $comment->createdBy?->name ?? '-' }}</td>
+                                        <td>{{ $comment->created_at ? $comment->created_at->format('Y-m-d H:i:s') : '-' }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @else
+                    <div class="text-sm text-gray-500">Belum ada catatan untuk program kerja ini.</div>
+                @endif
+            </div>
+        </div>
 
         @can('corsec.authorize')
             <div class="card">

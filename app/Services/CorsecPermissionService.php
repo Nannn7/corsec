@@ -3,6 +3,7 @@
 namespace Modules\Corsec\Services;
 
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Modules\Corsec\Models\IncomingLetter;
 use Modules\Corsec\Models\Meeting;
@@ -46,6 +47,11 @@ class CorsecPermissionService
         return $positionName !== '' && Str::contains($positionName, 'deputy director');
     }
 
+    public function isAssistantDirectorOrAbove(?User $user): bool
+    {
+        return $this->resolvedPositionLevel($user) >= 4;
+    }
+
     public function isStaffPosition(?User $user): bool
     {
         $positionName = $this->normalizedPositionName($user);
@@ -55,9 +61,18 @@ class CorsecPermissionService
 
     public function isSekretariatDireksi(?User $user): bool
     {
-        $positionName = $this->normalizedPositionName($user);
+        if (!$user) {
+            return false;
+        }
 
-        return $positionName !== '' && Str::contains($positionName, 'sekretariat direksi');
+        $sekretarisDireksiCode = (string) config('corsec.sekretaris_direksi_directorate_code', '');
+        if ($sekretarisDireksiCode === '') {
+            return false;
+        }
+
+        $user->loadMissing('directorate');
+
+        return (string) ($user->directorate?->code ?? '') === $sekretarisDireksiCode;
     }
 
     public function isCorpSecretaryDirectorate(?User $user): bool
@@ -105,6 +120,40 @@ class CorsecPermissionService
         }
 
         return $this->isCorpSecretaryDirectorate($user);
+    }
+
+    public function isCorpSecretaryValidationActor(?User $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        return $this->isCorpSecretaryDirectorate($user) && $this->isExecutiveOfficer($user);
+    }
+
+    public function canViewAllCorsec(?User $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        return $user->hasRole('administrator')
+            || $user->hasRole('checker')
+            || $user->hasRole('approver')
+            || $this->isAssistantDirectorOrAbove($user)
+            || $this->isCorpSecretaryDirectorate($user);
+    }
+
+    public function canAddDirectorNote(?User $user): bool
+    {
+        if (!$user || !(bool) ($user?->can('corsec.read') ?? false)) {
+            return false;
+        }
+
+        return $user->hasRole('administrator')
+            || $this->isAssistantDirectorOrAbove($user)
+            || $this->isSekretariatDireksi($user)
+            || $this->isCorpSecretaryDirectorate($user);
     }
 
     public function canCorsecUpdateAction(?User $user): bool
@@ -167,9 +216,9 @@ class CorsecPermissionService
         $isAdmin = (bool) ($user?->hasRole('administrator') ?? false);
         $isChecker = (bool) ($user?->hasRole('checker') ?? false);
         $isApprover = (bool) ($user?->hasRole('approver') ?? false);
-        $isViewerOnly = $this->isViewerRole($user);
         $isEoCorpAffairDirectorate = $this->isCorpSecretaryDirectorate($user);
         $isEoCorpAffairActor = $this->isEoCorpAffairActor($user);
+        $isCorpSecretaryValidationActor = $this->isCorpSecretaryValidationActor($user);
         $isExecutiveOfficer = $this->isExecutiveOfficer($user);
         $isSekretariatDireksi = $this->isSekretariatDireksi($user);
         $isEoCorpSecretaryChecker = $isChecker && $isEoCorpAffairDirectorate && $isExecutiveOfficer;
@@ -192,13 +241,8 @@ class CorsecPermissionService
             'DD Direktorat Approved',
             'DD Direktorat Returned',
         ]);
-        $userHasEoCorpAffairApproval = $this->userHasApprovalPrefix($approvals, $user, [
-            'EO Corp Affair Approved',
-            'EO Corp Affair Returned',
-        ]);
-        $userHasEoCorpAffairVerification = $this->userHasApprovalPrefix($approvals, $user, [
-            'Verifikasi EO Corp Affair',
-        ]);
+        $validationRequested = (bool) $incomingLetter->corp_secretary_validation_requested_at;
+        $validationPending = $validationRequested && !$incomingLetter->corp_secretary_validated_at;
 
         $canDirectorateUpdate = in_array($status, [
             IncomingLetter::STATUS_DISPATCHED,
@@ -218,12 +262,13 @@ class CorsecPermissionService
             && ($isAdmin || $isApprover)
             && !$userHasDdDirApproval;
 
-        $canCheckerApproval = (
-            (string) ($incomingLetter->authorized_status ?? '') === 'pending'
-            || in_array($status, [IncomingLetter::STATUS_ON_APPROVAL, IncomingLetter::STATUS_WAITING_VERIFICATION], true)
-        )
-            && ($isAdmin || $isEoCorpAffairActor)
-            && ($status === IncomingLetter::STATUS_WAITING_VERIFICATION ? !$userHasEoCorpAffairVerification : !$userHasEoCorpAffairApproval);
+        $canCheckerApproval = $validationPending
+            && !in_array($status, [
+                IncomingLetter::STATUS_DRAFT,
+                IncomingLetter::STATUS_RETURNED,
+                IncomingLetter::STATUS_REJECTED,
+            ], true)
+            && ($isAdmin || $isCorpSecretaryValidationActor);
 
         $canCreateOutgoingFromIncoming =
             (string) ($incomingLetter->followup_action ?? '') === 'response_letter'
@@ -233,12 +278,13 @@ class CorsecPermissionService
             && !$isEoCorpAffairDirectorate;
 
         return [
-            'can_viewer_note' => (bool) (($user?->can('corsec.update') ?? false) && $isViewerOnly),
+            'can_viewer_note' => $this->canAddDirectorNote($user),
             'can_corsec_update_action' => $this->canCorsecUpdateAction($user),
             'can_directorate_update' => $canDirectorateUpdate,
             'can_checker_dir_approval' => $canCheckerDirApproval,
             'can_approver_approval' => $canApproverApproval,
             'can_checker_approval' => $canCheckerApproval,
+            'can_corsec_validation' => $canCheckerApproval,
             'can_add_monitoring' => (bool) ($isAdmin || $isTargetDirectorate || $isEoCorpSecretaryChecker || $isSekretariatDireksi),
             'can_create_outgoing_from_incoming' => $canCreateOutgoingFromIncoming,
         ];
@@ -337,6 +383,7 @@ class CorsecPermissionService
         return [
             'can_corsec_update_action' => $this->canCorsecUpdateAction($user),
             'can_corsec_create_or_update_action' => $this->canCorsecCreateOrUpdateAction($user),
+            'can_director_note' => $this->canAddDirectorNote($user),
             'can_edit' => in_array($status, [OutgoingLetter::STATUS_DRAFT, OutgoingLetter::STATUS_RETURNED], true)
                 && ($isAdmin || $isRequesterDirectorate),
             'can_dir_checker_approval' => $status === OutgoingLetter::STATUS_WAITING_DIR_APPROVAL
@@ -392,15 +439,11 @@ class CorsecPermissionService
 
     public function meetingDetailFlags(Meeting $meeting, Collection $approvals, ?User $user): array
     {
-        $supportUsersEnabled = MeetingDecision::supportsSupportUsersTable();
         $meetingRelations = [
             'participants',
             'agendas',
             'decisions',
         ];
-        if ($supportUsersEnabled) {
-            $meetingRelations[] = 'decisions.supportUsers';
-        }
         $meeting->loadMissing($meetingRelations);
 
         $status = (string) ($meeting->status ?? '');
@@ -443,11 +486,22 @@ class CorsecPermissionService
             $canDirectorateActor = $isAdmin || $isAssignedUser;
         }
 
+        $isCorsecDirectorate = $this->isCorpSecretaryDirectorate($user);
+        $isExecutiveOfficer = $this->isExecutiveOfficer($user);
+        $isDeputyDirector = $this->isDeputyDirector($user);
+
         // Approval EO/DD direktorat mengikuti lingkup direktorat target rapat,
         // tidak harus user PIC langsung yang assigned.
         $canDirectorateApprovalActor = $isAdmin
             || $isAssignedUser
             || ($actorDirectorateId > 0 && $targetDirectorateIds->contains($actorDirectorateId));
+        $canPreparationCoordinationActor = $isDirektoratMeeting
+            ? $canDirectorateActor
+            : (
+                $actorDirectorateId > 0
+                && !$isCorsecDirectorate
+                && $targetDirectorateIds->contains($actorDirectorateId)
+            );
 
         $canEdit = ($isAdmin || (int) ($meeting->created_by ?? 0) === $actorUserId)
             && in_array($status, [
@@ -503,10 +557,6 @@ class CorsecPermissionService
             }
         }
 
-        $isCorsecDirectorate = $this->isCorpSecretaryDirectorate($user);
-        $isExecutiveOfficer = $this->isExecutiveOfficer($user);
-        $isDeputyDirector = $this->isDeputyDirector($user);
-
         $canManageMinutes = $isDirektoratMeeting
             ? ($isAdmin || $isAssignedUser)
             : ($isAdmin || $isCorsecDirectorate || (int) ($meeting->created_by ?? 0) === $actorUserId);
@@ -514,12 +564,6 @@ class CorsecPermissionService
         $updatableDecisionIds = $meeting->decisions
             ->filter(function (MeetingDecision $decision) use ($isAdmin, $actorUserId, $actorDirectorateId, $canDirectorateActor) {
                 if ($isAdmin) {
-                    return true;
-                }
-
-                if ($supportUsersEnabled && $decision->supportUsers->contains(function ($supportUser) use ($actorUserId) {
-                    return (int) ($supportUser->id ?? 0) === $actorUserId;
-                })) {
                     return true;
                 }
 
@@ -544,6 +588,7 @@ class CorsecPermissionService
         $allDecisionsDone = $meeting->decisions->count() > 0
             && $meeting->decisions->every(function ($decision) {
                 return in_array((string) ($decision->status ?? ''), [
+                    MeetingDecision::STATUS_CONTINUOUS,
                     MeetingDecision::STATUS_DONE,
                     MeetingDecision::STATUS_DROPPED,
                 ], true);
@@ -551,19 +596,20 @@ class CorsecPermissionService
 
         return [
             'can_corsec_update_action' => $this->canCorsecUpdateAction($user),
+            'can_director_note' => $this->canAddDirectorNote($user),
             'can_edit' => $canEdit,
             'can_submit_plan' => $canEdit,
             'can_corsec_approval' => $status === Meeting::STATUS_WAITING_CORSEC_APPROVAL
                 && ($isAdmin || ($isChecker && $isCorsecDirectorate))
                 && !$userHasCorsecAction,
             'can_mark_pending_direktorat' => !$isDirektoratMeeting
-                && $canDirectorateActor
+                && ($isAdmin || $canPreparationCoordinationActor)
                 && in_array($status, [Meeting::STATUS_JADWAL_TERKIRIM, Meeting::STATUS_RETURNED_BY_DIREKTORAT], true),
             'can_directorate_response' => $isDirektoratMeeting
                 && $meeting->isAwaitingDirectorateResponse()
                 && $canDirectorateActor
                 && !$isClosedNotConducted,
-            'can_directorate_submit' => $canDirectorateActor
+            'can_directorate_submit' => ($isAdmin || $canPreparationCoordinationActor)
                 && in_array($status, [
                     Meeting::STATUS_JADWAL_TERKIRIM,
                     Meeting::STATUS_PENDING_DIREKTORAT,
@@ -613,81 +659,83 @@ class CorsecPermissionService
 
     public function dashboardCounts(User $user): array
     {
-        $incomingOpen = IncomingLetter::query()
-            ->whereNotIn('status', [
-                IncomingLetter::STATUS_VERIFIED,
-                IncomingLetter::STATUS_REJECTED,
-                IncomingLetter::STATUS_RETURNED,
-            ])
-            ->count();
+        return Cache::remember($this->dashboardCountsCacheKey($user), now()->addSeconds(30), function () use ($user) {
+            $incomingOpen = IncomingLetter::query()
+                ->whereNotIn('status', [
+                    IncomingLetter::STATUS_VERIFIED,
+                    IncomingLetter::STATUS_REJECTED,
+                    IncomingLetter::STATUS_RETURNED,
+                ])
+                ->count();
 
-        $outgoingOpen = OutgoingLetter::query()
-            ->where(function ($query) {
-                $query->whereNull('status')
-                    ->orWhereNotIn('status', ['done', 'completed', 'sent', 'verified', OutgoingLetter::STATUS_CANCELLED]);
-            })
-            ->where(function ($query) {
-                $query->whereNull('authorized_status')
-                    ->orWhere('authorized_status', '!=', 'cancelled');
-            })
-            ->whereNull('cancelled_at')
-            ->count();
+            $outgoingOpen = OutgoingLetter::query()
+                ->where(function ($query) {
+                    $query->whereNull('status')
+                        ->orWhereNotIn('status', ['done', 'completed', 'sent', 'verified', OutgoingLetter::STATUS_CANCELLED]);
+                })
+                ->where(function ($query) {
+                    $query->whereNull('authorized_status')
+                        ->orWhere('authorized_status', '!=', 'cancelled');
+                })
+                ->whereNull('cancelled_at')
+                ->count();
 
-        $meetingOpenQuery = Meeting::query()
-            ->where(function ($query) {
-                $query->whereNull('status')
-                    ->orWhereNotIn('status', [
-                        'done',
-                        'completed',
-                        'closed',
-                        'verified',
-                        Meeting::STATUS_DONE_TINDAKLANJUT_HASIL_RAPAT,
-                        Meeting::STATUS_CANCELLED_DIREKTORAT,
-                    ]);
+            $meetingOpenQuery = Meeting::query()
+                ->where(function ($query) {
+                    $query->whereNull('status')
+                        ->orWhereNotIn('status', [
+                            'done',
+                            'completed',
+                            'closed',
+                            'verified',
+                            Meeting::STATUS_DONE_TINDAKLANJUT_HASIL_RAPAT,
+                            Meeting::STATUS_CANCELLED_DIREKTORAT,
+                        ]);
+                });
+
+            $directorateId = (int) ($user->directorate_id ?? 0);
+            $meetingOpenQuery->where(function ($builder) use ($user, $directorateId) {
+                $builder->where('created_by', $user->id)
+                    ->orWhereHas('participants', function ($query) use ($user) {
+                        $query->where('user_id', (int) $user->id);
+                    })
+                    ->orWhereHas('agendas', function ($query) use ($user) {
+                        $query->where('pic_user_id', (int) $user->id);
+                    })
+                    ->orWhereHas('decisions', function ($query) use ($user) {
+                        $query->where('pic_user_id', (int) $user->id);
+                    });
+
+                if ($directorateId > 0) {
+                    $builder->orWhereHas('participants', function ($query) use ($directorateId) {
+                        $query->where('directorate_id', $directorateId);
+                    })->orWhereHas('agendas', function ($query) use ($directorateId) {
+                        $query->where('owner_directorate_id', $directorateId);
+                    })->orWhereHas('decisions', function ($query) use ($directorateId) {
+                        $query->where('owner_directorate_id', $directorateId);
+                    });
+                }
             });
 
-        $directorateId = (int) ($user->directorate_id ?? 0);
-        $meetingOpenQuery->where(function ($builder) use ($user, $directorateId) {
-            $builder->where('created_by', $user->id)
-                ->orWhereHas('participants', function ($query) use ($user) {
-                    $query->where('user_id', (int) $user->id);
-                })
-                ->orWhereHas('agendas', function ($query) use ($user) {
-                    $query->where('pic_user_id', (int) $user->id);
-                })
-                ->orWhereHas('decisions', function ($query) use ($user) {
-                    $query->where('pic_user_id', (int) $user->id);
-                });
+            $meetingOpen = $meetingOpenQuery->count();
 
-            if ($directorateId > 0) {
-                $builder->orWhereHas('participants', function ($query) use ($directorateId) {
-                    $query->where('directorate_id', $directorateId);
-                })->orWhereHas('agendas', function ($query) use ($directorateId) {
-                    $query->where('owner_directorate_id', $directorateId);
-                })->orWhereHas('decisions', function ($query) use ($directorateId) {
-                    $query->where('owner_directorate_id', $directorateId);
-                });
-            }
+            $workplanOpen = WorkProgramItem::query()
+                ->whereHas('program', function ($query) {
+                    $query->whereNull('deleted_at');
+                })
+                ->whereNotIn('status', [
+                    WorkProgramItem::STATUS_DONE_ON_TARGET,
+                    WorkProgramItem::STATUS_DONE_OVER_TARGET,
+                ])
+                ->count();
+
+            return [
+                'incomingOpen' => $incomingOpen,
+                'outgoingOpen' => $outgoingOpen,
+                'meetingOpen' => $meetingOpen,
+                'workplanOpen' => $workplanOpen,
+            ];
         });
-
-        $meetingOpen = $meetingOpenQuery->count();
-
-        $workplanOpen = WorkProgramItem::query()
-            ->whereHas('program', function ($query) {
-                $query->whereNull('deleted_at');
-            })
-            ->whereNotIn('status', [
-                WorkProgramItem::STATUS_DONE_ON_TARGET,
-                WorkProgramItem::STATUS_DONE_OVER_TARGET,
-            ])
-            ->count();
-
-        return [
-            'incomingOpen' => $incomingOpen,
-            'outgoingOpen' => $outgoingOpen,
-            'meetingOpen' => $meetingOpen,
-            'workplanOpen' => $workplanOpen,
-        ];
     }
 
     public function dashboardOverviewData(array $counts): array
@@ -783,6 +831,31 @@ class CorsecPermissionService
         return Str::lower(trim($fallbackPositionName));
     }
 
+    private function resolvedPositionLevel(?User $user): int
+    {
+        if (!$user) {
+            return 0;
+        }
+
+        $user->loadMissing('position', 'roles');
+        if ($user->position?->level) {
+            return (int) $user->position->level;
+        }
+
+        $positionIds = $user->roles
+            ->pluck('position_id')
+            ->filter()
+            ->unique()
+            ->values();
+        if ($positionIds->isEmpty()) {
+            return 0;
+        }
+
+        return (int) Position::query()
+            ->whereIn('id', $positionIds)
+            ->max('level');
+    }
+
     private function normalizedRoleNames(?User $user): Collection
     {
         if (!$user) {
@@ -794,6 +867,18 @@ class CorsecPermissionService
         return $user->roles
             ->pluck('name')
             ->map(fn($name) => Str::lower((string) $name));
+    }
+
+    private function dashboardCountsCacheKey(User $user): string
+    {
+        $roleSignature = md5($this->normalizedRoleNames($user)->sort()->implode('|'));
+
+        return sprintf(
+            'corsec.dashboard.counts.%d.%d.%s',
+            (int) $user->id,
+            (int) ($user->directorate_id ?? 0),
+            $roleSignature
+        );
     }
 
     private function userHasApprovalPrefix(Collection $approvals, ?User $user, array $prefixes): bool

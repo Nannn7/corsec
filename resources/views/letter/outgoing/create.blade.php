@@ -140,7 +140,7 @@
                         </div>
 
                         <div class="flex flex-col">
-                            <label class="form-label">Perlu Review Direktorat Kepatuhan?</label>
+                            <label class="form-label">Sirkulasi Kepatuhan?</label>
                             <select class="select @error('need_compliance_review') border-danger bg-danger-light @enderror"
                                 name="need_compliance_review" id="need_compliance_review">
                                 <option value="0" {{ $needComplianceReview === '0' ? 'selected' : '' }}>Tidak</option>
@@ -224,10 +224,8 @@
                         <div class="flex flex-col md:col-span-2">
                             <label class="form-label">
                                 {{ isset($outgoingLetter) ? 'Tambah Draft Surat (PDF/JPG/PNG)' : 'Upload Draft Surat (PDF/JPG/PNG)' }}
-                                @if (!isset($outgoingLetter))
-                                    <span class="text-danger">*</span>
-                                @endif
                             </label>
+                            <div class="mb-1 text-xs text-gray-500">Wajib saat submit approval. Saat save draft boleh dikosongkan.</div>
                             <input class="file-input @error('draft_file') border-danger bg-danger-light @enderror"
                                 type="file" name="draft_file" accept=".pdf,.jpg,.jpeg,.png">
                             @error('draft_file')
@@ -543,6 +541,7 @@
                 function validateOutgoingForm($form) {
                     const errors = {};
                     const requiredMessage = 'Field ini tidak boleh kosong.';
+                    const submitForApproval = !isEdit && approvalInput && approvalInput.value === '1';
 
                     if (!$form.find('[name="order_date"]').val()) {
                         errors.order_date = requiredMessage;
@@ -590,7 +589,7 @@
                     }
 
                     const filesInput = $form.find('[name="draft_file"]')[0];
-                    if (!isEdit && filesInput && filesInput.files.length === 0) {
+                    if (submitForApproval && filesInput && filesInput.files.length === 0) {
                         errors.draft_file = 'Harap upload file.';
                     }
 

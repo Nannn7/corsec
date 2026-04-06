@@ -78,11 +78,11 @@
                         @if (($permissionFlags['can_export'] ?? false) || ($permissionFlags['can_create'] ?? false))
                             <div class="h-[24px] border border-r-gray-200"></div>
                         @endif
-                        <a href="{{ route('meeting.tabulation') }}" class="btn btn-sm btn-light-info">
+                        <a href="{{ route('report.index', ['module' => 'meeting']) }}" class="btn btn-sm btn-warning">
                             Tabulasi
                         </a>
                         @if ($permissionFlags['can_export'] ?? false)
-                            <a id="export-btn" class="btn btn-sm btn-light" href="{{ route('meeting.export') }}">
+                            <a id="export-btn" class="btn btn-sm btn-success" href="{{ route('meeting.export') }}">
                                 Export to Excel
                             </a>
                         @endif
@@ -164,11 +164,13 @@
                 $.ajax(`${baseUrl}/${rowKey}`, {
                     type: 'DELETE'
                 }).then((response) => {
-                    Swal.fire('Terhapus!', response.message ?? 'Meeting berhasil dihapus.', 'success').then(() => {
-                        window.location.reload();
-                    });
+                    Swal.fire('Terhapus!', response.message ?? 'Meeting berhasil dihapus.', 'success').then(
+                        () => {
+                            window.location.reload();
+                        });
                 }).catch((error) => {
-                    const message = error?.responseJSON?.message ?? 'Terjadi kesalahan saat menghapus meeting.';
+                    const message = error?.responseJSON?.message ??
+                        'Terjadi kesalahan saat menghapus meeting.';
                     Swal.fire('Error!', message, 'error');
                 });
             });

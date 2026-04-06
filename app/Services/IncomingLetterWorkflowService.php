@@ -20,47 +20,17 @@ class IncomingLetterWorkflowService
         DB::transaction(function () use ($incomingLetter, $actor) {
             $incomingLetter->update([
                 'status' => IncomingLetter::STATUS_DISPATCHED,
-                'authorized_status' => 'pending',
+                'authorized_status' => 'authorized',
+                'authorized_at' => now(),
+                'authorized_by' => $actor->id,
+                'corp_secretary_validation_requested_at' => now(),
+                'corp_secretary_validated_at' => null,
+                'corp_secretary_validated_by' => null,
+                'corp_secretary_validation_comment' => null,
                 'updated_by' => $actor->id,
             ]);
 
-            Approval::create([
-                'approvable_type' => IncomingLetter::class,
-                'approvable_id' => $incomingLetter->id,
-                'status' => 'pending',
-                'note' => 'Menunggu approval EO Corp Affair',
-            ]);
-            $directorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
-            if ($directorateCode !== '') {
-                $directorateId = Directorate::query()
-                    ->where('code', $directorateCode)
-                    ->value('id');
-
-                if ($directorateId) {
-                    $checkerIds = User::query()
-                        ->where('directorate_id', $directorateId)
-                        ->whereHas('roles', function ($query) {
-                            $query->where('name', 'checker');
-                        })
-                        ->pluck('id');
-
-                    if ($checkerIds->isNotEmpty()) {
-                        CorsecFlowNotification::insertForUsers($checkerIds, 'incoming_letter_eo_corp_affair', [
-                            'title' => 'Approval EO Corp Affair',
-                            'message' => 'Surat masuk menunggu approval EO Corp Affair.',
-                            'incoming_letter_id' => $incomingLetter->id,
-                            'registration_no' => $incomingLetter->registration_no,
-                            'subject' => $incomingLetter->subject,
-                            'sender' => $incomingLetter->sender,
-                            'status' => $incomingLetter->status,
-                            'created_by' => [
-                                'id' => $actor->id,
-                                'name' => $actor->name,
-                            ],
-                        ]);
-                    }
-                }
-            }
+            $this->notifyCorpSecretaryValidationRequired($incomingLetter, $actor);
         });
     }
 
@@ -225,7 +195,7 @@ class IncomingLetterWorkflowService
                         $incomingLetter->update([
                             'status' => $incomingLetter->followup_action === 'response_letter'
                                 ? IncomingLetter::STATUS_WAITING_RESPONSE_LETTER
-                                : IncomingLetter::STATUS_WAITING_VERIFICATION,
+                                : IncomingLetter::STATUS_VERIFIED,
                             'updated_by' => $actor->id,
                         ]);
 
@@ -425,68 +395,62 @@ class IncomingLetterWorkflowService
     {
         DB::transaction(function () use ($incomingLetter, $actor, $action, $note) {
             $isAdmin = $actor->hasRole('administrator');
-            $isEoCorpAffairActor = $this->isEoCorpAffairActor($actor);
+            $isCorpSecretaryValidationActor = $this->isCorpSecretaryValidationActor($actor);
+            $normalizedAction = Str::lower(trim($action));
+            $validationComment = trim((string) $note);
 
-            if ($incomingLetter->status === IncomingLetter::STATUS_WAITING_RESPONSE_LETTER) {
-                abort(403, 'Surat masuk dengan tindak lanjut Surat Jawaban diverifikasi melalui proses Surat Keluar.');
+            if (!$incomingLetter->corp_secretary_validation_requested_at) {
+                abort(403, 'Validasi EO Corporate Secretary belum diminta untuk surat masuk ini.');
             }
-            if ($incomingLetter->status !== IncomingLetter::STATUS_WAITING_VERIFICATION) {
-                abort(403, 'Verifikasi EO Corp Affair hanya untuk status waiting verification.');
+            if (in_array((string) $incomingLetter->status, [
+                IncomingLetter::STATUS_DRAFT,
+                IncomingLetter::STATUS_RETURNED,
+                IncomingLetter::STATUS_REJECTED,
+            ], true)) {
+                abort(403, 'Validasi EO Corporate Secretary tidak tersedia pada status ini.');
             }
-
-            if (!$isAdmin && !$isEoCorpAffairActor) {
-                abort(403, 'Verifikasi EO Corp Affair hanya untuk checker/approver dari direktorat Corporate Secretary.');
-            }
-
-            if (in_array($action, ['verify', 'approve'], true)) {
-                $incomingLetter->update([
-                    'status' => IncomingLetter::STATUS_VERIFIED,
-                    'updated_by' => $actor->id,
-                ]);
-
-                Approval::create([
-                    'approvable_type' => IncomingLetter::class,
-                    'approvable_id' => $incomingLetter->id,
-                    'status' => 'approved',
-                    'note' => $this->buildApprovalNote('Verifikasi EO Corp Affair', $note),
-                    'acted_by' => $actor->id,
-                    'acted_at' => now(),
-                ]);
-
-                $this->markIncomingNotificationsAsRead($incomingLetter->id);
-
-                $this->notifyIncomingDecision(
-                    $incomingLetter,
-                    $actor,
-                    [$incomingLetter->created_by],
-                    'Verifikasi EO Corp Affair',
-                    'Surat masuk telah diverifikasi.'
-                );
+            if ($incomingLetter->corp_secretary_validated_at) {
+                abort(403, 'Validasi EO Corporate Secretary sudah diproses.');
             }
 
-            if (in_array($action, ['return', 'reject'], true)) {
-                $incomingLetter->update([
-                    'status' => IncomingLetter::STATUS_RETURNED,
-                    'updated_by' => $actor->id,
-                ]);
-
-                if ($note) {
-                    Comment::create([
-                        'commentable_type' => IncomingLetter::class,
-                        'commentable_id' => $incomingLetter->id,
-                        'body' => '[RETURN VERIF] ' . $note,
-                        'created_by' => $actor->id,
-                    ]);
-                }
-
-                $this->notifyIncomingDecision(
-                    $incomingLetter,
-                    $actor,
-                    [$incomingLetter->created_by],
-                    'Verifikasi EO Corp Affair',
-                    'Verifikasi surat masuk dikembalikan.'
-                );
+            if (!$isAdmin && !$isCorpSecretaryValidationActor) {
+                abort(403, 'Validasi EO Corporate Secretary hanya untuk Executive Officer dari direktorat Corporate Secretary.');
             }
+
+            if (!in_array($normalizedAction, ['validate', 'verify'], true)) {
+                abort(422, 'Aksi validasi tidak valid.');
+            }
+
+            if ($validationComment === '') {
+                abort(422, 'Komentar validasi wajib diisi.');
+            }
+
+            $incomingLetter->update([
+                'corp_secretary_validated_at' => now(),
+                'corp_secretary_validated_by' => $actor->id,
+                'corp_secretary_validation_comment' => $validationComment,
+                'updated_by' => $actor->id,
+            ]);
+
+            Comment::create([
+                'commentable_type' => IncomingLetter::class,
+                'commentable_id' => $incomingLetter->id,
+                'body' => '[VALIDASI EO CORPORATE SECRETARY] ' . $validationComment,
+                'created_by' => $actor->id,
+            ]);
+
+            $this->markIncomingNotificationsAsRead($incomingLetter->id);
+
+            $this->notifyIncomingDecision(
+                $incomingLetter,
+                $actor,
+                [
+                    $incomingLetter->created_by,
+                    $incomingLetter->followup_submitted_by,
+                ],
+                'Validasi EO Corporate Secretary',
+                'Surat masuk telah divalidasi oleh EO Corporate Secretary.'
+            );
         });
     }
 
@@ -506,6 +470,18 @@ class IncomingLetterWorkflowService
         $actor->loadMissing('directorate');
 
         return (string) ($actor->directorate?->code ?? '') === $directorateCode;
+    }
+
+    private function isCorpSecretaryValidationActor(User $actor): bool
+    {
+        $actor->loadMissing('directorate', 'position');
+
+        $directorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+        $isCorpSecretaryDirectorate = $directorateCode !== ''
+            && (string) ($actor->directorate?->code ?? '') === $directorateCode;
+        $positionName = Str::lower(trim((string) ($actor->position?->name ?? '')));
+
+        return $isCorpSecretaryDirectorate && $positionName !== '' && Str::contains($positionName, 'executive officer');
     }
 
     private function buildApprovalNote(string $label, ?string $note): string
@@ -529,13 +505,19 @@ class IncomingLetterWorkflowService
 
     private function markIncomingNotificationsAsRead(int|string $incomingLetterId): void
     {
-        DB::table('notifications')
-            ->whereNull('read_at')
-            ->where('data->incoming_letter_id', (string) $incomingLetterId)
-            ->update([
-                'read_at' => now(),
-                'updated_at' => now(),
-            ]);
+        $query = DB::table('notifications')->whereNull('read_at');
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver === 'pgsql') {
+            $query->whereRaw("(data::jsonb ->> 'incoming_letter_id') = ?", [(string) $incomingLetterId]);
+        } else {
+            $query->where('data->incoming_letter_id', (string) $incomingLetterId);
+        }
+
+        $query->update([
+            'read_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function notifyIncomingDecision(
@@ -545,7 +527,12 @@ class IncomingLetterWorkflowService
         string $title,
         string $message
     ): void {
-        $this->notifyUsers($userIds, 'incoming_letter_action', [
+        $targetUserIds = collect($userIds)->filter()->unique()->values();
+        if ($targetUserIds->isEmpty()) {
+            return;
+        }
+
+        $this->notifyUsers($targetUserIds->all(), 'incoming_letter_action', [
             'title' => $title,
             'message' => $message,
             'incoming_letter_id' => $incomingLetter->id,
@@ -564,5 +551,50 @@ class IncomingLetterWorkflowService
     private function notifyUsers(iterable $userIds, string $type, array $data): void
     {
         CorsecFlowNotification::insertForUsers($userIds, $type, $data);
+    }
+
+    private function notifyCorpSecretaryValidationRequired(IncomingLetter $incomingLetter, User $actor): void
+    {
+        $validatorIds = $this->corpSecretaryValidationUserIds();
+        if ($validatorIds->isEmpty()) {
+            return;
+        }
+
+        $this->notifyUsers($validatorIds, 'incoming_letter_validation', [
+            'title' => 'Validasi EO Corporate Secretary',
+            'message' => 'Surat masuk menunggu validasi EO Corporate Secretary pada hari yang sama.',
+            'incoming_letter_id' => $incomingLetter->id,
+            'registration_no' => $incomingLetter->registration_no,
+            'subject' => $incomingLetter->subject,
+            'sender' => $incomingLetter->sender,
+            'status' => $incomingLetter->status,
+            'target_directorate_id' => $incomingLetter->target_directorate_id,
+            'created_by' => [
+                'id' => $actor->id,
+                'name' => $actor->name,
+            ],
+        ]);
+    }
+
+    private function corpSecretaryValidationUserIds()
+    {
+        $directorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+        if ($directorateCode === '') {
+            return collect();
+        }
+
+        $directorateId = Directorate::query()
+            ->where('code', $directorateCode)
+            ->value('id');
+        if (!$directorateId) {
+            return collect();
+        }
+
+        return User::query()
+            ->where('directorate_id', $directorateId)
+            ->whereHas('position', function ($query) {
+                $query->where('name', 'ilike', '%executive officer%');
+            })
+            ->pluck('id');
     }
 }

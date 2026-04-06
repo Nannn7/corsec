@@ -5,160 +5,6 @@
 @endsection
 
 @section('content')
-    @php
-
-        $permissionFlags = $permissionFlags ?? [];
-        $status = (string) ($meeting->status ?? '');
-        $supportsSupportUserAssignments = (bool) ($supportsSupportUserAssignments ?? false);
-        $canCorsecUpdateAction = (bool) ($permissionFlags['can_corsec_update_action'] ?? false);
-        $canEdit = (bool) ($permissionFlags['can_edit'] ?? false);
-        $canSubmitPlan = (bool) ($permissionFlags['can_submit_plan'] ?? false);
-        $canCorsecApproval = (bool) ($permissionFlags['can_corsec_approval'] ?? false);
-        $canMarkPendingDirectorate = (bool) ($permissionFlags['can_mark_pending_direktorat'] ?? false);
-        $canDirectorateResponse = (bool) ($permissionFlags['can_directorate_response'] ?? false);
-        $canDirectorateSubmit = (bool) ($permissionFlags['can_directorate_submit'] ?? false);
-        $canDirectorateCheckerApproval = (bool) ($permissionFlags['can_directorate_checker_approval'] ?? false);
-        $canDirectorateApproverApproval = (bool) ($permissionFlags['can_directorate_approver_approval'] ?? false);
-        $canSaveMinutes = (bool) ($permissionFlags['can_save_minutes'] ?? false);
-        $canFinalizeMinutes = (bool) ($permissionFlags['can_finalize_minutes'] ?? false);
-        $canInputFollowup = (bool) ($permissionFlags['can_input_followup'] ?? false);
-        $canCompleteFollowup = (bool) ($permissionFlags['can_complete_followup'] ?? false);
-        $updatableDecisionIds = collect($permissionFlags['updatable_decision_ids'] ?? []);
-        $directorateResponseStatus = (string) ($meeting->directorate_response_status ?? '');
-        $isOnScheduleResponse = $directorateResponseStatus === \Modules\Corsec\Models\Meeting::RESPONSE_ON_SCHEDULE;
-        $isRescheduleResponse = $directorateResponseStatus === \Modules\Corsec\Models\Meeting::RESPONSE_RESCHEDULE;
-        $isCancelResponse = $directorateResponseStatus === \Modules\Corsec\Models\Meeting::RESPONSE_CANCEL;
-        $isNoResponse = $directorateResponseStatus === \Modules\Corsec\Models\Meeting::RESPONSE_NO_RESPONSE;
-        $isAwaitingDirectorateResponse = $meeting->isAwaitingDirectorateResponse();
-        $isReminderWindow = $meeting->isDirectorateResponseReminderWindow();
-        $isClosedNotConducted = $meeting->isDirectorateScheduleNotConducted();
-        $directorateResponseSummaryClass = $isOnScheduleResponse
-            ? 'text-success'
-            : ($isRescheduleResponse || $isNoResponse ? 'text-warning' : 'text-danger');
-        $directorateResponseSummaryMessage = match (true) {
-            $isOnScheduleResponse => 'Meeting sudah ditandai on schedule oleh PIC direktorat.',
-            $isRescheduleResponse => 'PIC direktorat meminta reschedule jadwal rapat ini.',
-            $isCancelResponse => 'Meeting dibatalkan oleh PIC direktorat.',
-            $isNoResponse => 'Meeting ditutup otomatis karena tidak ada tanggapan dari direktorat sampai hari H.',
-            default => '',
-        };
-
-        $statusBadgeClass = match ($status) {
-            'draft' => 'badge-light',
-            'waiting_corsec_approval', 'waiting_direktorat_approval' => 'badge-warning',
-            'returned_by_corsec', 'returned_by_direktorat' => 'badge-danger',
-            'jadwal_terkirim', 'pending_direktorat', 'data_terkirim' => 'badge-info',
-            'proses_pembuatan_notulen',
-            'proses_sirkulasi_tandatangan',
-            'proses_tindaklanjut_hasil_rapat'
-                => 'badge-primary',
-            'notulen_final', 'done_tindaklanjut_hasil_rapat' => 'badge-success',
-            'cancelled_direktorat' => 'badge-danger',
-            'closed_not_conducted' => 'badge-warning',
-            default => 'badge-light',
-        };
-
-        $decisionStatusClass = fn(string $decisionStatus) => match ($decisionStatus) {
-            'pending' => 'badge-warning',
-            'in_progress' => 'badge-info',
-            'continuous' => 'badge-primary',
-            'done' => 'badge-success',
-            'dropped' => 'badge-danger',
-            default => 'badge-light',
-        };
-        $decisionStatusLabel = fn(string $decisionStatus) => match ($decisionStatus) {
-            'pending' => 'Pending',
-            'in_progress' => 'Proses',
-            'continuous' => 'Berkelanjutan',
-            'done' => 'Done',
-            'dropped' => 'Drop',
-            default => $decisionStatus ?: '-',
-        };
-
-        $statusSteps = [
-            'draft' => 'Draft Jadwal Rapat',
-            'waiting_corsec_approval' => 'Approval EO Corp Affair',
-            'jadwal_terkirim' => 'Jadwal Terkirim',
-            'pending_direktorat' => 'Koordinasi Unit Rapat',
-            'waiting_direktorat_approval' => 'Approval EO + DD Direktorat',
-            'data_terkirim' => 'Data/Bahan Terkirim',
-            'proses_pembuatan_notulen' => 'Input Notulen + Tindaklanjut',
-            'proses_sirkulasi_tandatangan' => 'Sirkulasi Tandatangan',
-            'notulen_final' => 'Notulen Final',
-            'proses_tindaklanjut_hasil_rapat' => 'Progress Tindaklanjut',
-            'done_tindaklanjut_hasil_rapat' => 'Done',
-            'returned_by_corsec' => 'Revisi Corsec',
-            'returned_by_direktorat' => 'Revisi Direktorat',
-            'cancelled_direktorat' => 'Batal Direktorat',
-            'closed_not_conducted' => 'Closed - Tidak Dilaksanakan',
-        ];
-        $decisionUpdates = $decisionUpdates ?? collect();
-        $decisionProgressById = $decisionProgressById ?? [];
-        $sortedComments = $sortedComments ?? collect();
-        $linkableDecisions = $linkableDecisions ?? collect();
-        $agingLabels = [
-            'cat_1' => 'CAT 1 (< 30 hari)',
-            'cat_2' => 'CAT 2 (30 - 90 hari)',
-            'cat_3' => 'CAT 3 (91 - 180 hari)',
-            'cat_4' => 'CAT 4 (181 - 270 hari)',
-            'cat_5' => 'CAT 5 (> 270 hari)',
-        ];
-        $getDecisionSupportUsers = function ($decision) use ($supportsSupportUserAssignments) {
-            if (!$supportsSupportUserAssignments) {
-                return collect();
-            }
-
-            return $decision->supportUsers ?? collect();
-        };
-
-        $additionalAgendas = old('additional_agendas', []);
-        if (!is_array($additionalAgendas)) {
-            $additionalAgendas = [];
-        }
-
-        $minutes = $meeting->minutes;
-        $minutesDecisionRows = old('decisions');
-        if (!is_array($minutesDecisionRows)) {
-            $minutesDecisionRows = $meeting->decisions
-                ->map(function ($decision) {
-                    return [
-                        'id' => $decision->id,
-                        'existing_decision_id' => '',
-                        'decision_text' => $decision->decision_text,
-                        'owner_directorate_id' => $decision->owner_directorate_id,
-                        'pic_user_id' => $decision->pic_user_id,
-                        'status' => $decision->status,
-                        'target_date' => optional($decision->target_date)->format('Y-m-d'),
-                        'support_directorate_ids' => $decision->supportDirectorates
-                            ->pluck('id')
-                            ->map(fn($id) => (int) $id)
-                            ->values()
-                            ->all(),
-                        'support_user_ids' => $getDecisionSupportUsers($decision)
-                            ->pluck('id')
-                            ->map(fn($id) => (int) $id)
-                            ->values()
-                            ->all(),
-                    ];
-                })
-                ->values()
-                ->all();
-        }
-        if (count($minutesDecisionRows) === 0) {
-            $minutesDecisionRows[] = [
-                'id' => '',
-                'existing_decision_id' => '',
-                'decision_text' => '',
-                'owner_directorate_id' => '',
-                'pic_user_id' => '',
-                'status' => 'pending',
-                'target_date' => '',
-                'support_directorate_ids' => [],
-                'support_user_ids' => [],
-            ];
-        }
-    @endphp
-
     <div class="grid gap-5 lg:gap-7.5">
         @if ($errors->any())
             @foreach ($errors->all() as $error)
@@ -187,7 +33,7 @@
                     <a href="{{ route('meeting.index') }}" class="btn btn-sm btn-light">
                         <i class="ki-filled ki-arrow-left"></i> Kembali
                     </a>
-                    <a href="{{ route('meeting.tabulation') }}" class="btn btn-sm btn-light-info">
+                    <a href="{{ route('report.index', ['module' => 'meeting']) }}" class="btn btn-sm btn-warning">
                         Tabulasi
                     </a>
                     @if ($canEdit)
@@ -276,22 +122,25 @@
                     <h3 class="card-title">Peserta Rapat</h3>
                 </div>
                 <div class="card-body">
-                    @if ($meeting->participants->count() > 0)
-                        <div class="overflow-x-auto">
+                    @if ($participantDisplayRows->count() > 0)
+                        <div style="max-height: 24rem; overflow: auto; padding-right: 0.25rem;">
                             <table class="table table-striped">
                                 <thead>
                                     <tr>
-                                        <th class="min-w-[40px]">No</th>
-                                        <th class="min-w-[220px]">Direktorat</th>
-                                        <th class="min-w-[200px]">PIC</th>
+                                        <th class="min-w-[40px]"
+                                            style="position: sticky; top: 0; z-index: 10; background: #fff;">No</th>
+                                        <th class="min-w-[220px]"
+                                            style="position: sticky; top: 0; z-index: 10; background: #fff;">Direktorat</th>
+                                        <th class="min-w-[200px]"
+                                            style="position: sticky; top: 0; z-index: 10; background: #fff;">PIC</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach ($meeting->participants as $index => $participant)
+                                    @foreach ($participantDisplayRows as $index => $participantRow)
                                         <tr>
                                             <td>{{ $index + 1 }}</td>
-                                            <td>{{ $participant->directorate?->displayName() ?? '-' }}</td>
-                                            <td>{{ $participant->participantUser?->name ?? '-' }}</td>
+                                            <td>{{ $participantRow['directorate'] ?? '-' }}</td>
+                                            <td>{{ $participantRow['pic'] ?? '-' }}</td>
                                         </tr>
                                     @endforeach
                                 </tbody>
@@ -309,16 +158,23 @@
                 </div>
                 <div class="card-body">
                     @if ($meeting->agendas->count() > 0)
-                        <div class="overflow-x-auto">
+                        <div style="max-height: 24rem; overflow: auto; padding-right: 0.25rem;">
                             <table class="table table-striped">
                                 <thead>
                                     <tr>
-                                        <th class="min-w-[40px]">No</th>
-                                        <th class="min-w-[220px]">Agenda</th>
-                                        <th class="min-w-[180px]">PIC Direktorat</th>
-                                        <th class="min-w-[180px]">PIC User</th>
-                                        <th class="min-w-[220px]">Sumber</th>
-                                        <th class="min-w-[120px]">Status</th>
+                                        <th class="min-w-[40px]"
+                                            style="position: sticky; top: 0; z-index: 10; background: #fff;">No</th>
+                                        <th class="min-w-[220px]"
+                                            style="position: sticky; top: 0; z-index: 10; background: #fff;">Agenda</th>
+                                        <th class="min-w-[180px]"
+                                            style="position: sticky; top: 0; z-index: 10; background: #fff;">PIC Direktorat
+                                        </th>
+                                        <th class="min-w-[180px]"
+                                            style="position: sticky; top: 0; z-index: 10; background: #fff;">PIC User</th>
+                                        <th class="min-w-[220px]"
+                                            style="position: sticky; top: 0; z-index: 10; background: #fff;">Sumber</th>
+                                        <th class="min-w-[120px]"
+                                            style="position: sticky; top: 0; z-index: 10; background: #fff;">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -346,7 +202,8 @@
                                                     <div class="text-xs text-gray-500">
                                                         {{ $agenda->sourceDecision->decision_key ?? '-' }}
                                                         @if ($agenda->sourceDecision->meeting?->meeting_at)
-                                                            | {{ $agenda->sourceDecision->meeting->meeting_at->format('d/m/Y H:i') }}
+                                                            |
+                                                            {{ $agenda->sourceDecision->meeting->meeting_at->format('d/m/Y H:i') }}
                                                         @endif
                                                     </div>
                                                 @else
@@ -356,8 +213,8 @@
                                             <td>
                                                 @if ($agenda->sourceDecision)
                                                     <span
-                                                        class="badge {{ $decisionStatusClass((string) $agenda->sourceDecision->status) }}">
-                                                        {{ $decisionStatusLabel((string) $agenda->sourceDecision->status) }}
+                                                        class="badge {{ $decisionStatusBadgeClasses[(string) $agenda->sourceDecision->status] ?? 'badge-light' }}">
+                                                        {{ $decisionStatusLabels[(string) $agenda->sourceDecision->status] ?? ((string) $agenda->sourceDecision->status ?: '-') }}
                                                     </span>
                                                 @else
                                                     -
@@ -475,9 +332,9 @@
                     <form method="POST" action="{{ route('meeting.directorate.response', $meeting) }}"
                         class="grid gap-4">
                         @csrf
-                            <div class="text-sm text-gray-600">
-                                PIC direktorat wajib memilih tanggapan sebelum input agenda/persiapan rapat.
-                            </div>
+                        <div class="text-sm text-gray-600">
+                            PIC direktorat wajib memilih tanggapan sebelum input agenda/persiapan rapat.
+                        </div>
                         @if ($meeting->isDirektoratType() && $meeting->directorateResponseDeadlineLabel())
                             <div class="text-sm text-gray-600">
                                 Target tanggapan jadwal (H-1):
@@ -490,7 +347,8 @@
                         </div>
                         <div class="flex justify-end gap-2">
                             <button type="submit" class="btn btn-danger" name="action" value="cancel">Cancel</button>
-                            <button type="submit" class="btn btn-warning" name="action" value="reschedule">Reschedule</button>
+                            <button type="submit" class="btn btn-warning" name="action"
+                                value="reschedule">Reschedule</button>
                             <button type="submit" class="btn btn-success" name="action" value="on_schedule">On
                                 Schedule</button>
                         </div>
@@ -499,7 +357,11 @@
             </div>
         @endif
 
-        @if ($canCorsecUpdateAction && $meeting->isDirektoratType() && !$canDirectorateResponse && ($isOnScheduleResponse || $isRescheduleResponse || $isCancelResponse || $isNoResponse))
+        @if (
+            $canCorsecUpdateAction &&
+                $meeting->isDirektoratType() &&
+                !$canDirectorateResponse &&
+                ($isOnScheduleResponse || $isRescheduleResponse || $isCancelResponse || $isNoResponse))
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Tanggapan Jadwal Direktorat</h3>
@@ -512,11 +374,13 @@
                         @endif
                     </div>
                     <div class="text-xs text-gray-600">
-                        Ditanggapi oleh: <span class="font-medium">{{ $meeting->directorateRespondedBy?->name ?? '-' }}</span>
+                        Ditanggapi oleh: <span
+                            class="font-medium">{{ $meeting->directorateRespondedBy?->name ?? '-' }}</span>
                     </div>
                     <div class="text-xs text-gray-600">
                         Waktu tanggapan:
-                        <span class="font-medium">{{ $meeting->directorate_responded_at ? $meeting->directorate_responded_at->format('d/m/Y H:i') : '-' }}</span>
+                        <span
+                            class="font-medium">{{ $meeting->directorate_responded_at ? $meeting->directorate_responded_at->format('d/m/Y H:i') : '-' }}</span>
                     </div>
                     @if ($meeting->directorate_response_note)
                         <div class="text-xs text-gray-600">
@@ -532,9 +396,12 @@
             @if ($canDirectorateSubmit)
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">Persiapan Rapat dan Distribusi Bahan</h3>
+                        <h3 class="card-title">{{ $preparationCardTitle }}</h3>
                     </div>
-                    <div class="card-body grid gap-5">
+                    <div class="card-body grid gap-1">
+                        <div class="text-sm text-gray-600 mb-3">
+                            {{ $preparationHelperText }}
+                        </div>
                         @if ($canMarkPendingDirectorate && $status !== 'pending_direktorat')
                             <form method="POST" action="{{ route('meeting.mark.pending.directorate', $meeting) }}">
                                 @csrf
@@ -558,7 +425,7 @@
                                                 {{ (string) old('material_agenda_id') === (string) $agenda->id ? 'selected' : '' }}>
                                                 {{ $agenda->order_no ? 'Agenda #' . $agenda->order_no . ' - ' : '' }}{{ $agenda->title }}
                                                 @if ($agenda->sourceDecision)
-                                                    {{ ' [' . ($agenda->sourceDecision->decision_key ?? '-') . ' - ' . $decisionStatusLabel((string) $agenda->sourceDecision->status) . ']' }}
+                                                    {{ ' [' . ($agenda->sourceDecision->decision_key ?? '-') . ' - ' . ($decisionStatusLabels[(string) $agenda->sourceDecision->status] ?? ((string) $agenda->sourceDecision->status ?: '-')) . ']' }}
                                                 @endif
                                             </option>
                                         @endforeach
@@ -573,7 +440,7 @@
 
                             <div class="border border-gray-200 rounded-xl p-4 grid gap-3">
                                 <div class="font-semibold text-gray-800">Undang Direktorat Tambahan (Opsional)</div>
-                                <div class="grid gap-2 max-h-[180px] overflow-auto">
+                                <div class="grid gap-2" style="max-height: 180px; overflow: auto;">
                                     @foreach ($directorates as $directorate)
                                         <label class="flex items-center gap-2 text-sm">
                                             <input class="checkbox checkbox-sm" type="checkbox"
@@ -585,7 +452,7 @@
                             </div>
 
                             <div class="flex flex-col">
-                                <label class="form-label">Catatan Direktorat (Opsional)</label>
+                                <label class="form-label">{{ $preparationNoteLabel }}</label>
                                 <textarea class="textarea w-full" name="note" rows="3" placeholder="Catatan progres persiapan rapat...">{{ old('note') }}</textarea>
                             </div>
 
@@ -650,7 +517,7 @@
                             </div>
 
                             <div class="flex justify-end">
-                                <button type="submit" class="btn btn-primary">Submit Persiapan Direktorat</button>
+                                <button type="submit" class="btn btn-primary">{{ $preparationSubmitLabel }}</button>
                             </div>
                         </form>
                     </div>
@@ -690,138 +557,595 @@
             @if ($canSaveMinutes)
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">Input Notulen Rapat + Tindaklanjut</h3>
+                        <h3 class="card-title">
+                            {{ $meeting->isDirektoratType() ? 'Input Notulen Rapat Direktorat' : 'Input Notulen Rapat + Tindaklanjut' }}
+                        </h3>
                     </div>
                     <div class="card-body">
-                        <form method="POST" action="{{ route('meeting.minutes.save', $meeting) }}"
-                            enctype="multipart/form-data" class="grid gap-4" id="minutes-form">
-                            @csrf
+                        @if ($meeting->isDirektoratType())
+                            <form method="POST" action="{{ route('meeting.minutes.save', $meeting) }}"
+                                enctype="multipart/form-data" class="grid gap-4" id="directorate-minutes-form">
+                                @csrf
 
-                            <div class="flex flex-col">
-                                <label class="form-label">Notulen Rapat <span class="text-danger">*</span></label>
-                                <textarea class="textarea w-full" name="minutes_text" rows="6" placeholder="Ringkasan notulen rapat...">{{ old('minutes_text', $minutes?->minutes_text) }}</textarea>
-                            </div>
-
-                            <div class="flex flex-col">
-                                <label class="form-label">Lampiran Notulen (Opsional)</label>
-                                <input class="file-input" type="file" name="minutes_file"
-                                    accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx,.ppt,.pptx">
-                            </div>
-
-                            <div class="border border-gray-200 rounded-xl p-4 grid gap-4">
-                                <div class="flex items-center justify-between gap-2">
-                                    <h4 class="font-semibold text-gray-800">Tindaklanjut Hasil Rapat</h4>
-                                    <button type="button" class="btn btn-sm btn-light-primary" id="add-decision-row">
-                                        <i class="ki-filled ki-plus"></i> Tambah Item
-                                    </button>
+                                <div class="grid gap-4 xl:grid-cols-2">
+                                    <div class="flex flex-col">
+                                        <label class="form-label">Catatan Umum Notulen (Opsional)</label>
+                                        <textarea class="textarea w-full" name="minutes_text" rows="5" placeholder="Catatan umum rapat direktorat...">{{ old('minutes_text', $minutes?->minutes_text) }}</textarea>
+                                    </div>
+                                    <div class="grid gap-4 content-start">
+                                        <div class="flex flex-col">
+                                            <label class="form-label">Lampiran Template/Notulen (Opsional)</label>
+                                            <input class="file-input" type="file" name="minutes_file"
+                                                accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx,.ppt,.pptx">
+                                        </div>
+                                    </div>
                                 </div>
-                                <div id="decision-rows" class="grid gap-3">
-                                    @foreach ($minutesDecisionRows as $index => $decision)
-                                        @php
-                                            $selectedSupportDirectorateIds = collect(
-                                                old(
-                                                    'decisions.' . $index . '.support_directorate_ids',
-                                                    $decision['support_directorate_ids'] ?? [],
-                                                ),
-                                            )
-                                                ->filter()
-                                                ->map(fn($id) => (string) $id)
-                                                ->values()
-                                                ->all();
-                                            $selectedSupportUserIds = collect(
-                                                old(
-                                                    'decisions.' . $index . '.support_user_ids',
-                                                    $decision['support_user_ids'] ?? [],
-                                                ),
-                                            )
-                                                ->filter()
-                                                ->map(fn($id) => (string) $id)
-                                                ->values()
-                                                ->all();
-                                        @endphp
-                                        <div class="p-3 border rounded-xl border-gray-200 decision-row">
-                                            <input type="hidden" name="decisions[{{ $index }}][id]"
-                                                value="{{ old('decisions.' . $index . '.id', $decision['id'] ?? '') }}">
-                                            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                                <div class="flex flex-col md:col-span-2 xl:col-span-3">
-                                                    <label class="form-label">Link Issue Existing</label>
-                                                    <select class="select" name="decisions[{{ $index }}][existing_decision_id]">
-                                                        <option value="">- Buat issue baru -</option>
-                                                        @foreach ($linkableDecisions as $linkableDecision)
-                                                            <option value="{{ $linkableDecision->id }}"
-                                                                {{ (string) old('decisions.' . $index . '.existing_decision_id', $decision['existing_decision_id'] ?? '') === (string) $linkableDecision->id ? 'selected' : '' }}>
-                                                                {{ $linkableDecision->issue_key ?? $linkableDecision->decision_key }}
-                                                                | {{ \Illuminate\Support\Str::limit($linkableDecision->decision_text, 90) }}
-                                                            </option>
-                                                        @endforeach
-                                                    </select>
-                                                </div>
-                                                <div class="flex flex-col md:col-span-2 xl:col-span-3">
-                                                    <label class="form-label">Item Tindaklanjut <span
-                                                            class="text-danger">*</span></label>
-                                                    <textarea class="textarea w-full" rows="2" name="decisions[{{ $index }}][decision_text]">{{ old('decisions.' . $index . '.decision_text', $decision['decision_text'] ?? '') }}</textarea>
-                                                </div>
-                                                <div class="flex flex-col">
-                                                    <label class="form-label">PIC Direktorat</label>
-                                                    <select class="select"
-                                                        name="decisions[{{ $index }}][owner_directorate_id]">
-                                                        <option value="">- Pilih Direktorat -</option>
-                                                        @foreach ($directorates as $directorate)
-                                                            <option value="{{ $directorate->id }}"
-                                                                {{ (string) old('decisions.' . $index . '.owner_directorate_id', $decision['owner_directorate_id'] ?? '') === (string) $directorate->id ? 'selected' : '' }}>
-                                                                {{ $directorate->displayName() }}
-                                                            </option>
-                                                        @endforeach
-                                                    </select>
-                                                </div>
-                                                <div class="flex flex-col">
-                                                    <label class="form-label">PIC User</label>
-                                                    <select class="select"
-                                                        name="decisions[{{ $index }}][pic_user_id]">
-                                                        <option value="">- Pilih User -</option>
-                                                        @foreach ($users as $optionUser)
-                                                            <option value="{{ $optionUser->id }}"
-                                                                {{ (string) old('decisions.' . $index . '.pic_user_id', $decision['pic_user_id'] ?? '') === (string) $optionUser->id ? 'selected' : '' }}>
-                                                                {{ $optionUser->name }}
-                                                                @if ($optionUser->directorate)
-                                                                    ({{ $optionUser->directorate->displayName() }})
+
+                                <div class="border border-gray-200 rounded-xl p-4 grid gap-4">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <h4 class="font-semibold text-gray-800">Materi Pembahasan Rapat Direktorat</h4>
+                                        <button type="button" class="btn btn-sm btn-light-primary"
+                                            id="add-minutes-agenda-row">
+                                            <i class="ki-filled ki-plus"></i> Tambah Free Text
+                                        </button>
+                                    </div>
+                                    <div class="overflow-x-auto">
+                                        <table class="table table-bordered align-top min-w-[1100px]">
+                                            <thead>
+                                                <tr>
+                                                    <th class="min-w-[60px]">No</th>
+                                                    <th class="min-w-[320px]">Materi Pembahasan</th>
+                                                    <th class="min-w-[260px]">PIC</th>
+                                                    <th class="min-w-[380px]">Tindak Lanjut</th>
+                                                    <th class="min-w-[90px]">Aksi</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="minutes-agenda-rows">
+                                                @foreach ($minutesAgendaRows as $index => $row)
+                                                    @php
+                                                        $agendaId = (string) ($row['agenda_id'] ?? '');
+                                                        $sourceDecisionId = (string) ($row['source_decision_id'] ?? '');
+                                                        $decisionId = (string) ($row['decision_id'] ?? '');
+                                                        $decisionLocked = $decisionId !== '';
+                                                        $sourceLocked = $sourceDecisionId !== '';
+                                                        $followupEnabled =
+                                                            filter_var(
+                                                                $row['followup_enabled'] ?? false,
+                                                                FILTER_VALIDATE_BOOLEAN,
+                                                            ) || $decisionLocked;
+                                                        $selectedExistingDecisionId =
+                                                            (string) ($row['existing_decision_id'] ??
+                                                                ($sourceDecisionId ?: ''));
+                                                        $selectedStatus = (string) ($row['status'] ?? 'in_progress');
+                                                        $agendaModel =
+                                                            $agendaId !== ''
+                                                                ? $meeting->agendas->firstWhere('id', (int) $agendaId)
+                                                                : null;
+                                                        $sourceDecision = $agendaModel?->sourceDecision;
+                                                        $canRemove = !$decisionLocked && !$sourceLocked;
+                                                    @endphp
+                                                    <tr class="minutes-agenda-row"
+                                                        data-followup-locked="{{ $decisionLocked ? '1' : '0' }}"
+                                                        data-source-locked="{{ $sourceLocked ? '1' : '0' }}">
+                                                        <td class="font-medium text-gray-700 row-number">
+                                                            {{ $index + 1 }}</td>
+                                                        <td>
+                                                            <input type="hidden"
+                                                                name="minutes_agendas[{{ $index }}][agenda_id]"
+                                                                value="{{ $agendaId }}">
+                                                            <input type="hidden"
+                                                                name="minutes_agendas[{{ $index }}][source_decision_id]"
+                                                                value="{{ $sourceDecisionId }}">
+                                                            <input type="hidden"
+                                                                name="minutes_agendas[{{ $index }}][description]"
+                                                                value="{{ $row['description'] ?? '' }}">
+                                                            <div class="grid gap-2">
+                                                                <textarea class="textarea w-full minutes-agenda-title" rows="3"
+                                                                    name="minutes_agendas[{{ $index }}][title]" placeholder="Materi pembahasan..."
+                                                                    {{ $sourceLocked ? 'readonly' : '' }}>{{ $row['title'] ?? '' }}</textarea>
+                                                                @if ($sourceDecision)
+                                                                    <div class="text-xs text-gray-500">
+                                                                        <span
+                                                                            class="badge badge-light-info">Mandatory</span>
+                                                                        {{ $sourceDecision->issue_key ?? ($sourceDecision->decision_key ?? '-') }}
+                                                                        @if ($sourceDecision->meeting?->title)
+                                                                            | {{ $sourceDecision->meeting->title }}
+                                                                        @endif
+                                                                    </div>
                                                                 @endif
-                                                            </option>
-                                                        @endforeach
-                                                    </select>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            @if ($sourceLocked)
+                                                                <input type="hidden"
+                                                                    name="minutes_agendas[{{ $index }}][owner_directorate_id]"
+                                                                    value="{{ $row['owner_directorate_id'] ?? '' }}">
+                                                                <input type="hidden"
+                                                                    name="minutes_agendas[{{ $index }}][pic_user_id]"
+                                                                    value="{{ $row['pic_user_id'] ?? '' }}">
+                                                                <div class="grid gap-1 text-sm">
+                                                                    <div class="font-medium">
+                                                                        {{ optional($directorates->firstWhere('id', (int) ($row['owner_directorate_id'] ?? 0)))->displayName() ?? '-' }}
+                                                                    </div>
+                                                                    <div class="text-gray-500">
+                                                                        {{ optional($users->firstWhere('id', (int) ($row['pic_user_id'] ?? 0)))->name ?? '-' }}
+                                                                    </div>
+                                                                </div>
+                                                            @else
+                                                                <div class="grid gap-2">
+                                                                    <select class="select minutes-agenda-owner"
+                                                                        name="minutes_agendas[{{ $index }}][owner_directorate_id]">
+                                                                        <option value="">- Pilih Direktorat -
+                                                                        </option>
+                                                                        @foreach ($directorates as $directorate)
+                                                                            <option value="{{ $directorate->id }}"
+                                                                                {{ (string) ($row['owner_directorate_id'] ?? '') === (string) $directorate->id ? 'selected' : '' }}>
+                                                                                {{ $directorate->displayName() }}
+                                                                            </option>
+                                                                        @endforeach
+                                                                    </select>
+                                                                    <select class="select minutes-agenda-pic"
+                                                                        name="minutes_agendas[{{ $index }}][pic_user_id]">
+                                                                        <option value="">- Pilih User -</option>
+                                                                        @foreach ($users as $optionUser)
+                                                                            <option value="{{ $optionUser->id }}"
+                                                                                {{ (string) ($row['pic_user_id'] ?? '') === (string) $optionUser->id ? 'selected' : '' }}>
+                                                                                {{ $optionUser->name }}
+                                                                                @if ($optionUser->directorate)
+                                                                                    ({{ $optionUser->directorate->displayName() }})
+                                                                                @endif
+                                                                            </option>
+                                                                        @endforeach
+                                                                    </select>
+                                                                </div>
+                                                            @endif
+                                                        </td>
+                                                        <td>
+                                                            <input type="hidden"
+                                                                name="minutes_agendas[{{ $index }}][decision_id]"
+                                                                value="{{ $decisionId }}">
+                                                            @if ($decisionLocked)
+                                                                <input type="hidden"
+                                                                    name="minutes_agendas[{{ $index }}][followup_enabled]"
+                                                                    value="1">
+                                                            @endif
+                                                            <div class="grid gap-3">
+                                                                <label class="flex items-center gap-2 text-sm">
+                                                                    <input
+                                                                        class="checkbox checkbox-sm minutes-followup-toggle"
+                                                                        type="checkbox"
+                                                                        name="minutes_agendas[{{ $index }}][followup_enabled]"
+                                                                        value="1"
+                                                                        {{ $followupEnabled ? 'checked' : '' }}
+                                                                        {{ $decisionLocked ? 'disabled' : '' }}>
+                                                                    <span>{{ $decisionLocked ? 'Tindak lanjut aktif dan tetap berjalan' : 'Buat tindak lanjut untuk materi ini' }}</span>
+                                                                </label>
+                                                                <div
+                                                                    class="grid gap-3 minutes-followup-fields {{ $followupEnabled ? '' : 'hidden' }}">
+                                                                    @if ($sourceLocked)
+                                                                        <input type="hidden"
+                                                                            name="minutes_agendas[{{ $index }}][existing_decision_id]"
+                                                                            value="{{ $selectedExistingDecisionId }}">
+                                                                        <div class="text-xs text-gray-500">
+                                                                            Linked ke backlog issue:
+                                                                            {{ $sourceDecision?->issue_key ?? ($sourceDecision?->decision_key ?? '-') }}
+                                                                        </div>
+                                                                    @else
+                                                                        <div class="flex flex-col">
+                                                                            <label class="form-label">Link Issue
+                                                                                Existing</label>
+                                                                            <select class="select minutes-existing-issue"
+                                                                                name="minutes_agendas[{{ $index }}][existing_decision_id]">
+                                                                                <option value="">- Optional -
+                                                                                </option>
+                                                                                @foreach ($linkableDecisions as $linkableDecision)
+                                                                                    <option
+                                                                                        value="{{ $linkableDecision->id }}"
+                                                                                        {{ $selectedExistingDecisionId === (string) $linkableDecision->id ? 'selected' : '' }}>
+                                                                                        {{ $linkableDecision->issue_key ?? $linkableDecision->decision_key }}
+                                                                                        |
+                                                                                        {{ \Illuminate\Support\Str::limit($linkableDecision->decision_text, 90) }}
+                                                                                    </option>
+                                                                                @endforeach
+                                                                            </select>
+                                                                        </div>
+                                                                    @endif
+                                                                    <div class="flex flex-col">
+                                                                        <label class="form-label">Update / Tindak
+                                                                            Lanjut</label>
+                                                                        <textarea class="textarea w-full minutes-decision-text" rows="3"
+                                                                            name="minutes_agendas[{{ $index }}][decision_text]"
+                                                                            placeholder="Tindak lanjut opsional untuk materi ini..." {{ $followupEnabled ? '' : 'disabled' }}>{{ $row['decision_text'] ?? '' }}</textarea>
+                                                                    </div>
+                                                                    <div class="grid gap-3 md:grid-cols-2">
+                                                                        <div class="flex flex-col">
+                                                                            <label class="form-label">Target</label>
+                                                                            <input class="input minutes-target-date"
+                                                                                type="date"
+                                                                                name="minutes_agendas[{{ $index }}][target_date]"
+                                                                                value="{{ $row['target_date'] ?? '' }}"
+                                                                                {{ $followupEnabled ? '' : 'disabled' }}>
+                                                                        </div>
+                                                                        <div class="flex flex-col">
+                                                                            <label class="form-label">Status</label>
+                                                                            <select class="select minutes-status-select"
+                                                                                name="minutes_agendas[{{ $index }}][status]"
+                                                                                {{ $followupEnabled ? '' : 'disabled' }}>
+                                                                                @foreach (['in_progress' => 'On Progress', 'continuous' => 'Berkelanjutan', 'done' => 'Done', 'pending' => 'Pending', 'dropped' => 'Drop'] as $statusValue => $statusLabel)
+                                                                                    <option value="{{ $statusValue }}"
+                                                                                        {{ $selectedStatus === $statusValue ? 'selected' : '' }}>
+                                                                                        {{ $statusLabel }}
+                                                                                    </option>
+                                                                                @endforeach
+                                                                            </select>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <div class="flex justify-center">
+                                                                <button type="button"
+                                                                    class="btn btn-xs btn-danger remove-minutes-agenda-row {{ $canRemove ? '' : 'hidden' }}">
+                                                                    Hapus
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                @endforeach
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <label class="flex items-center gap-2 text-sm">
+                                    <input class="checkbox checkbox-sm" type="checkbox" name="submit_for_signature"
+                                        value="1" {{ old('submit_for_signature') ? 'checked' : '' }}>
+                                    <span>Langsung submit untuk sirkulasi tandatangan</span>
+                                </label>
+
+                                <div class="flex justify-end">
+                                    <button type="submit" class="btn btn-primary">Simpan Notulen Direktorat</button>
+                                </div>
+                            </form>
+                        @else
+                            <form method="POST" action="{{ route('meeting.minutes.save', $meeting) }}"
+                                enctype="multipart/form-data" class="grid gap-4" id="minutes-form">
+                                @csrf
+                                <input type="hidden" name="minutes_agendas_present" value="1">
+
+                                <div class="grid gap-4 xl:grid-cols-2">
+                                    <div class="flex flex-col">
+                                        <label class="form-label">Catatan Umum Notulen (Opsional)</label>
+                                        <textarea class="textarea w-full" name="minutes_text" rows="6"
+                                            placeholder="Ringkasan umum meeting, kesimpulan, atau catatan tambahan...">{{ old('minutes_text', $minutes?->minutes_text) }}</textarea>
+                                    </div>
+
+                                    <div class="grid gap-4 content-start">
+                                        <div class="flex flex-col">
+                                            <label class="form-label">Lampiran Notulen (Opsional)</label>
+                                            <input class="file-input" type="file" name="minutes_file"
+                                                accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx,.ppt,.pptx">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="border border-gray-200 rounded-xl p-4 grid gap-4">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div>
+                                            <h4 class="font-semibold text-gray-800">Poin Pembahasan Rapat</h4>
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-light-primary"
+                                            id="add-minutes-point-row">
+                                            <i class="ki-filled ki-plus"></i> Tambah Poin
+                                        </button>
+                                    </div>
+                                    <div id="minutes-point-rows" class="grid gap-3">
+                                        @foreach ($minutesAgendaRows as $index => $row)
+                                            @php
+                                                $agendaId = (string) ($row['agenda_id'] ?? '');
+                                                $sourceDecisionId = (string) ($row['source_decision_id'] ?? '');
+                                                $decisionId = (string) ($row['decision_id'] ?? '');
+                                                $decisionLocked = $decisionId !== '';
+                                                $sourceLocked = $sourceDecisionId !== '';
+                                                $followupEnabled =
+                                                    filter_var(
+                                                        $row['followup_enabled'] ?? false,
+                                                        FILTER_VALIDATE_BOOLEAN,
+                                                    ) || $decisionLocked;
+                                                $selectedExistingDecisionId =
+                                                    (string) ($row['existing_decision_id'] ??
+                                                        ($sourceDecisionId ?: ''));
+                                                $selectedStatus = (string) ($row['status'] ?? 'pending');
+                                                $agendaModel =
+                                                    $agendaId !== ''
+                                                        ? $meeting->agendas->firstWhere('id', (int) $agendaId)
+                                                        : null;
+                                                $sourceDecision = $agendaModel?->sourceDecision;
+                                                $agendaPhotos = ($agendaModel?->attachables ?? collect())
+                                                    ->where('category', $minutesPointPhotoCategory)
+                                                    ->values();
+                                                $canRemove = !$decisionLocked && !$sourceLocked;
+                                            @endphp
+                                            <div class="p-4 border rounded-xl border-gray-200 minutes-point-row"
+                                                data-followup-locked="{{ $decisionLocked ? '1' : '0' }}"
+                                                data-source-locked="{{ $sourceLocked ? '1' : '0' }}">
+                                                <input type="hidden"
+                                                    name="minutes_agendas[{{ $index }}][agenda_id]"
+                                                    value="{{ $agendaId }}">
+                                                <input type="hidden"
+                                                    name="minutes_agendas[{{ $index }}][source_decision_id]"
+                                                    value="{{ $sourceDecisionId }}">
+                                                <input type="hidden"
+                                                    name="minutes_agendas[{{ $index }}][description]"
+                                                    value="{{ $row['description'] ?? '' }}">
+                                                <input type="hidden"
+                                                    name="minutes_agendas[{{ $index }}][decision_id]"
+                                                    value="{{ $decisionId }}">
+
+                                                <div class="flex items-start justify-between gap-3">
+                                                    <div class="grid gap-1">
+                                                        <div
+                                                            class="text-xs font-semibold uppercase tracking-wide text-gray-500 minutes-point-seq">
+                                                            Poin {{ $index + 1 }}
+                                                        </div>
+                                                        @if ($sourceDecision)
+                                                            <div class="text-xs text-gray-500">
+                                                                <span class="badge badge-light-info">Mandatory</span>
+                                                                {{ $sourceDecision->issue_key ?? ($sourceDecision->decision_key ?? '-') }}
+                                                                @if ($sourceDecision->meeting?->title)
+                                                                    | {{ $sourceDecision->meeting->title }}
+                                                                @endif
+                                                            </div>
+                                                        @endif
+                                                    </div>
+                                                    <button type="button"
+                                                        class="btn btn-xs btn-danger remove-minutes-point-row {{ $canRemove ? '' : 'hidden' }}">
+                                                        Hapus
+                                                    </button>
                                                 </div>
-                                                <div class="flex flex-col">
-                                                    <label class="form-label">Status Issue</label>
-                                                    <select class="select" name="decisions[{{ $index }}][status]">
-                                                        @foreach (['pending' => 'Pending', 'in_progress' => 'Proses', 'continuous' => 'Berkelanjutan', 'done' => 'Done', 'dropped' => 'Drop'] as $statusValue => $statusLabel)
-                                                            <option value="{{ $statusValue }}"
-                                                                {{ (string) old('decisions.' . $index . '.status', $decision['status'] ?? 'pending') === $statusValue ? 'selected' : '' }}>
-                                                                {{ $statusLabel }}
-                                                            </option>
-                                                        @endforeach
-                                                    </select>
+
+                                                <div class="grid gap-3">
+                                                    <div class="flex flex-col">
+                                                        <label class="form-label">Judul / Topik Poin <span
+                                                                class="text-danger">*</span></label>
+                                                        <textarea class="textarea w-full minutes-point-title" rows="2"
+                                                            name="minutes_agendas[{{ $index }}][title]" placeholder="Topik pembahasan..."
+                                                            {{ $sourceLocked ? 'readonly' : '' }}>{{ $row['title'] ?? '' }}</textarea>
+                                                    </div>
+                                                    <div class="flex flex-col">
+                                                        <label class="form-label">Pembahasan Notulen</label>
+                                                        <textarea class="textarea w-full" rows="4" name="minutes_agendas[{{ $index }}][minutes_discussion]"
+                                                            placeholder="Isi pembahasan, keputusan, atau penjelasan per poin...">{{ $row['minutes_discussion'] ?? '' }}</textarea>
+                                                    </div>
+
+                                                    <div class="grid gap-3 md:grid-cols-2">
+                                                        <div class="flex flex-col">
+                                                            <label class="form-label">PIC Direktorat</label>
+                                                            @if ($sourceLocked)
+                                                                <input type="hidden"
+                                                                    name="minutes_agendas[{{ $index }}][owner_directorate_id]"
+                                                                    value="{{ $row['owner_directorate_id'] ?? '' }}">
+                                                                <div class="input bg-light leading-[2.75rem] px-3">
+                                                                    {{ optional($directorates->firstWhere('id', (int) ($row['owner_directorate_id'] ?? 0)))->displayName() ?? '-' }}
+                                                                </div>
+                                                            @else
+                                                                <select class="select"
+                                                                    name="minutes_agendas[{{ $index }}][owner_directorate_id]">
+                                                                    <option value="">- Pilih Direktorat -</option>
+                                                                    @foreach ($directorates as $directorate)
+                                                                        <option value="{{ $directorate->id }}"
+                                                                            {{ (string) ($row['owner_directorate_id'] ?? '') === (string) $directorate->id ? 'selected' : '' }}>
+                                                                            {{ $directorate->displayName() }}
+                                                                        </option>
+                                                                    @endforeach
+                                                                </select>
+                                                            @endif
+                                                        </div>
+                                                        <div class="flex flex-col">
+                                                            <label class="form-label">PIC User</label>
+                                                            @if ($sourceLocked)
+                                                                <input type="hidden"
+                                                                    name="minutes_agendas[{{ $index }}][pic_user_id]"
+                                                                    value="{{ $row['pic_user_id'] ?? '' }}">
+                                                                <div class="input bg-light leading-[2.75rem] px-3">
+                                                                    {{ optional($users->firstWhere('id', (int) ($row['pic_user_id'] ?? 0)))->name ?? '-' }}
+                                                                </div>
+                                                            @else
+                                                                <select class="select"
+                                                                    name="minutes_agendas[{{ $index }}][pic_user_id]">
+                                                                    <option value="">- Pilih User -</option>
+                                                                    @foreach ($users as $optionUser)
+                                                                        <option value="{{ $optionUser->id }}"
+                                                                            {{ (string) ($row['pic_user_id'] ?? '') === (string) $optionUser->id ? 'selected' : '' }}>
+                                                                            {{ $optionUser->name }}
+                                                                            @if ($optionUser->directorate)
+                                                                                ({{ $optionUser->directorate->displayName() }})
+                                                                            @endif
+                                                                        </option>
+                                                                    @endforeach
+                                                                </select>
+                                                            @endif
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="grid gap-3 lg:grid-cols-2">
+                                                        <div class="flex flex-col">
+                                                            <label class="form-label">Foto Dokumentasi (Opsional)</label>
+                                                            <input class="file-input" type="file"
+                                                                name="minutes_agendas[{{ $index }}][photo_files][]"
+                                                                accept=".jpg,.jpeg,.png" multiple>
+                                                            <small class="mt-1 text-xs text-gray-500">
+                                                                Unggah foto bukti atau dokumentasi untuk poin ini bila
+                                                                diperlukan.
+                                                            </small>
+                                                        </div>
+                                                        <div class="grid gap-2">
+                                                            <label class="form-label">Foto Tersimpan</label>
+                                                            @if ($agendaPhotos->count() > 0)
+                                                                <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                                                    @foreach ($agendaPhotos as $photoAttachable)
+                                                                        @php
+                                                                            $photoAttachment =
+                                                                                $photoAttachable->attachment;
+                                                                        @endphp
+                                                                        @if ($photoAttachment)
+                                                                            <a href="{{ \Illuminate\Support\Facades\Storage::disk($photoAttachment->disk ?? 'public')->url($photoAttachment->path) }}"
+                                                                                target="_blank" rel="noopener"
+                                                                                class="block overflow-hidden rounded-xl border border-gray-200">
+                                                                                <img src="{{ \Illuminate\Support\Facades\Storage::disk($photoAttachment->disk ?? 'public')->url($photoAttachment->path) }}"
+                                                                                    alt="{{ $photoAttachment->original_name ?? $photoAttachment->file_name }}"
+                                                                                    class="h-32 w-full object-cover">
+                                                                            </a>
+                                                                        @endif
+                                                                    @endforeach
+                                                                </div>
+                                                            @else
+                                                                <div class="text-sm text-gray-500">Belum ada foto untuk
+                                                                    poin ini.</div>
+                                                            @endif
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="grid gap-3">
+                                                        <label class="flex items-center gap-2 text-sm">
+                                                            <input
+                                                                class="checkbox checkbox-sm minutes-point-followup-toggle"
+                                                                type="checkbox"
+                                                                name="minutes_agendas[{{ $index }}][followup_enabled]"
+                                                                value="1" {{ $followupEnabled ? 'checked' : '' }}
+                                                                {{ $decisionLocked ? 'disabled' : '' }}>
+                                                            <span>{{ $decisionLocked ? 'Tindak lanjut aktif dan tetap berjalan' : 'Buat tindak lanjut untuk poin ini' }}</span>
+                                                        </label>
+                                                        <div
+                                                            class="grid gap-3 minutes-point-followup-fields {{ $followupEnabled ? '' : 'hidden' }}">
+                                                            @if ($decisionLocked)
+                                                                <input type="hidden"
+                                                                    name="minutes_agendas[{{ $index }}][followup_enabled]"
+                                                                    value="1">
+                                                            @endif
+                                                            @if ($sourceLocked)
+                                                                <input type="hidden"
+                                                                    name="minutes_agendas[{{ $index }}][existing_decision_id]"
+                                                                    value="{{ $selectedExistingDecisionId }}">
+                                                                <div class="text-xs text-gray-500">
+                                                                    Linked ke backlog issue:
+                                                                    {{ $sourceDecision?->issue_key ?? ($sourceDecision?->decision_key ?? '-') }}
+                                                                </div>
+                                                            @else
+                                                                <div class="flex flex-col">
+                                                                    <label class="form-label">Link Issue Existing</label>
+                                                                    <select class="select"
+                                                                        name="minutes_agendas[{{ $index }}][existing_decision_id]"
+                                                                        {{ $followupEnabled ? '' : 'disabled' }}>
+                                                                        <option value="">- Buat issue baru -</option>
+                                                                        @foreach ($linkableDecisions as $linkableDecision)
+                                                                            <option value="{{ $linkableDecision->id }}"
+                                                                                {{ $selectedExistingDecisionId === (string) $linkableDecision->id ? 'selected' : '' }}>
+                                                                                {{ $linkableDecision->issue_key ?? $linkableDecision->decision_key }}
+                                                                                |
+                                                                                {{ \Illuminate\Support\Str::limit($linkableDecision->decision_text, 90) }}
+                                                                            </option>
+                                                                        @endforeach
+                                                                    </select>
+                                                                </div>
+                                                            @endif
+                                                            <div class="flex flex-col">
+                                                                <label class="form-label">Tindak Lanjut</label>
+                                                                <textarea class="textarea w-full" rows="3" name="minutes_agendas[{{ $index }}][decision_text]"
+                                                                    placeholder="Isi tindak lanjut dari poin ini..." {{ $followupEnabled ? '' : 'disabled' }}>{{ $row['decision_text'] ?? '' }}</textarea>
+                                                            </div>
+                                                            <div class="grid gap-3 md:grid-cols-2">
+                                                                <div class="flex flex-col">
+                                                                    <label class="form-label">Target</label>
+                                                                    <input class="input" type="date"
+                                                                        name="minutes_agendas[{{ $index }}][target_date]"
+                                                                        value="{{ $row['target_date'] ?? '' }}"
+                                                                        {{ $followupEnabled ? '' : 'disabled' }}>
+                                                                </div>
+                                                                <div class="flex flex-col">
+                                                                    <label class="form-label">Status</label>
+                                                                    <select class="select"
+                                                                        name="minutes_agendas[{{ $index }}][status]"
+                                                                        {{ $followupEnabled ? '' : 'disabled' }}>
+                                                                        @foreach (['pending' => 'Pending', 'in_progress' => 'Proses', 'continuous' => 'Berkelanjutan', 'done' => 'Done', 'dropped' => 'Drop'] as $statusValue => $statusLabel)
+                                                                            <option value="{{ $statusValue }}"
+                                                                                {{ $selectedStatus === $statusValue ? 'selected' : '' }}>
+                                                                                {{ $statusLabel }}
+                                                                            </option>
+                                                                        @endforeach
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div class="flex flex-col md:col-span-2 xl:col-span-3">
-                                                    <label class="form-label">Support Direktorat</label>
-                                                    <select class="select" name="decisions[{{ $index }}][support_directorate_ids][]"
-                                                        multiple size="4">
-                                                        @foreach ($directorates as $directorate)
-                                                            <option value="{{ $directorate->id }}"
-                                                                {{ in_array((string) $directorate->id, $selectedSupportDirectorateIds, true) ? 'selected' : '' }}>
-                                                                {{ $directorate->displayName() }}
-                                                            </option>
-                                                        @endforeach
-                                                    </select>
-                                                    <small class="mt-1 text-xs text-gray-500">Gunakan Ctrl / Cmd untuk pilih lebih dari satu support.</small>
-                                                </div>
-                                                @if ($supportsSupportUserAssignments)
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+
+                                <div class="border border-gray-200 rounded-xl p-4 grid gap-4">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div>
+                                            <h4 class="font-semibold text-gray-800">Tindak Lanjut Tambahan (Opsional)</h4>
+                                            <div class="text-sm text-gray-500">
+                                                Gunakan jika ada action item yang tidak melekat ke poin rapat tertentu.
+                                            </div>
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-light-primary"
+                                            id="add-decision-row">
+                                            <i class="ki-filled ki-plus"></i> Tambah Item
+                                        </button>
+                                    </div>
+                                    <div id="decision-rows" class="grid gap-3">
+                                        @foreach ($minutesDecisionRows as $index => $decision)
+                                            @php
+                                            @endphp
+                                            <div class="p-3 border rounded-xl border-gray-200 decision-row">
+                                                <input type="hidden" name="decisions[{{ $index }}][id]"
+                                                    value="{{ old('decisions.' . $index . '.id', $decision['id'] ?? '') }}">
+                                                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                                                     <div class="flex flex-col md:col-span-2 xl:col-span-3">
-                                                        <label class="form-label">Support User yang Boleh Update</label>
-                                                        <select class="select" name="decisions[{{ $index }}][support_user_ids][]"
-                                                            multiple size="5">
+                                                        <label class="form-label">Link Issue Existing</label>
+                                                        <select class="select"
+                                                            name="decisions[{{ $index }}][existing_decision_id]">
+                                                            <option value="">- Buat issue baru -</option>
+                                                            @foreach ($linkableDecisions as $linkableDecision)
+                                                                <option value="{{ $linkableDecision->id }}"
+                                                                    {{ (string) old('decisions.' . $index . '.existing_decision_id', $decision['existing_decision_id'] ?? '') === (string) $linkableDecision->id ? 'selected' : '' }}>
+                                                                    {{ $linkableDecision->issue_key ?? $linkableDecision->decision_key }}
+                                                                    |
+                                                                    {{ \Illuminate\Support\Str::limit($linkableDecision->decision_text, 90) }}
+                                                                </option>
+                                                            @endforeach
+                                                        </select>
+                                                    </div>
+                                                    <div class="flex flex-col md:col-span-2 xl:col-span-3">
+                                                        <label class="form-label">Item Tindaklanjut</label>
+                                                        <textarea class="textarea w-full" rows="2" name="decisions[{{ $index }}][decision_text]">{{ old('decisions.' . $index . '.decision_text', $decision['decision_text'] ?? '') }}</textarea>
+                                                    </div>
+                                                    <div class="flex flex-col">
+                                                        <label class="form-label">PIC Direktorat</label>
+                                                        <select class="select"
+                                                            name="decisions[{{ $index }}][owner_directorate_id]">
+                                                            <option value="">- Pilih Direktorat -</option>
+                                                            @foreach ($directorates as $directorate)
+                                                                <option value="{{ $directorate->id }}"
+                                                                    {{ (string) old('decisions.' . $index . '.owner_directorate_id', $decision['owner_directorate_id'] ?? '') === (string) $directorate->id ? 'selected' : '' }}>
+                                                                    {{ $directorate->displayName() }}
+                                                                </option>
+                                                            @endforeach
+                                                        </select>
+                                                    </div>
+                                                    <div class="flex flex-col">
+                                                        <label class="form-label">PIC User</label>
+                                                        <select class="select"
+                                                            name="decisions[{{ $index }}][pic_user_id]">
+                                                            <option value="">- Pilih User -</option>
                                                             @foreach ($users as $optionUser)
                                                                 <option value="{{ $optionUser->id }}"
-                                                                    {{ in_array((string) $optionUser->id, $selectedSupportUserIds, true) ? 'selected' : '' }}>
+                                                                    {{ (string) old('decisions.' . $index . '.pic_user_id', $decision['pic_user_id'] ?? '') === (string) $optionUser->id ? 'selected' : '' }}>
                                                                     {{ $optionUser->name }}
                                                                     @if ($optionUser->directorate)
                                                                         ({{ $optionUser->directorate->displayName() }})
@@ -829,41 +1153,51 @@
                                                                 </option>
                                                             @endforeach
                                                         </select>
-                                                        <small class="mt-1 text-xs text-gray-500">Hanya user yang dipilih di sini yang boleh submit update sebagai support actor.</small>
                                                     </div>
-                                                @endif
-                                                <div class="flex flex-col md:col-span-2 xl:col-span-3">
-                                                    <label class="form-label">Target Penyelesaian <span
-                                                            class="text-danger">*</span></label>
-                                                    <input class="input" type="date"
-                                                        name="decisions[{{ $index }}][target_date]"
-                                                        value="{{ old('decisions.' . $index . '.target_date', $decision['target_date'] ?? '') }}">
+                                                    <div class="flex flex-col">
+                                                        <label class="form-label">Status Issue</label>
+                                                        <select class="select"
+                                                            name="decisions[{{ $index }}][status]">
+                                                            @foreach (['pending' => 'Pending', 'in_progress' => 'Proses', 'continuous' => 'Berkelanjutan', 'done' => 'Done', 'dropped' => 'Drop'] as $statusValue => $statusLabel)
+                                                                <option value="{{ $statusValue }}"
+                                                                    {{ (string) old('decisions.' . $index . '.status', $decision['status'] ?? 'pending') === $statusValue ? 'selected' : '' }}>
+                                                                    {{ $statusLabel }}
+                                                                </option>
+                                                            @endforeach
+                                                        </select>
+                                                    </div>
+                                                    <div class="flex flex-col md:col-span-2 xl:col-span-3">
+                                                        <label class="form-label">Target Penyelesaian</label>
+                                                        <input class="input" type="date"
+                                                            name="decisions[{{ $index }}][target_date]"
+                                                            value="{{ old('decisions.' . $index . '.target_date', $decision['target_date'] ?? '') }}">
+                                                    </div>
+                                                </div>
+                                                <div class="flex justify-end mt-2">
+                                                    <button type="button"
+                                                        class="btn btn-xs btn-danger remove-decision-row">Hapus</button>
                                                 </div>
                                             </div>
-                                            <div class="flex justify-end mt-2">
-                                                <button type="button"
-                                                    class="btn btn-xs btn-danger remove-decision-row">Hapus</button>
-                                            </div>
-                                        </div>
-                                    @endforeach
+                                        @endforeach
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="flex flex-col">
-                                <label class="form-label">Catatan (Opsional)</label>
-                                <textarea class="textarea w-full" name="note" rows="3" placeholder="Catatan notulen untuk tim...">{{ old('note') }}</textarea>
-                            </div>
+                                <div class="flex flex-col">
+                                    <label class="form-label">Catatan (Opsional)</label>
+                                    <textarea class="textarea w-full" name="note" rows="3" placeholder="Catatan notulen untuk tim...">{{ old('note') }}</textarea>
+                                </div>
 
-                            <label class="flex items-center gap-2 text-sm">
-                                <input class="checkbox checkbox-sm" type="checkbox" name="submit_for_signature"
-                                    value="1" {{ old('submit_for_signature') ? 'checked' : '' }}>
-                                <span>Langsung submit untuk sirkulasi tandatangan</span>
-                            </label>
+                                <label class="flex items-center gap-2 text-sm">
+                                    <input class="checkbox checkbox-sm" type="checkbox" name="submit_for_signature"
+                                        value="1" {{ old('submit_for_signature') ? 'checked' : '' }}>
+                                    <span>Langsung submit untuk sirkulasi tandatangan</span>
+                                </label>
 
-                            <div class="flex justify-end">
-                                <button type="submit" class="btn btn-primary">Simpan Notulen</button>
-                            </div>
-                        </form>
+                                <div class="flex justify-end">
+                                    <button type="submit" class="btn btn-primary">Simpan Notulen</button>
+                                </div>
+                            </form>
+                        @endif
                     </div>
                 </div>
             @endif
@@ -880,16 +1214,24 @@
                             enctype="multipart/form-data" class="grid gap-4">
                             @csrf
                             <div class="flex flex-col">
-                                <label class="form-label">Upload Notulen Final <span class="text-danger">*</span></label>
+                                <label class="form-label">
+                                    {{ $meeting->isDirektoratType() ? 'Upload File Notulen Final (Opsional)' : 'Upload Notulen Final' }}
+                                    @if (!$meeting->isDirektoratType())
+                                        <span class="text-danger">*</span>
+                                    @endif
+                                </label>
                                 <input class="file-input" type="file" name="final_minutes_file"
-                                    accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx,.ppt,.pptx" required>
+                                    accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx,.ppt,.pptx"
+                                    @if (!$meeting->isDirektoratType()) required @endif>
                             </div>
                             <div class="flex flex-col">
                                 <label class="form-label">Catatan (Opsional)</label>
                                 <textarea class="textarea w-full" name="note" rows="3" placeholder="Catatan finalisasi notulen...">{{ old('note') }}</textarea>
                             </div>
                             <div class="flex justify-end">
-                                <button type="submit" class="btn btn-primary">Upload Notulen Final</button>
+                                <button type="submit" class="btn btn-primary">
+                                    {{ $meeting->isDirektoratType() ? 'Finalisasi Notulen' : 'Upload Notulen Final' }}
+                                </button>
                             </div>
                         </form>
                     </div>
@@ -900,6 +1242,11 @@
         <div class="card">
             <div class="card-header">
                 <h3 class="card-title">Notulen Rapat</h3>
+                @if ($meeting->isDirektoratType())
+                    <a href="{{ route('meeting.minutes.template', $meeting) }}" class="btn btn-sm btn-success">
+                        Download Template
+                    </a>
+                @endif
             </div>
             <div class="card-body">
                 @if ($minutes)
@@ -936,8 +1283,138 @@
                                 @endif
                             </span>
                         </div>
+                        @if ($meeting->isDirektoratType() && $meeting->agendas->count() > 0)
+                            <div>
+                                <div class="text-gray-600 mb-2">Materi Pembahasan + Tindak Lanjut:</div>
+                                <div class="overflow-x-auto">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th class="min-w-[40px]">No</th>
+                                                <th class="min-w-[280px]">Materi Pembahasan</th>
+                                                <th class="min-w-[180px]">PIC</th>
+                                                <th class="min-w-[260px]">Tindak Lanjut</th>
+                                                <th class="min-w-[120px]">Target</th>
+                                                <th class="min-w-[120px]">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach ($meeting->agendas as $agenda)
+                                                @php
+                                                    $agendaDecision = $decisionsByAgendaId->get((int) $agenda->id);
+                                                @endphp
+                                                <tr>
+                                                    <td>{{ $agenda->order_no ?? $loop->iteration }}</td>
+                                                    <td>
+                                                        <div class="font-medium">{{ $agenda->title }}</div>
+                                                        @if ($agenda->sourceDecision)
+                                                            <div class="text-xs text-gray-500">
+                                                                Mandatory:
+                                                                {{ $agenda->sourceDecision->issue_key ?? ($agenda->sourceDecision->decision_key ?? '-') }}
+                                                            </div>
+                                                        @endif
+                                                    </td>
+                                                    <td>
+                                                        <div>{{ $agenda->ownerDirectorate?->displayName() ?? '-' }}</div>
+                                                        <div class="text-xs text-gray-500">
+                                                            {{ $agenda->picUser?->name ?? '-' }}</div>
+                                                    </td>
+                                                    <td>{{ $agendaDecision?->decision_text ?? '-' }}</td>
+                                                    <td>{{ $agendaDecision?->target_date ? $agendaDecision->target_date->format('d/m/Y') : '-' }}
+                                                    </td>
+                                                    <td>
+                                                        @if ($agendaDecision)
+                                                            <span
+                                                                class="badge {{ $decisionStatusBadgeClasses[(string) $agendaDecision->status] ?? 'badge-light' }}">
+                                                                {{ $decisionStatusLabels[(string) $agendaDecision->status] ?? ((string) $agendaDecision->status ?: '-') }}
+                                                            </span>
+                                                        @else
+                                                            -
+                                                        @endif
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        @endif
+                        @if (!$meeting->isDirektoratType() && $minutesAgendaDisplayRows->count() > 0)
+                            <div>
+                                <div class="text-gray-600 mb-2">Poin Pembahasan Rapat:</div>
+                                <div class="grid gap-3">
+                                    @foreach ($minutesAgendaDisplayRows as $agenda)
+                                        @php
+                                            $agendaDecision = $decisionsByAgendaId->get((int) $agenda->id);
+                                            $agendaPhotos = ($agenda->attachables ?? collect())
+                                                ->where('category', $minutesPointPhotoCategory)
+                                                ->values();
+                                        @endphp
+                                        <div class="p-4 border rounded-xl border-gray-200 grid gap-3">
+                                            <div class="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <div class="text-xs uppercase tracking-wide text-gray-500">
+                                                        Poin {{ $agenda->order_no ?? $loop->iteration }}
+                                                    </div>
+                                                    <div class="font-semibold text-gray-800">{{ $agenda->title }}</div>
+                                                </div>
+                                                @if ($agendaDecision)
+                                                    <span
+                                                        class="badge {{ $decisionStatusBadgeClasses[(string) $agendaDecision->status] ?? 'badge-light' }}">
+                                                        {{ $decisionStatusLabels[(string) $agendaDecision->status] ?? ((string) $agendaDecision->status ?: '-') }}
+                                                    </span>
+                                                @endif
+                                            </div>
+                                            <div class="text-sm whitespace-pre-wrap">
+                                                {{ $agenda->minutes_discussion ?: '-' }}
+                                            </div>
+                                            <div class="text-xs text-gray-500">
+                                                PIC:
+                                                {{ $agenda->picUser?->name ?? ($agenda->ownerDirectorate?->displayName() ?? '-') }}
+                                            </div>
+                                            @if ($agendaPhotos->count() > 0)
+                                                <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                                    @foreach ($agendaPhotos as $photoAttachable)
+                                                        @php
+                                                            $photoAttachment = $photoAttachable->attachment;
+                                                        @endphp
+                                                        @if ($photoAttachment)
+                                                            <a href="{{ \Illuminate\Support\Facades\Storage::disk($photoAttachment->disk ?? 'public')->url($photoAttachment->path) }}"
+                                                                target="_blank" rel="noopener"
+                                                                class="block overflow-hidden rounded-xl border border-gray-200">
+                                                                <img src="{{ \Illuminate\Support\Facades\Storage::disk($photoAttachment->disk ?? 'public')->url($photoAttachment->path) }}"
+                                                                    alt="{{ $photoAttachment->original_name ?? $photoAttachment->file_name }}"
+                                                                    class="h-36 w-full object-cover">
+                                                            </a>
+                                                        @endif
+                                                    @endforeach
+                                                </div>
+                                            @endif
+                                            @if ($agendaDecision)
+                                                <div class="p-3 rounded-xl bg-light border border-gray-200">
+                                                    <div class="text-xs uppercase tracking-wide text-gray-500 mb-1">
+                                                        Tindak Lanjut
+                                                    </div>
+                                                    <div class="font-medium text-gray-800">
+                                                        {{ $agendaDecision->decision_text }}
+                                                    </div>
+                                                    <div class="text-xs text-gray-500 mt-1">
+                                                        Target:
+                                                        {{ $agendaDecision->target_date ? $agendaDecision->target_date->format('d/m/Y') : '-' }}
+                                                        | PIC:
+                                                        {{ $agendaDecision->picUser?->name ?? ($agendaDecision->ownerDirectorate?->displayName() ?? '-') }}
+                                                    </div>
+                                                </div>
+                                            @endif
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endif
                         <div>
-                            <div class="text-gray-600 mb-1">Ringkasan Notulen:</div>
+                            <div class="text-gray-600 mb-1">
+                                {{ $meeting->isDirektoratType() ? 'Catatan Umum Notulen:' : 'Ringkasan Notulen:' }}
+                            </div>
                             <div class="p-3 border rounded-xl border-gray-200 text-sm whitespace-pre-wrap">
                                 {{ $minutes->minutes_text ?: '-' }}
                             </div>
@@ -973,7 +1450,8 @@
                                         <tr>
                                             <td>
                                                 <div class="font-medium">{{ $openDecision->issue_key ?? '-' }}</div>
-                                                <div class="text-xs text-gray-500">{{ $openDecision->decision_key ?? '-' }}</div>
+                                                <div class="text-xs text-gray-500">
+                                                    {{ $openDecision->decision_key ?? '-' }}</div>
                                             </td>
                                             <td>
                                                 {{ $openDecision->meeting?->title ?? '-' }}
@@ -988,7 +1466,7 @@
                                             </td>
                                             <td>
                                                 <span
-                                                    class="badge {{ $decisionStatusClass((string) $openDecision->status) }}">{{ $decisionStatusLabel((string) $openDecision->status) }}</span>
+                                                    class="badge {{ $decisionStatusBadgeClasses[(string) $openDecision->status] ?? 'badge-light' }}">{{ $decisionStatusLabels[(string) $openDecision->status] ?? ((string) $openDecision->status ?: '-') }}</span>
                                             </td>
                                         </tr>
                                     @endforeach
@@ -1027,57 +1505,43 @@
                                         <td>{{ $decision->decision_text }}</td>
                                         <td>
                                             <div>{{ $decision->ownerDirectorate?->displayName() ?? '-' }}</div>
-                                            <div class="text-xs text-gray-500">{{ $decision->picUser?->name ?? '-' }}</div>
+                                            <div class="text-xs text-gray-500">{{ $decision->picUser?->name ?? '-' }}
+                                            </div>
                                         </td>
                                         <td>
-                                            @php($supportUsers = $getDecisionSupportUsers($decision))
-                                            @if ($decision->supportDirectorates->count() > 0)
-                                                <div class="flex flex-col gap-1">
-                                                    @foreach ($decision->supportDirectorates as $supportDirectorate)
-                                                        <span class="text-xs text-gray-700">{{ $supportDirectorate->displayName() }}</span>
-                                                    @endforeach
-                                                </div>
-                                            @endif
-                                            @if ($supportUsers->count() > 0)
-                                                <div class="mt-2 flex flex-col gap-1">
-                                                    @foreach ($supportUsers as $supportUser)
-                                                        <span class="text-xs text-gray-500">
-                                                            {{ $supportUser->name }}
-                                                            @if ($supportUser->directorate)
-                                                                ({{ $supportUser->directorate->displayName() }})
-                                                            @endif
-                                                        </span>
-                                                    @endforeach
-                                                </div>
-                                            @endif
-                                            @if ($decision->supportDirectorates->count() === 0 && $supportUsers->count() === 0)
-                                                -
-                                            @endif
+                                            -
                                         </td>
                                         <td>
                                             <div>{{ $decision->first_discussed_at?->format('d/m/Y') ?? '-' }}</div>
-                                            <div class="text-xs text-gray-500">{{ $decision->discussion_count ?? 0 }}x</div>
+                                            <div class="text-xs text-gray-500">{{ $decision->discussion_count ?? 0 }}x
+                                            </div>
                                         </td>
                                         <td>{{ $decision->target_date ? $decision->target_date->format('d/m/Y') : '-' }}
                                         </td>
-                                        <td>{{ $decisionProgressById[$decision->id] ?? ((string) $decision->status === 'done' ? 100 : 0) }}%</td>
+                                        <td>{{ $decisionProgressById[$decision->id] ?? ((string) $decision->status === 'done' ? 100 : 0) }}%
+                                        </td>
                                         <td>
-                                            <div>{{ \Illuminate\Support\Str::limit($decision->latest_update_note ?? '-', 120) }}</div>
+                                            <div>
+                                                {{ \Illuminate\Support\Str::limit($decision->latest_update_note ?? '-', 120) }}
+                                            </div>
                                             <div class="text-xs text-gray-500">
                                                 {{ $decision->latest_update_at?->format('d/m/Y') ?? '-' }}
                                             </div>
                                         </td>
                                         <td>
                                             @if ($decision->aging_bucket)
-                                                <div>{{ $agingLabels[$decision->aging_bucket] ?? strtoupper($decision->aging_bucket) }}</div>
-                                                <div class="text-xs text-gray-500">{{ $decision->aging_days ?? 0 }} hari</div>
+                                                <div>
+                                                    {{ $agingLabels[$decision->aging_bucket] ?? strtoupper($decision->aging_bucket) }}
+                                                </div>
+                                                <div class="text-xs text-gray-500">{{ $decision->aging_days ?? 0 }} hari
+                                                </div>
                                             @else
                                                 -
                                             @endif
                                         </td>
                                         <td>
                                             <span
-                                                class="badge {{ $decisionStatusClass((string) $decision->status) }}">{{ $decisionStatusLabel((string) $decision->status) }}</span>
+                                                class="badge {{ $decisionStatusBadgeClasses[(string) $decision->status] ?? 'badge-light' }}">{{ $decisionStatusLabels[(string) $decision->status] ?? ((string) $decision->status ?: '-') }}</span>
                                         </td>
                                     </tr>
                                 @endforeach
@@ -1097,15 +1561,8 @@
                 </div>
                 <div class="card-body grid gap-4">
                     @foreach ($meeting->decisions as $decision)
-                        @php
-                            $decisionStatus = (string) ($decision->status ?? '');
-                            $canUpdateThisDecision =
-                                $updatableDecisionIds->contains((int) ($decision->id ?? 0)) &&
-                                !in_array($decisionStatus, ['done', 'dropped'], true);
-                        @endphp
-                        @if ($canUpdateThisDecision)
-                            <form method="POST"
-                                action="{{ route('meeting.decision.update', [$meeting, $decision]) }}"
+                        @if ($decisionCanUpdateById[$decision->id] ?? false)
+                            <form method="POST" action="{{ route('meeting.decision.update', [$meeting, $decision]) }}"
                                 enctype="multipart/form-data"
                                 class="p-4 border rounded-xl border-gray-200 grid gap-4 followup-update-form">
                                 @csrf
@@ -1118,20 +1575,9 @@
                                     PIC:
                                     {{ $decision->picUser?->name ?? ($decision->ownerDirectorate?->displayName() ?? '-') }}
                                 </div>
-                                @php($supportUsers = $getDecisionSupportUsers($decision))
-                                @if ($supportUsers->count() > 0)
-                                    <div class="text-xs text-gray-500">
-                                        Support Actor:
-                                        {{ $supportUsers->map(function ($supportUser) {
-                                            return $supportUser->name . ($supportUser->directorate ? ' (' . $supportUser->directorate->displayName() . ')' : '');
-                                        })->implode(', ') }}
-                                    </div>
-                                @endif
-
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div class="flex flex-col">
-                                        <label class="form-label">Jenis Update <span
-                                                class="text-danger">*</span></label>
+                                        <label class="form-label">Jenis Update <span class="text-danger">*</span></label>
                                         <select class="select js-update-type" name="update_type" required>
                                             <option value="progress">Progress</option>
                                             <option value="continuous">Berkelanjutan</option>
@@ -1193,7 +1639,7 @@
                     @elseif (in_array($status, ['notulen_final', 'proses_tindaklanjut_hasil_rapat'], true))
                         <div class="text-sm text-gray-500">
                             Tindaklanjut dapat ditandai selesai setelah semua item statusnya
-                            <strong>done/dropped</strong>.
+                            <strong>done/dropped/berkelanjutan</strong>.
                         </div>
                     @endif
                 </div>
@@ -1318,9 +1764,31 @@
             </div>
         @endif
 
+        @if ($canDirectorNote)
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Komentar Viewer</h3>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ route('meeting.director.note', $meeting) }}" class="grid gap-4">
+                        @csrf
+                        <div class="flex flex-col">
+                            <label class="form-label">Komentar Viewer (Direksi / Sekdir / Corporate Secretary) <span
+                                    class="text-danger">*</span></label>
+                            <textarea class="textarea w-full" name="note" rows="3"
+                                placeholder="Tambahkan komentar viewer..." required></textarea>
+                        </div>
+                        <div class="flex justify-end">
+                            <button class="btn btn-primary" type="submit">Simpan Komentar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        @endif
+
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">Riwayat Catatan</h3>
+                <h3 class="card-title">Riwayat Komentar</h3>
             </div>
             <div class="card-body">
                 @if ($sortedComments->count() > 0)
@@ -1355,9 +1823,7 @@
 
 @push('scripts')
     @php
-        $directorateJsOptions = $directorates
-            ->map(fn($d) => ['id' => $d->id, 'name' => $d->displayName()])
-            ->values();
+        $directorateJsOptions = $directorates->map(fn($d) => ['id' => $d->id, 'name' => $d->displayName()])->values();
 
         $userJsOptions = $users
             ->map(function ($u) {
@@ -1372,7 +1838,11 @@
             ->map(function ($decision) {
                 return [
                     'id' => $decision->id,
-                    'label' => trim((string) (($decision->issue_key ?? $decision->decision_key ?? '-') . ' | ' . \Illuminate\Support\Str::limit($decision->decision_text, 90))),
+                    'label' => trim(
+                        (string) (($decision->issue_key ?? ($decision->decision_key ?? '-')) .
+                            ' | ' .
+                            \Illuminate\Support\Str::limit($decision->decision_text, 90)),
+                    ),
                 ];
             })
             ->values();
@@ -1382,7 +1852,6 @@
             const directorateOptions = @json($directorateJsOptions);
             const userOptions = @json($userJsOptions);
             const existingIssueOptions = @json($existingIssueJsOptions);
-            const supportsSupportUserAssignments = @json($supportsSupportUserAssignments);
 
             const buildDirectorateOptions = () => {
                 let html = '<option value="">- Pilih Direktorat -</option>';
@@ -1392,29 +1861,8 @@
                 return html;
             };
 
-            const buildSupportDirectorateOptions = () => {
-                let html = '';
-                directorateOptions.forEach((item) => {
-                    html += `<option value="${item.id}">${item.name}</option>`;
-                });
-                return html;
-            };
-
             const buildUserOptions = () => {
                 let html = '<option value="">- Pilih User -</option>';
-                userOptions.forEach((item) => {
-                    const label = item.directorate ? `${item.name} (${item.directorate})` : item.name;
-                    html += `<option value="${item.id}">${label}</option>`;
-                });
-                return html;
-            };
-
-            const buildSupportUserOptions = () => {
-                if (!supportsSupportUserAssignments) {
-                    return '';
-                }
-
-                let html = '';
                 userOptions.forEach((item) => {
                     const label = item.directorate ? `${item.name} (${item.directorate})` : item.name;
                     html += `<option value="${item.id}">${label}</option>`;
@@ -1489,6 +1937,345 @@
                 });
             }
 
+            const minutesAgendaRows = document.getElementById('minutes-agenda-rows');
+            const addMinutesAgendaButton = document.getElementById('add-minutes-agenda-row');
+            if (minutesAgendaRows && addMinutesAgendaButton) {
+                const renumberMinutesAgendaRows = () => {
+                    minutesAgendaRows.querySelectorAll('.minutes-agenda-row').forEach((row, index) => {
+                        const rowNumber = row.querySelector('.row-number');
+                        if (rowNumber) {
+                            rowNumber.textContent = String(index + 1);
+                        }
+
+                        row.querySelectorAll('[name]').forEach((input) => {
+                            input.name = input.name.replace(/minutes_agendas\[\d+\]/,
+                                `minutes_agendas[${index}]`);
+                        });
+                    });
+                };
+
+                const syncMinutesFollowupState = (row) => {
+                    const isLocked = row.dataset.followupLocked === '1';
+                    const toggle = row.querySelector('.minutes-followup-toggle');
+                    const fieldsWrap = row.querySelector('.minutes-followup-fields');
+                    if (!toggle || !fieldsWrap) {
+                        return;
+                    }
+
+                    const enabled = isLocked || toggle.checked;
+                    fieldsWrap.classList.toggle('hidden', !enabled);
+                    fieldsWrap.querySelectorAll('textarea, select, input:not([type="hidden"])').forEach((
+                        field) => {
+                        if (isLocked) {
+                            return;
+                        }
+                        field.disabled = !enabled;
+                    });
+                };
+
+                const buildMinutesAgendaRow = (index) => {
+                    const wrapper = document.createElement('tr');
+                    wrapper.className = 'minutes-agenda-row';
+                    wrapper.dataset.followupLocked = '0';
+                    wrapper.dataset.sourceLocked = '0';
+                    wrapper.innerHTML = `
+                        <td class="font-medium text-gray-700 row-number">${index + 1}</td>
+                        <td>
+                            <input type="hidden" name="minutes_agendas[${index}][agenda_id]" value="">
+                            <input type="hidden" name="minutes_agendas[${index}][source_decision_id]" value="">
+                            <input type="hidden" name="minutes_agendas[${index}][description]" value="">
+                            <textarea class="textarea w-full minutes-agenda-title" rows="3"
+                                name="minutes_agendas[${index}][title]"
+                                placeholder="Materi pembahasan..."></textarea>
+                        </td>
+                        <td>
+                            <div class="grid gap-2">
+                                <select class="select minutes-agenda-owner" name="minutes_agendas[${index}][owner_directorate_id]">
+                                    ${buildDirectorateOptions()}
+                                </select>
+                                <select class="select minutes-agenda-pic" name="minutes_agendas[${index}][pic_user_id]">
+                                    ${buildUserOptions()}
+                                </select>
+                            </div>
+                        </td>
+                        <td>
+                            <input type="hidden" name="minutes_agendas[${index}][decision_id]" value="">
+                            <div class="grid gap-3">
+                                <label class="flex items-center gap-2 text-sm">
+                                    <input class="checkbox checkbox-sm minutes-followup-toggle" type="checkbox"
+                                        name="minutes_agendas[${index}][followup_enabled]" value="1">
+                                    <span>Buat tindak lanjut untuk materi ini</span>
+                                </label>
+                                <div class="grid gap-3 minutes-followup-fields hidden">
+                                    <div class="flex flex-col">
+                                        <label class="form-label">Link Issue Existing</label>
+                                        <select class="select minutes-existing-issue" name="minutes_agendas[${index}][existing_decision_id]" disabled>
+                                            ${buildExistingIssueOptions()}
+                                        </select>
+                                    </div>
+                                    <div class="flex flex-col">
+                                        <label class="form-label">Update / Tindak Lanjut</label>
+                                        <textarea class="textarea w-full minutes-decision-text" rows="3"
+                                            name="minutes_agendas[${index}][decision_text]"
+                                            placeholder="Tindak lanjut opsional untuk materi ini..."
+                                            disabled></textarea>
+                                    </div>
+                                    <div class="grid gap-3 md:grid-cols-2">
+                                        <div class="flex flex-col">
+                                            <label class="form-label">Target</label>
+                                            <input class="input minutes-target-date" type="date"
+                                                name="minutes_agendas[${index}][target_date]" disabled>
+                                        </div>
+                                        <div class="flex flex-col">
+                                            <label class="form-label">Status</label>
+                                            <select class="select minutes-status-select" name="minutes_agendas[${index}][status]" disabled>
+                                                <option value="in_progress">On Progress</option>
+                                                <option value="continuous">Berkelanjutan</option>
+                                                <option value="done">Done</option>
+                                                <option value="pending">Pending</option>
+                                                <option value="dropped">Drop</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="flex justify-center">
+                                <button type="button" class="btn btn-xs btn-danger remove-minutes-agenda-row">Hapus</button>
+                            </div>
+                        </td>
+                    `;
+
+                    return wrapper;
+                };
+
+                addMinutesAgendaButton.addEventListener('click', function() {
+                    const index = minutesAgendaRows.querySelectorAll('.minutes-agenda-row').length;
+                    const row = buildMinutesAgendaRow(index);
+                    minutesAgendaRows.appendChild(row);
+                    renumberMinutesAgendaRows();
+                    syncMinutesFollowupState(row);
+                });
+
+                minutesAgendaRows.querySelectorAll('.minutes-agenda-row').forEach((row) => {
+                    syncMinutesFollowupState(row);
+                });
+
+                minutesAgendaRows.addEventListener('change', function(event) {
+                    const toggle = event.target.closest('.minutes-followup-toggle');
+                    if (!toggle) {
+                        return;
+                    }
+                    const row = toggle.closest('.minutes-agenda-row');
+                    if (row) {
+                        syncMinutesFollowupState(row);
+                    }
+                });
+
+                minutesAgendaRows.addEventListener('click', function(event) {
+                    const removeButton = event.target.closest('.remove-minutes-agenda-row');
+                    if (!removeButton) {
+                        return;
+                    }
+
+                    const row = removeButton.closest('.minutes-agenda-row');
+                    if (!row) {
+                        return;
+                    }
+
+                    if (row.dataset.followupLocked === '1' || row.dataset.sourceLocked === '1') {
+                        return;
+                    }
+
+                    row.remove();
+                    renumberMinutesAgendaRows();
+                });
+            }
+
+            const minutesPointRows = document.getElementById('minutes-point-rows');
+            const addMinutesPointButton = document.getElementById('add-minutes-point-row');
+            if (minutesPointRows && addMinutesPointButton) {
+                const renumberMinutesPointRows = () => {
+                    minutesPointRows.querySelectorAll('.minutes-point-row').forEach((row, index) => {
+                        const sequenceLabel = row.querySelector('.minutes-point-seq');
+                        if (sequenceLabel) {
+                            sequenceLabel.textContent = `Poin ${index + 1}`;
+                        }
+
+                        row.querySelectorAll('[name]').forEach((input) => {
+                            input.name = input.name.replace(/minutes_agendas\[\d+\]/,
+                                `minutes_agendas[${index}]`);
+                        });
+                    });
+                };
+
+                const syncMinutesPointFollowupState = (row) => {
+                    const isLocked = row.dataset.followupLocked === '1';
+                    const toggle = row.querySelector('.minutes-point-followup-toggle');
+                    const fieldsWrap = row.querySelector('.minutes-point-followup-fields');
+                    if (!toggle || !fieldsWrap) {
+                        return;
+                    }
+
+                    const enabled = isLocked || toggle.checked;
+                    fieldsWrap.classList.toggle('hidden', !enabled);
+                    fieldsWrap.querySelectorAll('textarea, select, input:not([type="hidden"])').forEach((
+                        field) => {
+                        if (isLocked) {
+                            return;
+                        }
+                        field.disabled = !enabled;
+                    });
+                };
+
+                const buildMinutesPointRow = (index) => {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'p-4 border rounded-xl border-gray-200 minutes-point-row';
+                    wrapper.dataset.followupLocked = '0';
+                    wrapper.dataset.sourceLocked = '0';
+                    wrapper.innerHTML = `
+                        <input type="hidden" name="minutes_agendas[${index}][agenda_id]" value="">
+                        <input type="hidden" name="minutes_agendas[${index}][source_decision_id]" value="">
+                        <input type="hidden" name="minutes_agendas[${index}][description]" value="">
+                        <input type="hidden" name="minutes_agendas[${index}][decision_id]" value="">
+
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 minutes-point-seq">Poin ${index + 1}</div>
+                            <button type="button" class="btn btn-xs btn-danger remove-minutes-point-row">Hapus</button>
+                        </div>
+
+                        <div class="grid gap-3">
+                            <div class="flex flex-col">
+                                <label class="form-label">Judul / Topik Poin <span class="text-danger">*</span></label>
+                                <textarea class="textarea w-full minutes-point-title" rows="2"
+                                    name="minutes_agendas[${index}][title]"
+                                    placeholder="Topik pembahasan..."></textarea>
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="form-label">Pembahasan Notulen</label>
+                                <textarea class="textarea w-full" rows="4"
+                                    name="minutes_agendas[${index}][minutes_discussion]"
+                                    placeholder="Isi pembahasan, keputusan, atau penjelasan per poin..."></textarea>
+                            </div>
+                            <div class="grid gap-3 md:grid-cols-2">
+                                <div class="flex flex-col">
+                                    <label class="form-label">PIC Direktorat</label>
+                                    <select class="select" name="minutes_agendas[${index}][owner_directorate_id]">
+                                        ${buildDirectorateOptions()}
+                                    </select>
+                                </div>
+                                <div class="flex flex-col">
+                                    <label class="form-label">PIC User</label>
+                                    <select class="select" name="minutes_agendas[${index}][pic_user_id]">
+                                        ${buildUserOptions()}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="grid gap-3 lg:grid-cols-2">
+                                <div class="flex flex-col">
+                                    <label class="form-label">Foto Dokumentasi (Opsional)</label>
+                                    <input class="file-input" type="file"
+                                        name="minutes_agendas[${index}][photo_files][]"
+                                        accept=".jpg,.jpeg,.png" multiple>
+                                    <small class="mt-1 text-xs text-gray-500">
+                                        Unggah foto bukti atau dokumentasi untuk poin ini bila diperlukan.
+                                    </small>
+                                </div>
+                                <div class="grid gap-2">
+                                    <label class="form-label">Foto Tersimpan</label>
+                                    <div class="text-sm text-gray-500">Belum ada foto untuk poin ini.</div>
+                                </div>
+                            </div>
+                            <div class="grid gap-3">
+                                <label class="flex items-center gap-2 text-sm">
+                                    <input class="checkbox checkbox-sm minutes-point-followup-toggle" type="checkbox"
+                                        name="minutes_agendas[${index}][followup_enabled]" value="1">
+                                    <span>Buat tindak lanjut untuk poin ini</span>
+                                </label>
+                                <div class="grid gap-3 minutes-point-followup-fields hidden">
+                                    <div class="flex flex-col">
+                                        <label class="form-label">Link Issue Existing</label>
+                                        <select class="select" name="minutes_agendas[${index}][existing_decision_id]" disabled>
+                                            ${buildExistingIssueOptions()}
+                                        </select>
+                                    </div>
+                                    <div class="flex flex-col">
+                                        <label class="form-label">Tindak Lanjut</label>
+                                        <textarea class="textarea w-full" rows="3"
+                                            name="minutes_agendas[${index}][decision_text]"
+                                            placeholder="Isi tindak lanjut dari poin ini..."
+                                            disabled></textarea>
+                                    </div>
+                                    <div class="grid gap-3 md:grid-cols-2">
+                                        <div class="flex flex-col">
+                                            <label class="form-label">Target</label>
+                                            <input class="input" type="date"
+                                                name="minutes_agendas[${index}][target_date]" disabled>
+                                        </div>
+                                        <div class="flex flex-col">
+                                            <label class="form-label">Status</label>
+                                            <select class="select" name="minutes_agendas[${index}][status]" disabled>
+                                                <option value="pending">Pending</option>
+                                                <option value="in_progress">Proses</option>
+                                                <option value="continuous">Berkelanjutan</option>
+                                                <option value="done">Done</option>
+                                                <option value="dropped">Drop</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    return wrapper;
+                };
+
+                addMinutesPointButton.addEventListener('click', function() {
+                    const index = minutesPointRows.querySelectorAll('.minutes-point-row').length;
+                    const row = buildMinutesPointRow(index);
+                    minutesPointRows.appendChild(row);
+                    renumberMinutesPointRows();
+                    syncMinutesPointFollowupState(row);
+                });
+
+                minutesPointRows.querySelectorAll('.minutes-point-row').forEach((row) => {
+                    syncMinutesPointFollowupState(row);
+                });
+
+                minutesPointRows.addEventListener('change', function(event) {
+                    const toggle = event.target.closest('.minutes-point-followup-toggle');
+                    if (!toggle) {
+                        return;
+                    }
+
+                    const row = toggle.closest('.minutes-point-row');
+                    if (row) {
+                        syncMinutesPointFollowupState(row);
+                    }
+                });
+
+                minutesPointRows.addEventListener('click', function(event) {
+                    const removeButton = event.target.closest('.remove-minutes-point-row');
+                    if (!removeButton) {
+                        return;
+                    }
+
+                    const row = removeButton.closest('.minutes-point-row');
+                    if (!row) {
+                        return;
+                    }
+
+                    if (row.dataset.followupLocked === '1' || row.dataset.sourceLocked === '1') {
+                        return;
+                    }
+
+                    row.remove();
+                    renumberMinutesPointRows();
+                });
+            }
+
             const decisionRows = document.getElementById('decision-rows');
             const addDecisionButton = document.getElementById('add-decision-row');
             if (decisionRows && addDecisionButton) {
@@ -1515,7 +2302,7 @@
                                 </select>
                             </div>
                             <div class="flex flex-col md:col-span-2 xl:col-span-3">
-                                <label class="form-label">Item Tindaklanjut <span class="text-danger">*</span></label>
+                                <label class="form-label">Item Tindaklanjut</label>
                                 <textarea class="textarea w-full" rows="2" name="decisions[${index}][decision_text]"></textarea>
                             </div>
                             <div class="flex flex-col">
@@ -1541,22 +2328,7 @@
                                 </select>
                             </div>
                             <div class="flex flex-col md:col-span-2 xl:col-span-3">
-                                <label class="form-label">Support Direktorat</label>
-                                <select class="select" name="decisions[${index}][support_directorate_ids][]" multiple size="4">
-                                    ${buildSupportDirectorateOptions()}
-                                </select>
-                                <small class="mt-1 text-xs text-gray-500">Gunakan Ctrl / Cmd untuk pilih lebih dari satu support.</small>
-                            </div>
-                            ${supportsSupportUserAssignments ? `
-                            <div class="flex flex-col md:col-span-2 xl:col-span-3">
-                                <label class="form-label">Support User yang Boleh Update</label>
-                                <select class="select" name="decisions[${index}][support_user_ids][]" multiple size="5">
-                                    ${buildSupportUserOptions()}
-                                </select>
-                                <small class="mt-1 text-xs text-gray-500">Hanya user yang dipilih di sini yang boleh submit update sebagai support actor.</small>
-                            </div>` : ''}
-                            <div class="flex flex-col md:col-span-2 xl:col-span-3">
-                                <label class="form-label">Target Penyelesaian <span class="text-danger">*</span></label>
+                                <label class="form-label">Target Penyelesaian</label>
                                 <input class="input" type="date" name="decisions[${index}][target_date]">
                             </div>
                         </div>

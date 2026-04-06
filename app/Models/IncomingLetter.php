@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Modules\Corsec\Models\Concerns\HasAuditUsers;
 use Modules\Corsec\Models\Concerns\HasAuthorizedUsers;
 use Modules\Corsec\Models\Concerns\HasUuidColumn;
@@ -54,11 +56,16 @@ class IncomingLetter extends Model
         'last_route_note',
         'priority',
         'target_date',
+        'register_due_date',
         'followup_action',
         'followup_detail',
         'followup_note',
         'followup_submitted_at',
         'followup_submitted_by',
+        'corp_secretary_validation_requested_at',
+        'corp_secretary_validated_at',
+        'corp_secretary_validated_by',
+        'corp_secretary_validation_comment',
         'status',
         'description',
         'authorized_at',
@@ -73,8 +80,11 @@ class IncomingLetter extends Model
         'received_date' => 'date',
         'letter_date' => 'date',
         'target_date' => 'date',
+        'register_due_date' => 'date',
         'followup_detail' => 'array',
         'followup_submitted_at' => 'datetime',
+        'corp_secretary_validation_requested_at' => 'datetime',
+        'corp_secretary_validated_at' => 'datetime',
         'last_routed_at' => 'datetime',
         'authorized_at' => 'datetime',
         'deleted_at' => 'datetime',
@@ -150,9 +160,58 @@ class IncomingLetter extends Model
         return $this->morphMany(Approval::class, 'approvable');
     }
 
+    public function corpSecretaryValidatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'corp_secretary_validated_by');
+    }
+
     public function responseOutgoingLetters(): HasMany
     {
         return $this->hasMany(OutgoingLetter::class, 'perihal_incoming_letter_id')
             ->where('perihal_type', 'tanggapan_surat_masuk');
+    }
+
+    public function isInvitationLetter(): bool
+    {
+        $candidates = [
+            (string) ($this->subject ?? ''),
+            (string) ($this->letterType?->name ?? ''),
+            (string) ($this->letter_type_other ?? ''),
+        ];
+
+        foreach ($candidates as $candidate) {
+            $normalized = Str::lower(trim($candidate));
+            if ($normalized !== '' && Str::contains($normalized, 'undangan')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function isCorpSecretaryValidationOverdue(): bool
+    {
+        if ($this->corp_secretary_validated_at) {
+            return false;
+        }
+
+        $requestedAt = $this->corp_secretary_validation_requested_at;
+        if (!$requestedAt instanceof Carbon) {
+            return false;
+        }
+
+        return now()->greaterThan($requestedAt->copy()->addDay()->endOfDay());
+    }
+
+    public function isCorpSecretaryValidatedLate(): bool
+    {
+        $requestedAt = $this->corp_secretary_validation_requested_at;
+        $validatedAt = $this->corp_secretary_validated_at;
+
+        if (!$requestedAt instanceof Carbon || !$validatedAt instanceof Carbon) {
+            return false;
+        }
+
+        return $validatedAt->greaterThan($requestedAt->copy()->addDay()->endOfDay());
     }
 }

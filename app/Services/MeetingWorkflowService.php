@@ -595,6 +595,7 @@ class MeetingWorkflowService
             $meeting->loadMissing('decisions');
             $hasPendingDecision = $meeting->decisions->contains(function (MeetingDecision $decision) {
                 return !in_array((string) $decision->status, [
+                    MeetingDecision::STATUS_CONTINUOUS,
                     MeetingDecision::STATUS_DONE,
                     MeetingDecision::STATUS_DROPPED,
                 ], true);
@@ -636,6 +637,7 @@ class MeetingWorkflowService
 
             $hasPending = $meeting->decisions->contains(function (MeetingDecision $decision) {
                 return !in_array((string) $decision->status, [
+                    MeetingDecision::STATUS_CONTINUOUS,
                     MeetingDecision::STATUS_DONE,
                     MeetingDecision::STATUS_DROPPED,
                 ], true);

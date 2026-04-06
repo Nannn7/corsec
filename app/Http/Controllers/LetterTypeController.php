@@ -73,26 +73,7 @@ class LetterTypeController extends Controller
             'scope' => $scope,
         ]);
 
-        $codes = LetterType::query()->forScope($scope)->pluck('code');
-        $numericCodes = $codes
-            ->filter(function ($code) {
-                return is_string($code) && preg_match('/^\\d+$/', $code);
-            })
-            ->values();
-
-        $maxNumber = $numericCodes
-            ->map(function ($code) {
-                return (int) $code;
-            })
-            ->max();
-
-        $padLength = $numericCodes
-            ->map(function ($code) {
-                return strlen($code);
-            })
-            ->max() ?? 3;
-
-        $nextCode = $maxNumber !== null ? str_pad((string) ($maxNumber + 1), $padLength, '0', STR_PAD_LEFT) : null;
+        $nextCode = $this->resolveNextNumericCode(LetterType::query()->forScope($scope));
 
         return view('corsec::letter-type.create', compact('nextCode', 'scope', 'scopeLabel', 'routePrefix', 'breadcrumb'));
     }
@@ -515,6 +496,25 @@ class LetterTypeController extends Controller
         }
 
         return $scope === LetterType::SCOPE_OUT ? 'letter-type.out' : 'letter-type.in';
+    }
+
+    private function resolveNextNumericCode($query): ?string
+    {
+        $summary = (clone $query)
+            ->whereNotNull('code')
+            ->whereRaw("code ~ '^[0-9]+$'")
+            ->selectRaw('MAX(code::bigint) AS max_number')
+            ->selectRaw('MAX(char_length(code)) AS pad_length')
+            ->first();
+
+        $maxNumber = $summary?->max_number;
+        if ($maxNumber === null) {
+            return null;
+        }
+
+        $padLength = max((int) ($summary->pad_length ?? 3), 1);
+
+        return str_pad((string) ((int) $maxNumber + 1), $padLength, '0', STR_PAD_LEFT);
     }
 
     private function resolveIndexBreadcrumb(string $routePrefix, string $scope): string

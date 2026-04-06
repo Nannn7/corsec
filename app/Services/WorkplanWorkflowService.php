@@ -13,6 +13,7 @@ use Modules\Corsec\Models\WorkProgram;
 use Modules\Corsec\Models\WorkProgramItem;
 use Modules\Corsec\Models\WorkProgramUpdate;
 use Modules\Corsec\Notifications\CorsecFlowNotification;
+use Modules\Usermanagement\Models\Position;
 use Modules\Usermanagement\Models\User;
 
 class WorkplanWorkflowService
@@ -263,7 +264,11 @@ class WorkplanWorkflowService
 
     public function canViewAllPrograms(User $user): bool
     {
-        return $user->hasRole('administrator') || $user->hasRole('checker') || $user->hasRole('approver');
+        return $user->hasRole('administrator')
+            || $user->hasRole('checker')
+            || $user->hasRole('approver')
+            || $this->isAssistantDirectorOrAbove($user)
+            || $this->isCorpSecretaryDirectorate($user);
     }
 
     public function scopedProgramsQuery(User $user)
@@ -556,6 +561,47 @@ class WorkplanWorkflowService
         $positionName = Str::lower(trim((string) ($user->position?->name ?? '')));
 
         return $positionName !== '' && Str::contains($positionName, 'deputy director');
+    }
+
+    private function isAssistantDirectorOrAbove(User $user): bool
+    {
+        return $this->resolvedPositionLevel($user) >= 4;
+    }
+
+    private function isCorpSecretaryDirectorate(User $user): bool
+    {
+        $corpCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+        $user->loadMissing('directorate');
+
+        $directorateCode = (string) ($user->directorate?->code ?? '');
+        $directorateName = Str::lower(trim((string) ($user->directorate?->name ?? '')));
+
+        if ($directorateCode !== '' && $corpCode !== '' && $directorateCode === $corpCode) {
+            return true;
+        }
+
+        return $directorateName !== '' && Str::contains($directorateName, 'corporate secretary');
+    }
+
+    private function resolvedPositionLevel(User $user): int
+    {
+        $user->loadMissing('position', 'roles');
+        if ($user->position?->level) {
+            return (int) $user->position->level;
+        }
+
+        $positionIds = $user->roles
+            ->pluck('position_id')
+            ->filter()
+            ->unique()
+            ->values();
+        if ($positionIds->isEmpty()) {
+            return 0;
+        }
+
+        return (int) Position::query()
+            ->whereIn('id', $positionIds)
+            ->max('level');
     }
 
     private function buildApprovalNote(string $label, ?string $note): string

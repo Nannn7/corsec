@@ -55,23 +55,7 @@ class MeetingTypeController extends Controller
         }
 
         Log::info('User accessed meeting type create form', ['user_id' => $user->id]);
-        $codes = MeetingType::query()->pluck('code');
-        $numericCodes = $codes
-            ->filter(function ($code) {
-                return is_string($code) && preg_match('/^\d+$/', $code);
-            })
-            ->values();
-        $maxNumber = $numericCodes
-            ->map(function ($code) {
-                return (int) $code;
-            })
-            ->max();
-        $padLength = $numericCodes
-            ->map(function ($code) {
-                return strlen($code);
-            })
-            ->max() ?? 3;
-        $nextCode = $maxNumber !== null ? str_pad((string) ($maxNumber + 1), $padLength, '0', STR_PAD_LEFT) : null;
+        $nextCode = $this->resolveNextNumericCode(MeetingType::query());
 
         return view('corsec::meeting-type.create', compact('nextCode'));
     }
@@ -386,5 +370,24 @@ class MeetingTypeController extends Controller
                 ->route('meeting-type.index')
                 ->with('error', 'Failed to export meeting type.');
         }
+    }
+
+    private function resolveNextNumericCode($query): ?string
+    {
+        $summary = (clone $query)
+            ->whereNotNull('code')
+            ->whereRaw("code ~ '^[0-9]+$'")
+            ->selectRaw('MAX(code::bigint) AS max_number')
+            ->selectRaw('MAX(char_length(code)) AS pad_length')
+            ->first();
+
+        $maxNumber = $summary?->max_number;
+        if ($maxNumber === null) {
+            return null;
+        }
+
+        $padLength = max((int) ($summary->pad_length ?? 3), 1);
+
+        return str_pad((string) ((int) $maxNumber + 1), $padLength, '0', STR_PAD_LEFT);
     }
 }

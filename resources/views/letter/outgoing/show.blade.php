@@ -20,6 +20,7 @@
         $canVerify = (bool) ($permissionFlags['can_verify'] ?? false);
         $canCancelRequest = (bool) ($permissionFlags['can_cancel_request'] ?? false);
         $canCancelApproval = (bool) ($permissionFlags['can_cancel_approval'] ?? false);
+        $canDirectorNote = (bool) ($permissionFlags['can_director_note'] ?? false);
         $sortedComments = $sortedComments ?? collect();
         $statusSteps = $permissionFlags['status_steps'] ?? [
             'draft' => 'Draft',
@@ -273,6 +274,29 @@
             @endif
         @endif
 
+        @if ($canDirectorNote)
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Komentar Viewer</h3>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ route('letter.outgoing.director.note', $outgoingLetter) }}"
+                        class="grid gap-4 js-ajax-form" data-form-type="outgoing-director-note">
+                        @csrf
+                        <div class="flex flex-col">
+                            <label class="form-label">Komentar Viewer (Direksi / Sekdir / Corporate Secretary) <span
+                                    class="text-danger">*</span></label>
+                            <textarea class="textarea w-full" name="note" rows="3"
+                                placeholder="Tambahkan komentar viewer..." required></textarea>
+                        </div>
+                        <div class="flex justify-end">
+                            <button class="btn btn-primary" type="submit">Simpan Komentar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        @endif
+
         @if ($approvals->count() > 0)
             <div class="card">
                 <div class="card-header">
@@ -315,7 +339,7 @@
 
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">Riwayat Catatan</h3>
+                    <h3 class="card-title">Riwayat Komentar</h3>
             </div>
             <div class="card-body">
                 @if ($sortedComments->count() > 0)

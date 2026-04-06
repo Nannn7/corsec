@@ -29,6 +29,11 @@
                     ->all()
                 : [],
         );
+        $selectedDirectorateIds = collect($selectedDirectorates)
+            ->filter()
+            ->map(fn($id) => (int) $id)
+            ->unique()
+            ->values();
         $agendas = old('agendas');
         if (!is_array($agendas)) {
             if ($isEdit) {
@@ -96,6 +101,37 @@
             ->filter()
             ->map(fn($id) => (int) $id)
             ->unique()
+            ->values()
+            ->all();
+        $mandatoryDirectorateIdCollection = collect($mandatoryDirectorateIds);
+
+        $participantDirectorateGroups = $directorates
+            ->groupBy(function ($directorate) {
+                $label = preg_replace('/\s+/', ' ', trim((string) $directorate->displayName()));
+                return strtolower((string) $label);
+            })
+            ->map(function ($group) use ($selectedDirectorateIds, $mandatoryDirectorateIdCollection) {
+                $primaryDirectorate = $group->first();
+                $memberIds = $group->pluck('id')->map(fn($id) => (int) $id)->values();
+                $isMandatoryGroup = $memberIds->intersect($mandatoryDirectorateIdCollection)->isNotEmpty();
+
+                return [
+                    'id' => (int) $primaryDirectorate->id,
+                    'label' => preg_replace('/\s+/', ' ', trim((string) $primaryDirectorate->displayName())),
+                    'member_count' => $group->count(),
+                    'is_operational' => $group->contains(
+                        fn($directorate) => (bool) ($directorate->is_meeting_operational ?? false),
+                    ),
+                    'is_mandatory' => $isMandatoryGroup,
+                    'is_checked' => $isMandatoryGroup || $memberIds->intersect($selectedDirectorateIds)->isNotEmpty(),
+                ];
+            })
+            ->values();
+
+        $mandatoryParticipantDirectorateIds = $participantDirectorateGroups
+            ->filter(fn($group) => (bool) ($group['is_mandatory'] ?? false))
+            ->pluck('id')
+            ->map(fn($id) => (int) $id)
             ->values()
             ->all();
 
@@ -241,33 +277,32 @@
                     </div>
 
                     <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
-                        <div class="card card-grid border border-gray-200">
+                        <div class="card card-grid border border-gray-200 {{ $isDirektoratMeetingSelected ? 'lg:col-span-2' : '' }}"
+                            id="participant-directorates-card">
                             <div class="card-header py-3">
                                 <h4 class="card-title text-sm">Pilih Peserta Rapat</h4>
                             </div>
                             <div class="card-body max-h-[260px] overflow-auto grid gap-2">
-                                @foreach ($directorates as $directorate)
-                                    @php
-                                        $isMandatoryDirectorate = in_array(
-                                            (int) $directorate->id,
-                                            $mandatoryDirectorateIds,
-                                            true,
-                                        );
-                                        $isOperationalDirectorate =
-                                            (bool) ($directorate->is_meeting_operational ?? false);
-                                        $isCheckedDirectorate =
-                                            in_array((string) $directorate->id, $selectedDirectorates, true) ||
-                                            $isMandatoryDirectorate;
-                                    @endphp
+                                <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 {{ $isDirektoratMeetingSelected ? '' : 'hidden' }}"
+                                    id="participant-operational-hint">
+                                    Unit <span class="font-medium">Monitoring Only</span> tetap boleh dipilih untuk
+                                    draft, tapi untuk <span class="font-medium">Submit Approval</span> wajib ada minimal
+                                    1 unit operasional.
+                                </div>
+                                @foreach ($participantDirectorateGroups as $directorateGroup)
                                     <label class="flex items-center gap-2 text-sm">
                                         <input class="checkbox checkbox-sm" type="checkbox" name="participants[]"
-                                            value="{{ $directorate->id }}"
-                                            data-is-mandatory="{{ $isMandatoryDirectorate ? '1' : '0' }}"
-                                            {{ $isCheckedDirectorate ? 'checked' : '' }}
-                                            {{ $isMandatoryDirectorate ? 'disabled' : '' }}>
+                                            value="{{ $directorateGroup['id'] }}"
+                                            data-is-mandatory="{{ $directorateGroup['is_mandatory'] ?? false ? '1' : '0' }}"
+                                            {{ $directorateGroup['is_checked'] ?? false ? 'checked' : '' }}
+                                            {{ $directorateGroup['is_mandatory'] ?? false ? 'disabled' : '' }}>
                                         <span>
-                                            {{ $directorate->displayName() }}
-                                            @if (!$isOperationalDirectorate)
+                                            {{ $directorateGroup['label'] }}
+                                            @if (($directorateGroup['member_count'] ?? 0) > 1)
+                                                <span class="text-gray-500">({{ $directorateGroup['member_count'] }}
+                                                    unit)</span>
+                                            @endif
+                                            @if (!($directorateGroup['is_operational'] ?? false))
                                                 <span class="text-gray-500">(Monitoring Only)</span>
                                             @endif
                                         </span>
@@ -280,14 +315,12 @@
                                 </div>
                             @enderror
                         </div>
-                        <div class="card card-grid border border-gray-200" id="participant-users-card">
+                        <div class="card card-grid border border-gray-200 {{ $isDirektoratMeetingSelected ? 'hidden' : '' }}"
+                            id="participant-users-card">
                             <div class="card-header py-3">
                                 <h4 class="card-title text-sm">PIC Otomatis Corporate Secretary</h4>
                             </div>
                             <div class="card-body max-h-[260px] overflow-auto grid gap-2">
-                                <div class="text-xs text-gray-500 mb-1">
-                                    Untuk rapat non-direktorat, PIC otomatis di-assign ke user Corporate Secretary.
-                                </div>
                                 @forelse ($meetingPicUsers as $optionUser)
                                     <div class="text-sm">
                                         <span class="font-medium">{{ $optionUser->name }}</span>
@@ -422,6 +455,8 @@
             const singleMeetingDateInput = singleMeetingDateWrap ? singleMeetingDateWrap.querySelector(
                 'input[name="meeting_date"]') : null;
             const participantUsersCard = document.getElementById('participant-users-card');
+            const participantDirectoratesCard = document.getElementById('participant-directorates-card');
+            const participantOperationalHint = document.getElementById('participant-operational-hint');
             const agendaSection = document.getElementById('agenda-section');
             const batchMeetingDatesWrap = document.getElementById('batch-meeting-dates-wrap');
             const meetingDateRows = document.getElementById('meeting-date-rows');
@@ -433,7 +468,7 @@
 
             const directorateOptions = @json($directorateOptions);
             const userOptions = @json($userOptions);
-            const mandatoryDirectorateIds = new Set(@json($mandatoryDirectorateIds));
+            const mandatoryDirectorateIds = new Set(@json($mandatoryParticipantDirectorateIds));
             const participantDirectorateCheckboxes = meetingForm.querySelectorAll('input[name="participants[]"]');
 
             const buildSelectOptions = (options, placeholder) => {
@@ -519,6 +554,14 @@
 
                 if (participantUsersCard) {
                     participantUsersCard.classList.toggle('hidden', isDirektoratMeeting);
+                }
+
+                if (participantDirectoratesCard) {
+                    participantDirectoratesCard.classList.toggle('lg:col-span-2', isDirektoratMeeting);
+                }
+
+                if (participantOperationalHint) {
+                    participantOperationalHint.classList.toggle('hidden', !isDirektoratMeeting);
                 }
 
                 if (agendaSection) {

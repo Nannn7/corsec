@@ -46,14 +46,41 @@ Breadcrumbs::for('meeting.index', function (BreadcrumbTrail $trail) {
     $trail->push('Meeting', route('meeting.index'));
 });
 
+// Reporting
+Breadcrumbs::for('report.index', function (BreadcrumbTrail $trail) {
+    $trail->parent('dashboard');
+    $trail->push('Reporting', route('report.index'));
+});
+
+// Library
+Breadcrumbs::for('library.index', function (BreadcrumbTrail $trail) {
+    $trail->parent('dashboard');
+    $trail->push('Library', route('library.index'));
+});
+
+Breadcrumbs::for('library.guideline.index', function (BreadcrumbTrail $trail) {
+    $trail->parent('library.index');
+    $trail->push('Apps Guideline', route('library.guideline.index'));
+});
+
+Breadcrumbs::for('library.create', function (BreadcrumbTrail $trail) {
+    $trail->parent('library.index');
+    $trail->push('Upload Dokumen', route('library.create'));
+});
+
+Breadcrumbs::for('library.edit', function (BreadcrumbTrail $trail, $libraryItem) {
+    $trail->parent('library.index');
+    $trail->push('Edit Dokumen', route('library.edit', $libraryItem));
+});
+
 Breadcrumbs::for('meeting.create', function (BreadcrumbTrail $trail) {
     $trail->parent('meeting.index');
     $trail->push('Input Meeting', route('meeting.create'));
 });
 
 Breadcrumbs::for('meeting.tabulation', function (BreadcrumbTrail $trail) {
-    $trail->parent('meeting.index');
-    $trail->push('Tabulasi Meeting', route('meeting.tabulation'));
+    $trail->parent('report.index');
+    $trail->push('Tabulasi Meeting', route('report.index', ['module' => 'meeting']));
 });
 
 Breadcrumbs::for('meeting.show', function (BreadcrumbTrail $trail, $meeting) {

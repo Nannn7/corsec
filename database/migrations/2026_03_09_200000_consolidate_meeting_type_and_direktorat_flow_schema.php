@@ -11,10 +11,10 @@ return new class extends Migration {
         $this->ensureMeetingTypesTable();
         $this->ensureDirektoratFlowColumns();
         $this->ensureDecisionTrackingColumns();
+        $this->ensureAgendaDecisionLinkColumns();
+        $this->ensureAgendaMinutesDiscussionColumn();
         $this->ensureDirectorateTabulationLabel();
         $this->ensureDecisionIssueColumns();
-        $this->ensureDecisionSupportPivot();
-        $this->ensureDecisionSupportUserPivot();
         $this->ensureDecisionOccurrencesTable();
         $this->backfillIssueTrackingData();
     }
@@ -60,11 +60,25 @@ return new class extends Migration {
                 if (Schema::hasColumn('corsec_meeting_decisions', 'source_decision_id')) {
                     $table->dropConstrainedForeignId('source_decision_id');
                 }
+                if (Schema::hasColumn('corsec_meeting_decisions', 'agenda_id')) {
+                    $table->dropConstrainedForeignId('agenda_id');
+                }
                 if (Schema::hasColumn('corsec_meeting_decisions', 'root_decision_id')) {
                     $table->dropConstrainedForeignId('root_decision_id');
                 }
                 if (Schema::hasColumn('corsec_meeting_decisions', 'decision_key')) {
                     $table->dropColumn('decision_key');
+                }
+            });
+        }
+
+        if (Schema::hasTable('corsec_meeting_agendas')) {
+            Schema::table('corsec_meeting_agendas', function (Blueprint $table) {
+                if (Schema::hasColumn('corsec_meeting_agendas', 'minutes_discussion')) {
+                    $table->dropColumn('minutes_discussion');
+                }
+                if (Schema::hasColumn('corsec_meeting_agendas', 'source_decision_id')) {
+                    $table->dropConstrainedForeignId('source_decision_id');
                 }
             });
         }
@@ -247,6 +261,46 @@ return new class extends Migration {
             'CREATE INDEX IF NOT EXISTS corsec_meeting_decisions_source_idx '
             . 'ON corsec_meeting_decisions (source_decision_id)'
         );
+    }
+
+    private function ensureAgendaDecisionLinkColumns(): void
+    {
+        if (Schema::hasTable('corsec_meeting_agendas')) {
+            Schema::table('corsec_meeting_agendas', function (Blueprint $table) {
+                if (!Schema::hasColumn('corsec_meeting_agendas', 'source_decision_id')) {
+                    $table->foreignId('source_decision_id')
+                        ->nullable()
+                        ->after('pic_user_id')
+                        ->constrained('corsec_meeting_decisions')
+                        ->nullOnDelete();
+                }
+            });
+        }
+
+        if (Schema::hasTable('corsec_meeting_decisions')) {
+            Schema::table('corsec_meeting_decisions', function (Blueprint $table) {
+                if (!Schema::hasColumn('corsec_meeting_decisions', 'agenda_id')) {
+                    $table->foreignId('agenda_id')
+                        ->nullable()
+                        ->after('meeting_id')
+                        ->constrained('corsec_meeting_agendas')
+                        ->nullOnDelete();
+                }
+            });
+        }
+    }
+
+    private function ensureAgendaMinutesDiscussionColumn(): void
+    {
+        if (!Schema::hasTable('corsec_meeting_agendas')) {
+            return;
+        }
+
+        Schema::table('corsec_meeting_agendas', function (Blueprint $table) {
+            if (!Schema::hasColumn('corsec_meeting_agendas', 'minutes_discussion')) {
+                $table->longText('minutes_discussion')->nullable()->after('description');
+            }
+        });
     }
 
     private function ensureDirectorateTabulationLabel(): void

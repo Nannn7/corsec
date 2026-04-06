@@ -22,13 +22,15 @@ use Modules\Corsec\Models\Directorate;
 use Modules\Corsec\Models\WorkProgram;
 use Modules\Corsec\Models\WorkProgramItem;
 use Modules\Corsec\Models\WorkProgramUpdate;
+use Modules\Corsec\Services\CorsecPermissionService;
 use Modules\Corsec\Services\WorkplanWorkflowService;
 use Modules\Usermanagement\Models\User;
 
 class WorkplanController extends Controller
 {
     public function __construct(
-        private readonly WorkplanWorkflowService $workflow
+        private readonly WorkplanWorkflowService $workflow,
+        private readonly CorsecPermissionService $permissionService
     ) {
         $this->middleware('auth');
     }
@@ -40,88 +42,89 @@ class WorkplanController extends Controller
         $user = Auth::user();
         $user->loadMissing('directorate');
         $directorates = $this->getCachedDirectorates();
+        $summary = Cache::remember($this->workplanIndexSummaryCacheKey($user), now()->addSeconds(30), function () use ($user) {
+            $programSummaryQuery = $this->workflow->scopedProgramsQuery($user);
+            $itemSummaryQuery = $this->workflow->scopedItemsQuery($user);
+            $programSummaryRow = (clone $programSummaryQuery)
+                ->selectRaw('COUNT(*) AS total_programs')
+                ->selectRaw(
+                    "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS draft_programs",
+                    [WorkProgram::STATUS_DRAFT]
+                )
+                ->selectRaw(
+                    "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS waiting_dir_approval_programs",
+                    [WorkProgram::STATUS_WAITING_DIR_APPROVAL]
+                )
+                ->selectRaw(
+                    "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS active_programs",
+                    [WorkProgram::STATUS_ACTIVE]
+                )
+                ->selectRaw(
+                    "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS returned_programs",
+                    [WorkProgram::STATUS_RETURNED]
+                )
+                ->selectRaw(
+                    "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS done_programs",
+                    [WorkProgram::STATUS_DONE]
+                )
+                ->first();
 
-        $programSummaryQuery = $this->workflow->scopedProgramsQuery($user);
-        $itemSummaryQuery = $this->workflow->scopedItemsQuery($user);
-        $programSummaryRow = (clone $programSummaryQuery)
-            ->selectRaw('COUNT(*) AS total_programs')
-            ->selectRaw(
-                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS draft_programs",
-                [WorkProgram::STATUS_DRAFT]
-            )
-            ->selectRaw(
-                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS waiting_dir_approval_programs",
-                [WorkProgram::STATUS_WAITING_DIR_APPROVAL]
-            )
-            ->selectRaw(
-                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS active_programs",
-                [WorkProgram::STATUS_ACTIVE]
-            )
-            ->selectRaw(
-                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS returned_programs",
-                [WorkProgram::STATUS_RETURNED]
-            )
-            ->selectRaw(
-                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS done_programs",
-                [WorkProgram::STATUS_DONE]
-            )
-            ->first();
+            $itemSummaryRow = (clone $itemSummaryQuery)
+                ->selectRaw('COUNT(*) AS total_items')
+                ->selectRaw(
+                    "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS process_on_target",
+                    [WorkProgramItem::STATUS_PROCESS_ON_TARGET]
+                )
+                ->selectRaw(
+                    "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS done_on_target",
+                    [WorkProgramItem::STATUS_DONE_ON_TARGET]
+                )
+                ->selectRaw(
+                    "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS done_over_target",
+                    [WorkProgramItem::STATUS_DONE_OVER_TARGET]
+                )
+                ->selectRaw(
+                    "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS undone",
+                    [WorkProgramItem::STATUS_UNDONE]
+                )
+                ->selectRaw(
+                    "SUM(CASE WHEN status IN (?, ?) THEN 0 ELSE 1 END) AS pending_items",
+                    [WorkProgramItem::STATUS_DONE_ON_TARGET, WorkProgramItem::STATUS_DONE_OVER_TARGET]
+                )
+                ->first();
 
-        $itemSummaryRow = (clone $itemSummaryQuery)
-            ->selectRaw('COUNT(*) AS total_items')
-            ->selectRaw(
-                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS process_on_target",
-                [WorkProgramItem::STATUS_PROCESS_ON_TARGET]
-            )
-            ->selectRaw(
-                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS done_on_target",
-                [WorkProgramItem::STATUS_DONE_ON_TARGET]
-            )
-            ->selectRaw(
-                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS done_over_target",
-                [WorkProgramItem::STATUS_DONE_OVER_TARGET]
-            )
-            ->selectRaw(
-                "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS undone",
-                [WorkProgramItem::STATUS_UNDONE]
-            )
-            ->selectRaw(
-                "SUM(CASE WHEN status IN (?, ?) THEN 0 ELSE 1 END) AS pending_items",
-                [WorkProgramItem::STATUS_DONE_ON_TARGET, WorkProgramItem::STATUS_DONE_OVER_TARGET]
-            )
-            ->first();
+            $doneOnTarget = (int) ($itemSummaryRow->done_on_target ?? 0);
+            $doneOverTarget = (int) ($itemSummaryRow->done_over_target ?? 0);
+            $totalItems = (int) ($itemSummaryRow->total_items ?? 0);
+            $doneItems = $doneOnTarget + $doneOverTarget;
+            $pendingApprovals = Approval::query()
+                ->where('approvable_type', WorkProgram::class)
+                ->where('status', WorkProgramUpdate::STATUS_PENDING)
+                ->whereIn('approvable_id', (clone $programSummaryQuery)->select('id'))
+                ->count();
 
-        $doneOnTarget = (int) ($itemSummaryRow->done_on_target ?? 0);
-        $doneOverTarget = (int) ($itemSummaryRow->done_over_target ?? 0);
-        $totalItems = (int) ($itemSummaryRow->total_items ?? 0);
-        $doneItems = $doneOnTarget + $doneOverTarget;
-        $pendingApprovals = Approval::query()
-            ->where('approvable_type', WorkProgram::class)
-            ->where('status', WorkProgramUpdate::STATUS_PENDING)
-            ->whereIn('approvable_id', (clone $programSummaryQuery)->select('id'))
-            ->count();
-
-        $summary = [
-            'total_programs' => (int) ($programSummaryRow->total_programs ?? 0),
-            'total_items' => $totalItems,
-            'process_on_target' => (int) ($itemSummaryRow->process_on_target ?? 0),
-            'done_on_target' => $doneOnTarget,
-            'done_over_target' => $doneOverTarget,
-            'undone' => (int) ($itemSummaryRow->undone ?? 0),
-            'pending_items' => (int) ($itemSummaryRow->pending_items ?? 0),
-            'draft_programs' => (int) ($programSummaryRow->draft_programs ?? 0),
-            'waiting_dir_approval_programs' => (int) ($programSummaryRow->waiting_dir_approval_programs ?? 0),
-            'active_programs' => (int) ($programSummaryRow->active_programs ?? 0),
-            'returned_programs' => (int) ($programSummaryRow->returned_programs ?? 0),
-            'done_programs' => (int) ($programSummaryRow->done_programs ?? 0),
-            'pending_approvals' => $pendingApprovals,
-            'completion_rate' => $totalItems > 0
-                ? (int) round(($doneItems / $totalItems) * 100)
-                : 0,
-            'on_target_rate' => $doneItems > 0
-                ? (int) round(($doneOnTarget / $doneItems) * 100)
-                : 0,
-        ];
+            return [
+                'total_programs' => (int) ($programSummaryRow->total_programs ?? 0),
+                'total_items' => $totalItems,
+                'process_on_target' => (int) ($itemSummaryRow->process_on_target ?? 0),
+                'done_on_target' => $doneOnTarget,
+                'done_over_target' => $doneOverTarget,
+                'undone' => (int) ($itemSummaryRow->undone ?? 0),
+                'pending_items' => (int) ($itemSummaryRow->pending_items ?? 0),
+                'draft_programs' => (int) ($programSummaryRow->draft_programs ?? 0),
+                'waiting_dir_approval_programs' => (int) ($programSummaryRow->waiting_dir_approval_programs ?? 0),
+                'active_programs' => (int) ($programSummaryRow->active_programs ?? 0),
+                'returned_programs' => (int) ($programSummaryRow->returned_programs ?? 0),
+                'done_programs' => (int) ($programSummaryRow->done_programs ?? 0),
+                'pending_approvals' => $pendingApprovals,
+                'completion_rate' => $totalItems > 0
+                    ? (int) round(($doneItems / $totalItems) * 100)
+                    : 0,
+                'on_target_rate' => $doneItems > 0
+                    ? (int) round(($doneOnTarget / $doneItems) * 100)
+                    : 0,
+            ];
+        });
 
         $pageInfo = [
             'today' => now(),
@@ -398,12 +401,9 @@ class WorkplanController extends Controller
             'authorizedBy',
             'items.attachables.attachment',
             'items.creator',
-            'items.comments.createdBy',
             'items.updates.updater',
             'items.updates.authorizedBy',
             'items.updates.attachables.attachment',
-            'items.updates.comments.createdBy',
-            'comments.createdBy',
         ]);
 
         $approvals = Approval::query()
@@ -429,6 +429,10 @@ class WorkplanController extends Controller
                 return $row['update']->created_at;
             })
             ->values();
+        $workplanComments = $workplan->comments()
+            ->with('createdBy')
+            ->orderByDesc('created_at')
+            ->get();
 
         $canEdit = $this->workflow->canEditProgram($workplan, $user);
         $canDelete = $this->workflow->canDeleteProgram($workplan, $user);
@@ -436,6 +440,7 @@ class WorkplanController extends Controller
         $canSubmitUpdate = $this->workflow->canSubmitUpdate($workplan, $user);
         $canCheckerApproval = (bool) ($approvalFlags['can_checker_approval'] ?? false);
         $canApproverApproval = (bool) ($approvalFlags['can_approver_approval'] ?? false);
+        $canDirectorNote = $this->permissionService->canAddDirectorNote($user);
 
         $statusSteps = [
             WorkProgram::STATUS_DRAFT => 'Draft',
@@ -455,8 +460,35 @@ class WorkplanController extends Controller
             'canSubmitUpdate',
             'canCheckerApproval',
             'canApproverApproval',
-            'allUpdates'
+            'allUpdates',
+            'workplanComments',
+            'canDirectorNote'
         ));
+    }
+
+    public function directorNote(Request $request, WorkProgram $workplan)
+    {
+        $user = Auth::user();
+        if (!$this->permissionService->canAddDirectorNote($user)) {
+            abort(403, 'Anda tidak memiliki akses untuk menambahkan catatan.');
+        }
+
+        $validated = $request->validate([
+            'note' => ['required', 'string'],
+        ]);
+
+        Comment::create([
+            'commentable_type' => WorkProgram::class,
+            'commentable_id' => $workplan->id,
+            'body' => '[KOMENTAR VIEWER] ' . $validated['note'],
+            'created_by' => $user?->id,
+        ]);
+
+        return $this->successRedirectResponse(
+            $request,
+            route('workplan.show', $workplan),
+            'Komentar viewer berhasil disimpan.'
+        );
     }
 
     public function edit(WorkProgram $workplan)
@@ -840,6 +872,19 @@ class WorkplanController extends Controller
         return Cache::remember('corsec.directorates.list', 300, function () {
             return Directorate::query()->orderBy('name')->get(['id', 'name', 'code']);
         });
+    }
+
+    private function workplanIndexSummaryCacheKey(User $user): string
+    {
+        $user->loadMissing('roles:id,name');
+        $roleSignature = md5($user->roles->pluck('name')->sort()->implode('|'));
+
+        return sprintf(
+            'corsec.workplan.index.summary.%d.%d.%s',
+            (int) $user->id,
+            (int) ($user->directorate_id ?? 0),
+            $roleSignature
+        );
     }
 
     private function deleteProgramItem(WorkProgramItem $item): void
