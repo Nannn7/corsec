@@ -188,10 +188,10 @@ class OutgoingLetter extends Model
     {
         return match (self::toDisplayStatus($status)) {
             self::DISPLAY_STATUS_DRAFT => 'Draft',
-            self::DISPLAY_STATUS_WAITING_DIR_APPROVAL => 'Approval EO dan DD Direktorat',
+            self::DISPLAY_STATUS_WAITING_DIR_APPROVAL => 'Approval Direktorat',
             self::DISPLAY_STATUS_COMPLIANCE_REVIEW => 'Review Direktorat Kepatuhan',
             self::DISPLAY_STATUS_WAITING_COMPLIANCE_APPROVAL => 'Approval EO dan DD Kepatuhan',
-            self::DISPLAY_STATUS_WAITING_VERIFICATION => 'Verifikasi EO Corp Affair',
+            self::DISPLAY_STATUS_WAITING_VERIFICATION => 'Corporate Secretary',
             self::DISPLAY_STATUS_WAITING_FINAL_UPLOAD => 'Final Upload',
             self::DISPLAY_STATUS_WAITING_CANCEL_APPROVAL => 'Approval Pembatalan EO Direktorat',
             self::DISPLAY_STATUS_DONE => 'Done',

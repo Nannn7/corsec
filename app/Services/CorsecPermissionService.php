@@ -10,6 +10,7 @@ use Modules\Corsec\Models\Meeting;
 use Modules\Corsec\Models\MeetingDecision;
 use Modules\Corsec\Models\OutgoingLetter;
 use Modules\Corsec\Models\WorkProgramItem;
+use Modules\Corsec\Support\DirectorateApprovalFlow;
 use Modules\Usermanagement\Models\Position;
 use Modules\Usermanagement\Models\User;
 
@@ -227,20 +228,35 @@ class CorsecPermissionService
         $isTargetDirectorate = $actorDirectorateId > 0
             && (int) ($incomingLetter->target_directorate_id ?? 0) === $actorDirectorateId;
 
-        $checkerApproved = $approvals
-            ->where('status', 'approved')
-            ->contains(function ($approval) {
-                return Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
-            });
+        $latestPendingDirectorateApproval = $approvals
+            ->where('status', 'pending')
+            ->filter(function ($approval) {
+                return Str::contains(Str::lower((string) ($approval->note ?? '')), 'direktorat');
+            })
+            ->sortByDesc('id')
+            ->first();
+        $currentRoundStartedAt = $latestPendingDirectorateApproval?->created_at;
+        $requiresCheckerApproval = $latestPendingDirectorateApproval
+            ? DirectorateApprovalFlow::requiresCheckerApproval($latestPendingDirectorateApproval)
+            : true;
+
+        $checkerApproved = $currentRoundStartedAt && $requiresCheckerApproval
+            ? $approvals
+                ->where('status', 'approved')
+                ->contains(function ($approval) use ($currentRoundStartedAt) {
+                    return $this->approvalInRound($approval, $currentRoundStartedAt)
+                        && Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
+                })
+            : false;
 
         $userHasEoDirApproval = $this->userHasApprovalPrefix($approvals, $user, [
             'EO Direktorat Approved',
             'EO Direktorat Returned',
-        ]);
+        ], $currentRoundStartedAt);
         $userHasDdDirApproval = $this->userHasApprovalPrefix($approvals, $user, [
             'DD Direktorat Approved',
             'DD Direktorat Returned',
-        ]);
+        ], $currentRoundStartedAt);
         $validationRequested = (bool) $incomingLetter->corp_secretary_validation_requested_at;
         $validationPending = $validationRequested && !$incomingLetter->corp_secretary_validated_at;
 
@@ -253,12 +269,13 @@ class CorsecPermissionService
             && ($isAdmin || ($isTargetDirectorate && (string) $incomingLetter->authorized_status === 'authorized'));
 
         $canCheckerDirApproval = $status === IncomingLetter::STATUS_WAITING_DIR_APPROVAL
+            && $requiresCheckerApproval
             && !$checkerApproved
             && ($isAdmin || $isChecker)
             && !$userHasEoDirApproval;
 
         $canApproverApproval = $status === IncomingLetter::STATUS_WAITING_DIR_APPROVAL
-            && $checkerApproved
+            && ((!$requiresCheckerApproval) || $checkerApproved)
             && ($isAdmin || $isApprover)
             && !$userHasDdDirApproval;
 
@@ -331,11 +348,27 @@ class CorsecPermissionService
         $roleNames = $this->normalizedRoleNames($user);
         $positionName = $this->normalizedPositionName($user);
 
-        $checkerApprovedDir = $approvals
-            ->where('status', 'approved')
-            ->contains(function ($approval) {
-                return Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
-            });
+        $latestPendingDirectorateApproval = $approvals
+            ->where('status', 'pending')
+            ->filter(function ($approval) {
+                return Str::contains(Str::lower((string) ($approval->note ?? '')), 'direktorat')
+                    && !Str::contains(Str::lower((string) ($approval->note ?? '')), 'kepatuhan');
+            })
+            ->sortByDesc('id')
+            ->first();
+        $currentDirectorateRoundStartedAt = $latestPendingDirectorateApproval?->created_at;
+        $requiresCheckerApprovalDir = $latestPendingDirectorateApproval
+            ? DirectorateApprovalFlow::requiresCheckerApproval($latestPendingDirectorateApproval)
+            : true;
+
+        $checkerApprovedDir = $currentDirectorateRoundStartedAt && $requiresCheckerApprovalDir
+            ? $approvals
+                ->where('status', 'approved')
+                ->contains(function ($approval) use ($currentDirectorateRoundStartedAt) {
+                    return $this->approvalInRound($approval, $currentDirectorateRoundStartedAt)
+                        && Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
+                })
+            : false;
         $checkerApprovedCompliance = $approvals
             ->where('status', 'approved')
             ->contains(function ($approval) {
@@ -345,11 +378,11 @@ class CorsecPermissionService
         $userHasDirCheckerAction = $this->userHasApprovalPrefix($approvals, $user, [
             'EO Direktorat Approved',
             'EO Direktorat Returned',
-        ]);
+        ], $currentDirectorateRoundStartedAt);
         $userHasDirApproverAction = $this->userHasApprovalPrefix($approvals, $user, [
             'DD Direktorat Approved',
             'DD Direktorat Returned',
-        ]);
+        ], $currentDirectorateRoundStartedAt);
         $userHasComplianceCheckerAction = $this->userHasApprovalPrefix($approvals, $user, [
             'EO Kepatuhan Approved',
             'EO Kepatuhan Returned',
@@ -387,11 +420,12 @@ class CorsecPermissionService
             'can_edit' => in_array($status, [OutgoingLetter::STATUS_DRAFT, OutgoingLetter::STATUS_RETURNED], true)
                 && ($isAdmin || $isRequesterDirectorate),
             'can_dir_checker_approval' => $status === OutgoingLetter::STATUS_WAITING_DIR_APPROVAL
+                && $requiresCheckerApprovalDir
                 && !$checkerApprovedDir
                 && ($isAdmin || ($isRequesterDirectorate && $isChecker))
                 && !$userHasDirCheckerAction,
             'can_dir_approver_approval' => $status === OutgoingLetter::STATUS_WAITING_DIR_APPROVAL
-                && $checkerApprovedDir
+                && ((!$requiresCheckerApprovalDir) || $checkerApprovedDir)
                 && ($isAdmin || ($isRequesterDirectorate && $isApprover))
                 && !$userHasDirApproverAction,
             'can_compliance_review' => $status === OutgoingLetter::STATUS_COMPLIANCE_REVIEW
@@ -511,6 +545,8 @@ class CorsecPermissionService
             ], true);
 
         $userHasCorsecAction = $this->userHasApprovalPrefix($approvals, $user, [
+            'Corporate Secretary Approved',
+            'Corporate Secretary Returned',
             'EO Corp Affair Approved',
             'EO Corp Affair Returned',
         ]);
@@ -524,17 +560,21 @@ class CorsecPermissionService
             ->first();
 
         $currentRoundStartedAt = $latestPendingDirectorateApproval?->created_at;
+        $requiresCheckerApproval = true;
         $checkerApprovedInRound = false;
         $hasActedCheckerInRound = false;
         $hasActedApproverInRound = false;
 
-        if ($currentRoundStartedAt) {
-            $checkerApprovedInRound = $approvals
-                ->where('status', 'approved')
-                ->contains(function ($approval) use ($currentRoundStartedAt) {
-                    return $this->approvalInRound($approval, $currentRoundStartedAt)
-                        && Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
-                });
+        if ($currentRoundStartedAt && $latestPendingDirectorateApproval) {
+            $requiresCheckerApproval = $this->meetingApprovalRequiresChecker($latestPendingDirectorateApproval);
+            $checkerApprovedInRound = $requiresCheckerApproval
+                ? $approvals
+                    ->where('status', 'approved')
+                    ->contains(function ($approval) use ($currentRoundStartedAt) {
+                        return $this->approvalInRound($approval, $currentRoundStartedAt)
+                            && Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
+                    })
+                : false;
 
             if ($actorUserId > 0) {
                 $hasActedCheckerInRound = $approvals
@@ -617,11 +657,12 @@ class CorsecPermissionService
                 ], true)
                 && (!$isDirektoratMeeting || ($hasOnScheduleResponse && !$isCancelledByDirektorat && !$isClosedNotConducted)),
             'can_directorate_checker_approval' => $status === Meeting::STATUS_WAITING_DIREKTORAT_APPROVAL
+                && $requiresCheckerApproval
                 && !$checkerApprovedInRound
                 && ($isAdmin || ($isChecker && $isExecutiveOfficer && $canDirectorateApprovalActor))
                 && !$hasActedCheckerInRound,
             'can_directorate_approver_approval' => $status === Meeting::STATUS_WAITING_DIREKTORAT_APPROVAL
-                && $checkerApprovedInRound
+                && (!$requiresCheckerApproval || $checkerApprovedInRound)
                 && ($isAdmin || ($isApprover && $isDeputyDirector && $canDirectorateApprovalActor))
                 && !$hasActedApproverInRound,
             'can_save_minutes' => $canManageMinutes
@@ -881,7 +922,7 @@ class CorsecPermissionService
         );
     }
 
-    private function userHasApprovalPrefix(Collection $approvals, ?User $user, array $prefixes): bool
+    private function userHasApprovalPrefix(Collection $approvals, ?User $user, array $prefixes, $roundStartedAt = null): bool
     {
         if (!$user) {
             return false;
@@ -889,7 +930,10 @@ class CorsecPermissionService
 
         return $approvals
             ->where('acted_by', $user->id)
-            ->contains(function ($approval) use ($prefixes) {
+            ->contains(function ($approval) use ($prefixes, $roundStartedAt) {
+                if ($roundStartedAt && !$this->approvalInRound($approval, $roundStartedAt)) {
+                    return false;
+                }
                 $note = (string) ($approval->note ?? '');
                 foreach ($prefixes as $prefix) {
                     if (Str::startsWith($note, $prefix)) {
@@ -909,7 +953,7 @@ class CorsecPermissionService
         if ($isResponseLetterFlow) {
             $statusSteps = [
                 OutgoingLetter::STATUS_DRAFT => 'Draft',
-                OutgoingLetter::STATUS_WAITING_DIR_APPROVAL => 'Approval EO dan DD Direktorat',
+                OutgoingLetter::STATUS_WAITING_DIR_APPROVAL => 'Approval Direktorat',
             ];
 
             if ((bool) ($outgoingLetter->need_compliance_review ?? false)) {
@@ -926,7 +970,7 @@ class CorsecPermissionService
                 $statusSteps[OutgoingLetter::STATUS_COMPLIANCE_REVIEW] = 'Review Kepatuhan (Legacy)';
             }
             if ($status === OutgoingLetter::STATUS_WAITING_VERIFICATION) {
-                $statusSteps[OutgoingLetter::STATUS_WAITING_VERIFICATION] = 'Verifikasi EO Corp Affair (Legacy)';
+                $statusSteps[OutgoingLetter::STATUS_WAITING_VERIFICATION] = 'Corporate Secretary (Legacy)';
             }
 
             return $statusSteps;
@@ -934,10 +978,10 @@ class CorsecPermissionService
 
         return [
             OutgoingLetter::STATUS_DRAFT => 'Draft',
-            OutgoingLetter::STATUS_WAITING_DIR_APPROVAL => 'Approval EO dan DD Direktorat',
+            OutgoingLetter::STATUS_WAITING_DIR_APPROVAL => 'Approval Direktorat',
             OutgoingLetter::STATUS_COMPLIANCE_REVIEW => 'Review Kepatuhan',
             OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL => 'Approval EO dan DD Kepatuhan',
-            OutgoingLetter::STATUS_WAITING_VERIFICATION => 'Verifikasi EO Corp Affair',
+            OutgoingLetter::STATUS_WAITING_VERIFICATION => 'Corporate Secretary',
             OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD => 'Final Upload',
             OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL => 'Approval Pembatalan EO Direktorat',
             OutgoingLetter::STATUS_VERIFIED => 'Done',
@@ -951,5 +995,10 @@ class CorsecPermissionService
         return isset($approval->created_at)
             && $approval->created_at
             && $approval->created_at->greaterThanOrEqualTo($roundStartedAt);
+    }
+
+    private function meetingApprovalRequiresChecker(object $approval): bool
+    {
+        return DirectorateApprovalFlow::requiresCheckerApproval($approval);
     }
 }

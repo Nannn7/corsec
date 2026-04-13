@@ -372,15 +372,16 @@ class WorkplanController extends Controller
         });
 
         $submitForApproval = $request->boolean('submit_for_approval', true);
+        $submitResult = null;
         if ($submitForApproval) {
-            $this->workflow->submitProgram($program, $user, $request->input('submit_note'));
+            $submitResult = $this->workflow->submitProgram($program, $user, $request->input('submit_note'));
         }
 
         return $this->successRedirectResponse(
             $request,
             route('workplan.show', $program),
             $submitForApproval
-                ? 'Program kerja berhasil dibuat dan dikirim untuk approval.'
+                ? ((string) ($submitResult['success_message'] ?? 'Program kerja berhasil dibuat dan dikirim untuk approval.'))
                 : 'Program kerja berhasil dibuat sebagai draft.'
         );
     }
@@ -608,15 +609,16 @@ class WorkplanController extends Controller
         });
 
         $submitForApproval = $request->boolean('submit_for_approval', false);
+        $submitResult = null;
         if ($submitForApproval) {
-            $this->workflow->submitProgram($workplan, $user, $request->input('submit_note'));
+            $submitResult = $this->workflow->submitProgram($workplan, $user, $request->input('submit_note'));
         }
 
         return $this->successRedirectResponse(
             $request,
             route('workplan.show', $workplan),
             $submitForApproval
-                ? 'Program kerja berhasil diupdate dan dikirim untuk approval.'
+                ? ((string) ($submitResult['success_message'] ?? 'Program kerja berhasil diupdate dan dikirim untuk approval.'))
                 : 'Program kerja berhasil diupdate.'
         );
     }
@@ -669,9 +671,13 @@ class WorkplanController extends Controller
             'note' => ['nullable', 'string'],
         ]);
 
-        $this->workflow->submitProgram($workplan, $user, $request->input('note'));
+        $submitResult = $this->workflow->submitProgram($workplan, $user, $request->input('note'));
 
-        return $this->successRedirectResponse($request, route('workplan.show', $workplan), 'Program kerja berhasil dikirim untuk approval.');
+        return $this->successRedirectResponse(
+            $request,
+            route('workplan.show', $workplan),
+            (string) ($submitResult['success_message'] ?? 'Program kerja berhasil dikirim untuk approval.')
+        );
     }
 
     public function approvalAction(Request $request, WorkProgram $workplan)
@@ -737,7 +743,7 @@ class WorkplanController extends Controller
             $progressPercent = 0;
         }
 
-        $this->workflow->submitProgressUpdate(
+        $submitResult = $this->workflow->submitProgressUpdate(
             $item,
             $user,
             $action,
@@ -750,7 +756,7 @@ class WorkplanController extends Controller
         return $this->successRedirectResponse(
             $request,
             route('workplan.show', $workplan),
-            'Update program kerja berhasil disubmit untuk approval.'
+            (string) ($submitResult['success_message'] ?? 'Update program kerja berhasil disubmit untuk approval.')
         );
     }
 
@@ -797,9 +803,6 @@ class WorkplanController extends Controller
         }
         if ($this->workflow->isViewerRole($user)) {
             abort(403, 'Role viewer tidak memiliki akses untuk update work plan.');
-        }
-        if ($this->workflow->isDeputyDirector($user)) {
-            abort(403, 'Posisi Deputy Director hanya dapat melihat dan melakukan approval program kerja.');
         }
     }
 

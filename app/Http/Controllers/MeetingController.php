@@ -311,16 +311,21 @@ class MeetingController extends Controller
                     (string) ($payload['meeting_type'] ?? ''),
                     (bool) ($payload['submit_for_approval'] ?? false)
                 );
-            $this->syncAgendas(
-                $meeting,
-                Meeting::isDirektoratTypeCode((string) ($payload['meeting_type'] ?? ''))
-                    ? []
-                    : (array) ($payload['agendas'] ?? [])
-            );
-            $this->syncInheritedDirectorateAgendas($meeting);
+                $this->syncAgendas(
+                    $meeting,
+                    Meeting::isDirektoratTypeCode((string) ($payload['meeting_type'] ?? ''))
+                        ? []
+                        : (array) ($payload['agendas'] ?? [])
+                );
+                $this->syncOptionalMancommEscalationAgendas(
+                    $meeting,
+                    (string) ($payload['meeting_type'] ?? ''),
+                    (array) ($payload['escalation_decision_ids'] ?? [])
+                );
+                $this->syncInheritedDirectorateAgendas($meeting);
 
-            $createdMeetings->push($meeting);
-        }
+                $createdMeetings->push($meeting);
+            }
 
             return $createdMeetings;
         });
@@ -342,13 +347,13 @@ class MeetingController extends Controller
         $successMessage = $isBatchCreate
             ? (
                 (bool) ($payload['submit_for_approval'] ?? false)
-                    ? "Rencana meeting berhasil dibuat sebanyak {$createdCount} jadwal dan dikirim untuk approval."
-                    : "Rencana meeting berhasil dibuat sebanyak {$createdCount} jadwal sebagai draft."
+                ? "Rencana meeting berhasil dibuat sebanyak {$createdCount} jadwal dan dikirim untuk approval."
+                : "Rencana meeting berhasil dibuat sebanyak {$createdCount} jadwal sebagai draft."
             )
             : (
                 (bool) ($payload['submit_for_approval'] ?? false)
-                    ? 'Rencana meeting berhasil dibuat dan dikirim untuk approval.'
-                    : 'Rencana meeting berhasil dibuat sebagai draft.'
+                ? 'Rencana meeting berhasil dibuat dan dikirim untuk approval.'
+                : 'Rencana meeting berhasil dibuat sebagai draft.'
             );
 
         return $this->successRedirectResponse(
@@ -404,6 +409,9 @@ class MeetingController extends Controller
         }
 
         $options = $this->meetingFormOptions();
+        $permissionFlags = $this->resolveMeetingPermissionFlags($meeting, $user);
+
+        // load approvals for the meeting to be available in the view
         $approvals = Approval::query()
             ->where('approvable_type', Meeting::class)
             ->where('approvable_id', $meeting->id)
@@ -411,7 +419,7 @@ class MeetingController extends Controller
             ->orderByDesc('acted_at')
             ->orderByDesc('created_at')
             ->get();
-        $permissionFlags = $this->permissionService->meetingDetailFlags($meeting, $approvals, $user);
+
         $crossMeetingOpenDecisions = $this->crossMeetingOpenDecisions($meeting);
         $linkableDecisions = $crossMeetingOpenDecisions
             ->sortByDesc(function (MeetingDecision $decision) {
@@ -455,6 +463,7 @@ class MeetingController extends Controller
             $meeting,
             $permissionFlags
         );
+        $materialAgendaOptions = $this->materialAgendaOptionsForUser($meeting, $user);
 
         return view('corsec::meeting.show', [
             'meeting' => $meeting,
@@ -467,9 +476,83 @@ class MeetingController extends Controller
             'decisionUpdates' => $decisionUpdates,
             'decisionProgressById' => $decisionProgressById,
             'sortedComments' => $sortedComments,
+            'materialAgendaOptions' => $materialAgendaOptions,
             ...$viewState,
             ...$options,
         ]);
+    }
+
+    public function presentation(Meeting $meeting)
+    {
+        $this->authorizeRead();
+        $user = Auth::user();
+
+        if (!$this->canSeeMeeting($meeting, $user)) {
+            abort(403, 'Anda tidak memiliki akses melihat meeting ini.');
+        }
+
+        $meeting->load([
+            'minutes',
+            'agendas.ownerDirectorate',
+            'agendas.picUser',
+            'agendas.sourceDecision.meeting',
+            'agendas.materials.attachment',
+            'materials.attachment',
+        ]);
+
+        if (!$this->canOpenPresentationMode($meeting)) {
+            abort(403, 'Mode presentasi hanya tersedia setelah bahan rapat terkirim dan sebelum notulen diinput.');
+        }
+
+        $slides = $this->buildMeetingPresentationSlides($meeting);
+
+        if (empty($slides)) {
+            return redirect()->route('meeting.show', $meeting)->with('warning', 'Belum ada bahan rapat yang bisa ditampilkan pada mode presentasi.');
+        }
+
+        return view('corsec::meeting.presentation', [
+            'meeting' => $meeting,
+            'slides' => $slides,
+            'agendaGroups' => $this->buildMeetingPresentationAgendaGroups($slides),
+            'typeOptions' => Meeting::typeOptions(),
+        ]);
+    }
+
+    public function materialFile(Meeting $meeting, MeetingMaterial $material)
+    {
+        $this->authorizeRead();
+        $user = Auth::user();
+
+        if (!$this->canSeeMeeting($meeting, $user)) {
+            abort(403, 'Anda tidak memiliki akses melihat meeting ini.');
+        }
+
+        if ((int) $material->meeting_id !== (int) $meeting->id) {
+            abort(404, 'Bahan rapat tidak ditemukan.');
+        }
+
+        $material->loadMissing('attachment');
+        $attachment = $material->attachment;
+
+        if (!$attachment) {
+            abort(404, 'File bahan rapat tidak ditemukan.');
+        }
+
+        $disk = (string) ($attachment->disk ?: 'public');
+        $path = trim((string) ($attachment->path ?? ''));
+
+        if ($path === '' || !Storage::disk($disk)->exists($path)) {
+            abort(404, 'File bahan rapat tidak ditemukan.');
+        }
+
+        $downloadName = (string) ($attachment->original_name ?: $attachment->file_name ?: basename($path));
+        $headers = [];
+
+        if (filled($attachment->mime)) {
+            $headers['Content-Type'] = (string) $attachment->mime;
+        }
+
+        return Storage::disk($disk)->response($path, $downloadName, $headers);
     }
 
     public function edit(Meeting $meeting)
@@ -487,7 +570,7 @@ class MeetingController extends Controller
             'agendas.picUser',
         ]);
 
-        $options = $this->meetingFormOptions();
+        $options = $this->meetingFormOptions($meeting);
 
         return view('corsec::meeting.create', [
             'meeting' => $meeting,
@@ -531,6 +614,11 @@ class MeetingController extends Controller
                 Meeting::isDirektoratTypeCode((string) ($payload['meeting_type'] ?? ''))
                     ? []
                     : (array) ($payload['agendas'] ?? [])
+            );
+            $this->syncOptionalMancommEscalationAgendas(
+                $meeting,
+                (string) ($payload['meeting_type'] ?? ''),
+                (array) ($payload['escalation_decision_ids'] ?? [])
             );
             $this->syncInheritedDirectorateAgendas($meeting);
         });
@@ -609,7 +697,7 @@ class MeetingController extends Controller
         return $this->successRedirectResponse(
             $request,
             route('meeting.show', $meeting),
-            'Approval EO Corp Affair berhasil diproses.'
+            'Corporate Secretary berhasil diproses.'
         );
     }
 
@@ -666,7 +754,15 @@ class MeetingController extends Controller
 
         $this->syncInheritedDirectorateAgendas($meeting);
 
+        $uploadedMaterialFiles = collect((array) $request->file('material_files', []))
+            ->filter(fn($file) => $file instanceof UploadedFile)
+            ->values();
         $materialAgendaId = $request->filled('material_agenda_id') ? (int) $request->input('material_agenda_id') : null;
+        if ($uploadedMaterialFiles->isNotEmpty() && !$materialAgendaId) {
+            throw ValidationException::withMessages([
+                'material_agenda_id' => 'Agenda bahan wajib dipilih saat upload bahan rapat.',
+            ]);
+        }
         if ($materialAgendaId && !MeetingAgenda::query()
             ->where('meeting_id', $meeting->id)
             ->where('id', $materialAgendaId)
@@ -675,8 +771,26 @@ class MeetingController extends Controller
                 'material_agenda_id' => 'Agenda material harus berasal dari meeting yang sama.',
             ]);
         }
+        if ($uploadedMaterialFiles->isNotEmpty() && $materialAgendaId) {
+            $materialAgenda = MeetingAgenda::query()
+                ->with('picUser')
+                ->where('meeting_id', $meeting->id)
+                ->find($materialAgendaId);
 
-        DB::transaction(function () use ($request, $meeting, $user) {
+            if (!$materialAgenda) {
+                throw ValidationException::withMessages([
+                    'material_agenda_id' => 'Agenda material harus berasal dari meeting yang sama.',
+                ]);
+            }
+
+            if (!$this->canUploadMeetingAgendaMaterial($materialAgenda, $user)) {
+                throw ValidationException::withMessages([
+                    'material_agenda_id' => 'Bahan agenda hanya boleh diupload oleh PIC user agenda yang ditunjuk.',
+                ]);
+            }
+        }
+
+        DB::transaction(function () use ($request, $meeting, $user, $uploadedMaterialFiles, $materialAgendaId) {
             $this->appendParticipants(
                 $meeting,
                 (array) $request->input('additional_participants', []),
@@ -686,9 +800,9 @@ class MeetingController extends Controller
             $this->appendAgendas($meeting, (array) $request->input('additional_agendas', []));
             $this->storeMeetingMaterials(
                 $meeting,
-                (array) $request->file('material_files', []),
+                $uploadedMaterialFiles->all(),
                 $user,
-                $request->filled('material_agenda_id') ? (int) $request->input('material_agenda_id') : null
+                $materialAgendaId
             );
 
             $note = trim((string) $request->input('note'));
@@ -703,14 +817,13 @@ class MeetingController extends Controller
             }
         });
 
-        $this->workflow->submitDirectoratePreparation($meeting, $user, $request->input('note'));
+        $submitResult = $this->workflow->submitDirectoratePreparation($meeting, $user, $request->input('note'));
 
         return $this->successRedirectResponse(
             $request,
             route('meeting.show', $meeting),
-            $meeting->isDirektoratType()
-                ? 'Persiapan rapat direktorat berhasil disubmit untuk approval.'
-                : 'Koordinasi rapat berhasil disubmit untuk approval EO + DD Direktorat.'
+            (string) ($submitResult['message'] ?? $submitResult['success_message'] ?? 'Koordinasi rapat berhasil disubmit.'),
+            (string) ($submitResult['message_type'] ?? 'success')
         );
     }
 
@@ -756,6 +869,9 @@ class MeetingController extends Controller
     public function saveMinutes(Request $request, Meeting $meeting)
     {
         $this->authorizeUpdate();
+        $user = Auth::user();
+        $this->authorizeMeetingMinutesAction($meeting, $user, 'can_save_minutes');
+
         if ($meeting->isDirektoratType()) {
             return $this->saveDirectorateMinutes($request, $meeting);
         }
@@ -791,7 +907,6 @@ class MeetingController extends Controller
             'decisions.*.status' => ['nullable', Rule::in($this->allDecisionStatuses())],
         ]);
 
-        $user = Auth::user();
         $shouldSyncMinutesAgendas = $request->has('minutes_agendas_present');
         $minutesAgendaRows = $shouldSyncMinutesAgendas
             ? collect((array) $request->input('minutes_agendas', []))->values()->all()
@@ -1006,6 +1121,9 @@ class MeetingController extends Controller
     public function finalizeMinutes(Request $request, Meeting $meeting)
     {
         $this->authorizeUpdate();
+        $user = Auth::user();
+        $this->authorizeMeetingMinutesAction($meeting, $user, 'can_finalize_minutes');
+
         $request->validate([
             'final_minutes_file' => [
                 $meeting->isDirektoratType() ? 'nullable' : 'required',
@@ -1016,7 +1134,6 @@ class MeetingController extends Controller
             'note' => ['nullable', 'string'],
         ]);
 
-        $user = Auth::user();
         DB::transaction(function () use ($request, $meeting, $user) {
             $minutes = MeetingMinutes::query()->firstOrNew(['meeting_id' => $meeting->id]);
             $minutes->meeting_id = $meeting->id;
@@ -1048,6 +1165,38 @@ class MeetingController extends Controller
             route('meeting.show', $meeting),
             $successMessage
         );
+    }
+
+    private function resolveMeetingPermissionFlags(Meeting $meeting, ?User $user): array
+    {
+        $approvals = Approval::query()
+            ->where('approvable_type', Meeting::class)
+            ->where('approvable_id', $meeting->id)
+            ->with(['actor.directorate', 'actor.position'])
+            ->orderByDesc('acted_at')
+            ->orderByDesc('created_at')
+            ->get();
+
+        return $this->permissionService->meetingDetailFlags($meeting, $approvals, $user);
+    }
+
+    private function authorizeMeetingMinutesAction(Meeting $meeting, User $user, string $abilityKey): void
+    {
+        $permissionFlags = $this->resolveMeetingPermissionFlags($meeting, $user);
+        if ((bool) ($permissionFlags[$abilityKey] ?? false)) {
+            return;
+        }
+
+        $message = match ($abilityKey) {
+            'can_finalize_minutes' => $meeting->isDirektoratType()
+                ? 'Finalisasi notulen rapat direktorat hanya untuk user assigned atau administrator pada status saat ini.'
+                : 'Anda tidak memiliki akses finalisasi notulen meeting pada status saat ini.',
+            default => $meeting->isDirektoratType()
+                ? 'Input notulen rapat direktorat hanya untuk user assigned atau administrator pada status saat ini.'
+                : 'Anda tidak memiliki akses input notulen meeting pada status saat ini.',
+        };
+
+        abort(403, $message);
     }
 
     private function saveDirectorateMinutes(Request $request, Meeting $meeting)
@@ -1228,8 +1377,8 @@ class MeetingController extends Controller
             : null;
         $agenda = $agendaId
             ? MeetingAgenda::query()
-                ->where('meeting_id', $meeting->id)
-                ->find($agendaId)
+            ->where('meeting_id', $meeting->id)
+            ->find($agendaId)
             : null;
 
         $picUserId = isset($rowPayload['pic_user_id']) && $rowPayload['pic_user_id'] !== ''
@@ -1275,8 +1424,8 @@ class MeetingController extends Controller
             : null;
         $existingDecision = $decisionId
             ? MeetingDecision::query()
-                ->where('meeting_id', $meeting->id)
-                ->find($decisionId)
+            ->where('meeting_id', $meeting->id)
+            ->find($decisionId)
             : null;
         if (!$existingDecision) {
             $existingDecision = MeetingDecision::query()
@@ -1445,8 +1594,7 @@ class MeetingController extends Controller
     private function normalizeMinutesAgendaDecisionStatus(
         string $status,
         string $defaultStatus = MeetingDecision::STATUS_IN_PROGRESS
-    ): string
-    {
+    ): string {
         $status = trim($status);
         if ($status === '') {
             return $defaultStatus;
@@ -1645,6 +1793,8 @@ class MeetingController extends Controller
             'agendas.*.description' => ['nullable', 'string'],
             'agendas.*.owner_directorate_id' => ['nullable', 'exists:corsec_directorates,id'],
             'agendas.*.pic_user_id' => ['nullable', 'exists:users,id'],
+            'escalation_decision_ids' => ['nullable', 'array'],
+            'escalation_decision_ids.*' => ['nullable', 'integer', 'exists:corsec_meeting_decisions,id'],
             'submit_for_approval' => ['nullable', 'boolean'],
             'submit_note' => ['nullable', 'string'],
         ]);
@@ -1683,6 +1833,48 @@ class MeetingController extends Controller
 
         if (!Meeting::isDirektoratTypeCode($meetingType)) {
             $this->ensureNonDirektoratAutoPicUsersAvailable();
+        }
+
+        $payload['escalation_decision_ids'] = collect((array) ($payload['escalation_decision_ids'] ?? []))
+            ->filter(fn($id) => $id !== null && $id !== '')
+            ->map(fn($id) => (int) $id)
+            ->filter(fn($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($this->isMancommMeetingTypeCode($meetingType) && !empty($payload['escalation_decision_ids'])) {
+            $participantDirectorateIds = $this->expandParticipantDirectorateIds((array) ($payload['participants'] ?? []))
+                ->merge($this->resolveMandatoryDirectorateIds())
+                ->filter()
+                ->map(fn($id) => (int) $id)
+                ->unique()
+                ->values();
+
+            $selectedEscalationDecisions = $this->mancommEscalationDecisionBacklogQuery()
+                ->whereIn('id', $payload['escalation_decision_ids'])
+                ->get(['id', 'owner_directorate_id']);
+
+            if ($selectedEscalationDecisions->count() !== count($payload['escalation_decision_ids'])) {
+                throw ValidationException::withMessages([
+                    'escalation_decision_ids' => 'Sebagian agenda eskalasi sudah tidak valid atau tidak lagi open di backlog direktorat.',
+                ]);
+            }
+
+            $invalidDirectorateEscalations = $selectedEscalationDecisions
+                ->filter(function (MeetingDecision $decision) use ($participantDirectorateIds) {
+                    return !$participantDirectorateIds->contains((int) ($decision->owner_directorate_id ?? 0));
+                });
+
+            if ($invalidDirectorateEscalations->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'escalation_decision_ids' => 'Agenda eskalasi mancomm harus berasal dari direktorat yang sudah dipilih sebagai peserta rapat.',
+                ]);
+            }
+        }
+
+        if (!$this->isMancommMeetingTypeCode($meetingType)) {
+            $payload['escalation_decision_ids'] = [];
         }
 
         return $payload;
@@ -1760,8 +1952,8 @@ class MeetingController extends Controller
         $participantUsers = $cleanUserIds->isEmpty()
             ? collect()
             : User::query()
-                ->whereIn('id', $cleanUserIds->all())
-                ->get(['id', 'directorate_id']);
+            ->whereIn('id', $cleanUserIds->all())
+            ->get(['id', 'directorate_id']);
 
         MeetingParticipant::query()->where('meeting_id', $meeting->id)->delete();
         foreach ($cleanDirectorateIds as $directorateId) {
@@ -1784,12 +1976,7 @@ class MeetingController extends Controller
 
     private function appendParticipants(Meeting $meeting, array $participantIds, User $user, string $meetingType): void
     {
-        $cleanDirectorateIds = collect($participantIds)
-            ->filter()
-            ->map(fn($id) => (int) $id)
-            ->filter(fn($id) => $id > 0)
-            ->unique()
-            ->values();
+        $cleanDirectorateIds = $this->expandParticipantDirectorateIds($participantIds);
         $mandatoryDirectorateIds = collect($this->resolveMandatoryDirectorateIds())
             ->filter()
             ->map(fn($id) => (int) $id)
@@ -1892,6 +2079,16 @@ class MeetingController extends Controller
     {
         $label = preg_replace('/\s+/', ' ', trim($directorate->displayName()));
         return strtolower((string) $label);
+    }
+
+    private function expandDirectorateVisibilityIds(?int $directorateId): Collection
+    {
+        $directorateId = (int) ($directorateId ?? 0);
+        if ($directorateId <= 0) {
+            return collect();
+        }
+
+        return $this->expandParticipantDirectorateIds([$directorateId]);
     }
 
     private function resolveMandatoryDirectorateIds(): array
@@ -2166,6 +2363,79 @@ class MeetingController extends Controller
         }
     }
 
+    private function syncOptionalMancommEscalationAgendas(Meeting $meeting, string $meetingType, array $decisionIds): void
+    {
+        if (
+            !$this->isMancommMeetingTypeCode($meetingType)
+            || !Schema::hasTable('corsec_meeting_agendas')
+            || !Schema::hasColumn('corsec_meeting_agendas', 'source_decision_id')
+        ) {
+            return;
+        }
+
+        MeetingAgenda::query()
+            ->where('meeting_id', $meeting->id)
+            ->whereNotNull('source_decision_id')
+            ->whereHas('sourceDecision.meeting', function ($query) {
+                $query->where('meeting_type', Meeting::TYPE_DIREKTORAT);
+            })
+            ->delete();
+
+        $selectedDecisionIds = collect($decisionIds)
+            ->filter(fn($id) => $id !== null && $id !== '')
+            ->map(fn($id) => (int) $id)
+            ->filter(fn($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($selectedDecisionIds->isEmpty()) {
+            return;
+        }
+
+        $sourceDecisions = $this->mancommEscalationDecisionBacklogQuery()
+            ->whereIn('id', $selectedDecisionIds->all())
+            ->with(['meeting:id,uuid,title,meeting_type,meeting_at', 'ownerDirectorate', 'picUser'])
+            ->orderByRaw('CASE WHEN target_date IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('target_date')
+            ->orderBy('id')
+            ->get();
+
+        if ($sourceDecisions->count() !== $selectedDecisionIds->count()) {
+            throw ValidationException::withMessages([
+                'escalation_decision_ids' => 'Sebagian agenda eskalasi mancomm tidak lagi tersedia untuk dipilih.',
+            ]);
+        }
+
+        $nextOrder = (int) MeetingAgenda::query()->where('meeting_id', $meeting->id)->max('order_no');
+        $nextOrder = $nextOrder > 0 ? $nextOrder + 1 : 1;
+
+        foreach ($sourceDecisions as $sourceDecision) {
+            $sourceMeetingTitle = trim((string) ($sourceDecision->meeting?->title ?? ''));
+            $sourceDecisionKey = trim((string) ($sourceDecision->issue_key ?: $sourceDecision->decision_key));
+
+            $titleParts = collect([
+                $sourceDecisionKey !== '' ? '[' . $sourceDecisionKey . ']' : null,
+                trim((string) $sourceDecision->decision_text),
+            ])->filter();
+
+            $descriptionParts = collect([
+                'Agenda eskalasi opsional dari rapat direktorat',
+                $sourceMeetingTitle !== '' ? 'Sumber: ' . $sourceMeetingTitle : null,
+                $sourceDecision->target_date ? 'Target: ' . $sourceDecision->target_date->format('d/m/Y') : null,
+            ])->filter();
+
+            MeetingAgenda::create([
+                'meeting_id' => $meeting->id,
+                'order_no' => $nextOrder++,
+                'title' => $titleParts->implode(' '),
+                'description' => $descriptionParts->implode(' | ') ?: null,
+                'owner_directorate_id' => $sourceDecision->owner_directorate_id,
+                'pic_user_id' => $sourceDecision->pic_user_id,
+                'source_decision_id' => $sourceDecision->id,
+            ]);
+        }
+    }
+
     private function storeMeetingMaterials(Meeting $meeting, array $files, User $user, ?int $agendaId = null): void
     {
         foreach ($files as $file) {
@@ -2212,7 +2482,8 @@ class MeetingController extends Controller
         }
 
         $directorateId = (int) ($user->directorate_id ?? 0);
-        return $query->where(function ($w) use ($user, $directorateId) {
+        $visibilityDirectorateIds = $this->expandDirectorateVisibilityIds($directorateId);
+        return $query->where(function ($w) use ($user, $directorateId, $visibilityDirectorateIds) {
             $w->where('created_by', $user->id);
             $w->orWhereHas('participants', function ($q) use ($user) {
                 $q->where('user_id', (int) $user->id);
@@ -2224,14 +2495,15 @@ class MeetingController extends Controller
                 $q->where('pic_user_id', (int) $user->id);
             });
             if ($directorateId > 0) {
-                $w->orWhereHas('participants', function ($q) use ($directorateId) {
-                    $q->where('directorate_id', $directorateId);
+                $ids = $visibilityDirectorateIds->isNotEmpty() ? $visibilityDirectorateIds->all() : [$directorateId];
+                $w->orWhereHas('participants', function ($q) use ($ids) {
+                    $q->whereIn('directorate_id', $ids);
                 });
-                $w->orWhereHas('agendas', function ($q) use ($directorateId) {
-                    $q->where('owner_directorate_id', $directorateId);
+                $w->orWhereHas('agendas', function ($q) use ($ids) {
+                    $q->whereIn('owner_directorate_id', $ids);
                 });
-                $w->orWhereHas('decisions', function ($q) use ($directorateId) {
-                    $q->where('owner_directorate_id', $directorateId);
+                $w->orWhereHas('decisions', function ($q) use ($ids) {
+                    $q->whereIn('owner_directorate_id', $ids);
                 });
             }
         });
@@ -2256,16 +2528,19 @@ class MeetingController extends Controller
             return false;
         }
 
-        if ($meeting->participants()->where('directorate_id', $directorateId)->exists()) {
+        $visibilityDirectorateIds = $this->expandDirectorateVisibilityIds($directorateId);
+        $ids = $visibilityDirectorateIds->isNotEmpty() ? $visibilityDirectorateIds->all() : [$directorateId];
+
+        if ($meeting->participants()->whereIn('directorate_id', $ids)->exists()) {
             return true;
         }
 
-        if ($meeting->agendas()->where('owner_directorate_id', $directorateId)->exists()) {
+        if ($meeting->agendas()->whereIn('owner_directorate_id', $ids)->exists()) {
             return true;
         }
 
         return $meeting->decisions()
-            ->where('owner_directorate_id', $directorateId)
+            ->whereIn('owner_directorate_id', $ids)
             ->exists();
     }
 
@@ -2342,6 +2617,198 @@ class MeetingController extends Controller
         return $meeting->participants()->where('user_id', (int) $user->id)->exists()
             || $meeting->agendas()->where('pic_user_id', (int) $user->id)->exists()
             || $meeting->decisions()->where('pic_user_id', (int) $user->id)->exists();
+    }
+
+    private function canUploadMeetingAgendaMaterial(MeetingAgenda $agenda, User $user): bool
+    {
+        if ($user->hasRole('administrator')) {
+            return true;
+        }
+
+        return (int) ($agenda->pic_user_id ?? 0) > 0
+            && (int) ($agenda->pic_user_id ?? 0) === (int) $user->id;
+    }
+
+    private function materialAgendaOptionsForUser(Meeting $meeting, User $user): Collection
+    {
+        $meeting->loadMissing(['agendas.sourceDecision', 'agendas.picUser']);
+
+        return $meeting->agendas
+            ->filter(fn(MeetingAgenda $agenda) => $this->canUploadMeetingAgendaMaterial($agenda, $user))
+            ->sortBy(function (MeetingAgenda $agenda) {
+                return (int) ($agenda->order_no ?? 0);
+            })
+            ->values();
+    }
+
+    private function canOpenPresentationMode(Meeting $meeting): bool
+    {
+        if ((string) ($meeting->status ?? '') !== Meeting::STATUS_DATA_TERKIRIM) {
+            return false;
+        }
+
+        $hasMinutes = $meeting->relationLoaded('minutes')
+            ? $meeting->minutes !== null
+            : $meeting->minutes()->exists();
+
+        if ($hasMinutes) {
+            return false;
+        }
+
+        return $meeting->relationLoaded('materials')
+            ? $meeting->materials->isNotEmpty()
+            : $meeting->materials()->exists();
+    }
+
+    private function buildMeetingPresentationSlides(Meeting $meeting): array
+    {
+        $slides = [];
+        $runningIndex = 1;
+
+        $agendas = $meeting->agendas
+            ->sortBy(fn(MeetingAgenda $agenda) => (int) ($agenda->order_no ?? 0))
+            ->values();
+
+        foreach ($agendas as $agendaIndex => $agenda) {
+            $agendaNo = (int) ($agenda->order_no ?? ($agendaIndex + 1));
+
+            $materials = $agenda->materials
+                ->filter(function (MeetingMaterial $material) {
+                    return $material->attachment && filled($material->attachment->path);
+                })
+                ->sortBy(fn(MeetingMaterial $material) => (int) $material->id)
+                ->map(function (MeetingMaterial $material) use ($meeting) {
+                    $attachment = $material->attachment;
+                    $materialName = (string) ($attachment->original_name ?: $attachment->file_name ?: 'Bahan Rapat');
+                    $viewerType = $this->resolvePresentationViewerType(
+                        (string) ($attachment->mime ?? ''),
+                        $materialName
+                    );
+                    $requestUrl = rtrim((string) request()->url(), '/');
+                    $materialUrl = preg_replace(
+                        '#/persentation$#',
+                        '/materials/' . $material->getKey() . '/file',
+                        $requestUrl
+                    );
+
+                    return [
+                        'material_name' => $materialName,
+                        'material_url' => is_string($materialUrl) && $materialUrl !== ''
+                            ? $materialUrl
+                            : route('meeting.material.file', [$meeting, $material]),
+                        'material_mime' => (string) ($attachment->mime ?? ''),
+                        'viewer_type' => $viewerType,
+                        'viewer_label' => $this->resolvePresentationViewerLabel($viewerType),
+                        'file_extension' => Str::upper(pathinfo($materialName, PATHINFO_EXTENSION)),
+                        'uploaded_at' => optional($material->uploaded_at)->format('d/m/Y H:i'),
+                    ];
+                })
+                ->values();
+
+            $inlineMaterialCount = $materials
+                ->whereIn('viewer_type', ['image', 'pdf'])
+                ->count();
+
+            $slides[] = [
+                'index' => $runningIndex,
+                'slide_type' => 'agenda',
+                'slide_label' => 'Pembuka',
+                'slide_caption' => 'Ringkasan agenda dan urutan bahan',
+                'agenda_no' => $agendaNo,
+                'agenda_title' => (string) ($agenda->title ?? '-'),
+                'agenda_description' => trim((string) ($agenda->description ?? '')),
+                'agenda_owner' => $agenda->ownerDirectorate?->displayName(),
+                'agenda_pic' => $agenda->picUser?->name,
+                'source_meeting' => $agenda->sourceDecision?->meeting?->title,
+                'source_reference' => $agenda->sourceDecision?->issue_key ?: $agenda->sourceDecision?->decision_key,
+                'agenda_material_count' => $materials->count(),
+                'agenda_inline_material_count' => $inlineMaterialCount,
+                'material_no' => null,
+                'material_name' => null,
+                'material_url' => null,
+                'material_mime' => null,
+                'viewer_type' => 'agenda',
+                'viewer_label' => 'Agenda',
+                'file_extension' => null,
+                'uploaded_at' => null,
+            ];
+
+            $runningIndex++;
+
+            foreach ($materials as $materialIndex => $materialMeta) {
+                $slides[] = [
+                    'index' => $runningIndex,
+                    'slide_type' => 'material',
+                    'slide_label' => 'Bahan ' . ($materialIndex + 1),
+                    'slide_caption' => $materialMeta['material_name'],
+                    'agenda_no' => $agendaNo,
+                    'agenda_title' => (string) ($agenda->title ?? '-'),
+                    'agenda_description' => trim((string) ($agenda->description ?? '')),
+                    'agenda_owner' => $agenda->ownerDirectorate?->displayName(),
+                    'agenda_pic' => $agenda->picUser?->name,
+                    'source_meeting' => $agenda->sourceDecision?->meeting?->title,
+                    'source_reference' => $agenda->sourceDecision?->issue_key ?: $agenda->sourceDecision?->decision_key,
+                    'agenda_material_count' => $materials->count(),
+                    'agenda_inline_material_count' => $inlineMaterialCount,
+                    'material_no' => $materialIndex + 1,
+                    'material_name' => $materialMeta['material_name'],
+                    'material_url' => $materialMeta['material_url'],
+                    'material_mime' => $materialMeta['material_mime'],
+                    'viewer_type' => $materialMeta['viewer_type'],
+                    'viewer_label' => $materialMeta['viewer_label'],
+                    'file_extension' => $materialMeta['file_extension'] ?: null,
+                    'uploaded_at' => $materialMeta['uploaded_at'],
+                ];
+
+                $runningIndex++;
+            }
+        }
+
+        return $slides;
+    }
+
+    private function buildMeetingPresentationAgendaGroups(array $slides): array
+    {
+        return collect($slides)
+            ->groupBy(fn(array $slide) => 'agenda-' . (int) ($slide['agenda_no'] ?? 0))
+            ->map(function (Collection $group) {
+                $firstSlide = $group->first();
+
+                return [
+                    'agenda_no' => (int) ($firstSlide['agenda_no'] ?? 0),
+                    'agenda_title' => (string) ($firstSlide['agenda_title'] ?? '-'),
+                    'slide_count' => $group->count(),
+                    'material_count' => $group->where('slide_type', 'material')->count(),
+                    'slides' => $group->values()->all(),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function resolvePresentationViewerType(string $mime, string $fileName): string
+    {
+        $normalizedMime = Str::lower(trim($mime));
+        $extension = Str::lower(pathinfo($fileName, PATHINFO_EXTENSION));
+
+        if (Str::startsWith($normalizedMime, 'image/')) {
+            return 'image';
+        }
+
+        if ($normalizedMime === 'application/pdf' || $extension === 'pdf') {
+            return 'pdf';
+        }
+
+        return 'download';
+    }
+
+    private function resolvePresentationViewerLabel(string $viewerType): string
+    {
+        return match ($viewerType) {
+            'image' => 'Image',
+            'pdf' => 'PDF',
+            default => 'Open File',
+        };
     }
 
     private function resolveOwnerDirectorateId(?int $ownerDirectorateId, ?int $picUserId): ?int
@@ -2493,6 +2960,19 @@ class MeetingController extends Controller
             ->get();
     }
 
+    private function mancommEscalationDecisionBacklogQuery()
+    {
+        return MeetingDecision::query()
+            ->whereIn('id', MeetingDecision::query()
+                ->selectRaw('MAX(corsec_meeting_decisions.id)')
+                ->groupBy(DB::raw('COALESCE(root_decision_id, id)')))
+            ->whereNotNull('owner_directorate_id')
+            ->whereIn('status', $this->openDecisionStatuses())
+            ->whereHas('meeting', function ($query) {
+                $query->where('meeting_type', Meeting::TYPE_DIREKTORAT);
+            });
+    }
+
     private function meetingBacklogDirectorateIds(Meeting $meeting): \Illuminate\Support\Collection
     {
         $participantDirectorateIds = MeetingParticipant::query()
@@ -2520,6 +3000,11 @@ class MeetingController extends Controller
         return $participantDirectorateIds
             ->reject(fn($id) => $mandatoryDirectorateIds->contains((int) $id))
             ->values();
+    }
+
+    private function isMancommMeetingTypeCode(?string $meetingType): bool
+    {
+        return Str::lower(trim((string) $meetingType)) === Meeting::TYPE_MANCOMM;
     }
 
     private function applyTabulationFilters($query, Request $request): void
@@ -2845,6 +3330,7 @@ class MeetingController extends Controller
             'canFinalizeMinutes' => (bool) ($permissionFlags['can_finalize_minutes'] ?? false),
             'canInputFollowup' => (bool) ($permissionFlags['can_input_followup'] ?? false),
             'canCompleteFollowup' => (bool) ($permissionFlags['can_complete_followup'] ?? false),
+            'canOpenPresentationMode' => $this->canOpenPresentationMode($meeting),
             'decisionCanUpdateById' => $meeting->decisions
                 ->mapWithKeys(function (MeetingDecision $decision) use ($updatableDecisionIds) {
                     return [
@@ -2899,7 +3385,7 @@ class MeetingController extends Controller
         if ($meeting->isDirektoratType()) {
             return [
                 'card_title' => 'Persiapan Rapat dan Distribusi Bahan',
-                'helper_text' => 'PIC direktorat melengkapi bahan, peserta tambahan, dan agenda tambahan sebelum lanjut ke approval.',
+                'helper_text' => 'PIC direktorat melengkapi bahan, peserta tambahan, dan agenda tambahan. Tahap berikutnya hanya bisa lanjut jika seluruh agenda sudah memiliki PIC user dan bahan rapat. Flow approval mengikuti posisi PIC user: Deputy Director langsung terkirim, Executive Officer cukup approval DD, selain itu approval EO + DD Direktorat.',
                 'note_label' => 'Catatan Direktorat (Opsional)',
                 'submit_label' => 'Submit Persiapan Direktorat',
             ];
@@ -2907,7 +3393,7 @@ class MeetingController extends Controller
 
         return [
             'card_title' => 'Koordinasi Unit Rapat dan Upload Bahan',
-            'helper_text' => 'User dari direktorat terkait mengunggah bahan rapat pada tahap ini. Setelah koordinasi disubmit, flow lanjut ke approval EO + DD Direktorat sebelum pemaparan dan notulen oleh Corporate Secretary.',
+            'helper_text' => 'User dari direktorat terkait mengunggah bahan rapat pada tahap ini. Tahap berikutnya hanya bisa lanjut jika seluruh agenda sudah memiliki PIC user dan bahan rapat. Flow approval mengikuti posisi PIC user: Deputy Director langsung terkirim, Executive Officer cukup approval DD Direktorat, selain itu approval EO + DD Direktorat sebelum pemaparan dan notulen oleh Corporate Secretary.',
             'note_label' => 'Catatan Koordinasi Unit (Opsional)',
             'submit_label' => 'Submit Koordinasi Unit',
         ];
@@ -2986,10 +3472,10 @@ class MeetingController extends Controller
     {
         return [
             Meeting::STATUS_DRAFT => 'Draft Jadwal Rapat',
-            Meeting::STATUS_WAITING_CORSEC_APPROVAL => 'Approval EO Corp Affair',
+            Meeting::STATUS_WAITING_CORSEC_APPROVAL => 'Corporate Secretary',
             Meeting::STATUS_JADWAL_TERKIRIM => 'Jadwal Terkirim',
             Meeting::STATUS_PENDING_DIREKTORAT => 'Koordinasi Unit Rapat',
-            Meeting::STATUS_WAITING_DIREKTORAT_APPROVAL => 'Approval EO + DD Direktorat',
+            Meeting::STATUS_WAITING_DIREKTORAT_APPROVAL => 'Approval Direktorat',
             Meeting::STATUS_DATA_TERKIRIM => 'Data/Bahan Terkirim',
             Meeting::STATUS_PROSES_PEMBUATAN_NOTULEN => 'Input Notulen + Tindaklanjut',
             Meeting::STATUS_PROSES_SIRKULASI_TANDATANGAN => 'Sirkulasi Tandatangan',
@@ -3216,20 +3702,25 @@ class MeetingController extends Controller
         }
     }
 
-    private function successRedirectResponse(Request $request, string $redirectUrl, string $message)
-    {
+    private function successRedirectResponse(
+        Request $request,
+        string $redirectUrl,
+        string $message,
+        string $messageType = 'success'
+    ) {
         if ($request->expectsJson() || $request->ajax()) {
             return response()->json([
-                'success' => true,
+                'success' => $messageType !== 'error',
                 'message' => $message,
+                'message_type' => $messageType,
                 'redirect_url' => $redirectUrl,
             ]);
         }
 
-        return redirect()->to($redirectUrl)->with('success', $message);
+        return redirect()->to($redirectUrl)->with($messageType, $message);
     }
 
-    private function meetingFormOptions(): array
+    private function meetingFormOptions(?Meeting $meeting = null): array
     {
         $directorates = $this->meetingDirectoratesCollection();
 
@@ -3247,10 +3738,50 @@ class MeetingController extends Controller
                 ->get(['id', 'name', 'directorate_id', 'position_id']);
         });
 
+        $selectedEscalationDecisionIds = $meeting
+            ? MeetingAgenda::query()
+            ->where('meeting_id', $meeting->id)
+            ->whereNotNull('source_decision_id')
+            ->pluck('source_decision_id')
+            ->filter()
+            ->map(fn($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all()
+            : [];
+
+        $escalationDecisionOptions = $this->mancommEscalationDecisionBacklogQuery()
+            ->when(!empty($selectedEscalationDecisionIds), function ($query) use ($selectedEscalationDecisionIds) {
+                $query->orWhereIn('id', $selectedEscalationDecisionIds);
+            })
+            ->with(['meeting:id,uuid,title,meeting_type,meeting_at', 'ownerDirectorate', 'picUser'])
+            ->orderByRaw('CASE WHEN target_date IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('target_date')
+            ->orderByDesc('id')
+            ->limit(200)
+            ->get()
+            ->map(function (MeetingDecision $decision) {
+                return [
+                    'id' => (int) $decision->id,
+                    'issue_key' => (string) ($decision->issue_key ?? ''),
+                    'decision_key' => (string) ($decision->decision_key ?? ''),
+                    'decision_text' => trim((string) ($decision->decision_text ?? '')),
+                    'owner_directorate_id' => (int) ($decision->owner_directorate_id ?? 0),
+                    'owner_directorate_name' => (string) ($decision->ownerDirectorate?->displayName() ?? '-'),
+                    'pic_user_name' => (string) ($decision->picUser?->name ?? '-'),
+                    'source_meeting_title' => (string) ($decision->meeting?->title ?? '-'),
+                    'source_meeting_at' => $decision->meeting?->meeting_at?->format('d/m/Y H:i'),
+                    'target_date' => $decision->target_date?->format('d/m/Y'),
+                    'status' => (string) ($decision->status ?? ''),
+                ];
+            })
+            ->values();
+
         return [
             'directorates' => $directorates,
             'users' => $users,
             'meetingPicUsers' => $meetingPicUsers,
+            'escalationDecisionOptions' => $escalationDecisionOptions,
         ];
     }
 

@@ -5,6 +5,44 @@
 @endsection
 
 @section('content')
+    @php
+        $additionalParticipantDirectorateOptions = $directorates
+            ->filter(function ($directorate) {
+                return trim((string) $directorate->displayName()) !== '';
+            })
+            ->groupBy(function ($directorate) {
+                return strtolower(preg_replace('/\s+/', ' ', trim((string) $directorate->displayName())));
+            })
+            ->map(function ($group) {
+                $primaryDirectorate = $group->first();
+
+                return [
+                    'id' => (int) $primaryDirectorate->id,
+                    'label' => preg_replace('/\s+/', ' ', trim((string) $primaryDirectorate->displayName())),
+                    'member_count' => $group->count(),
+                    'member_ids' => $group->pluck('id')->map(fn($id) => (int) $id)->values()->all(),
+                ];
+            })
+            ->values();
+
+        $additionalParticipantSelectionMap = $additionalParticipantDirectorateOptions
+            ->flatMap(function (array $option) {
+                return collect($option['member_ids'] ?? [])->mapWithKeys(
+                    fn($memberId) => [(string) $memberId => (string) $option['id']],
+                );
+            })
+            ->all();
+
+        $selectedAdditionalParticipantIds = collect(old('additional_participants', []))
+            ->filter(fn($id) => $id !== null && $id !== '')
+            ->map(function ($id) use ($additionalParticipantSelectionMap) {
+                return (string) ($additionalParticipantSelectionMap[(string) $id] ?? $id);
+            })
+            ->unique()
+            ->values()
+            ->all();
+    @endphp
+
     <div class="grid gap-5 lg:gap-7.5">
         @if ($errors->any())
             @foreach ($errors->all() as $error)
@@ -36,6 +74,12 @@
                     <a href="{{ route('report.index', ['module' => 'meeting']) }}" class="btn btn-sm btn-warning">
                         Tabulasi
                     </a>
+                    @if ($canOpenPresentationMode)
+                        <a href="{{ route('meeting.presentation', $meeting) }}" class="btn btn-sm btn-primary"
+                            target="_blank" rel="noopener">
+                            Mode Presentasi
+                        </a>
+                    @endif
                     @if ($canEdit)
                         <a href="{{ route('meeting.edit', $meeting) }}" class="btn btn-sm btn-info">Edit</a>
                     @endif
@@ -185,7 +229,7 @@
                                                 <div class="font-medium">
                                                     {{ $agenda->title }}
                                                     @if ($agenda->sourceDecision)
-                                                        <span class="badge badge-light-info ms-2">Agenda Sistem</span>
+                                                        <span class="badge badge-light-info ms-2">Agenda Relasi</span>
                                                     @endif
                                                 </div>
                                                 @if ($agenda->description)
@@ -257,7 +301,7 @@
                                         <td>
                                             @if ($material->attachment)
                                                 <a class="text-primary hover:underline"
-                                                    href="{{ \Illuminate\Support\Facades\Storage::disk($material->attachment->disk ?? 'public')->url($material->attachment->path) }}"
+                                                    href="{{ rtrim(url()->current(), '/') . '/materials/' . $material->getKey() . '/file' }}"
                                                     target="_blank" rel="noopener">
                                                     {{ $material->attachment->original_name ?? $material->attachment->file_name }}
                                                 </a>
@@ -289,7 +333,7 @@
                         @csrf
                         <div class="flex flex-col">
                             <label class="form-label">Catatan (opsional)</label>
-                            <textarea class="textarea w-full" name="note" rows="3" placeholder="Catatan untuk EO Corp Affair">{{ old('note') }}</textarea>
+                            <textarea class="textarea w-full" name="note" rows="3" placeholder="Catatan untuk Corporate Secretary">{{ old('note') }}</textarea>
                         </div>
                         <div class="flex justify-end">
                             <button type="submit" class="btn btn-primary">Submit Approval</button>
@@ -303,7 +347,7 @@
             @if ($canCorsecApproval)
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">Approval EO Corp Affair</h3>
+                        <h3 class="card-title">Corporate Secretary</h3>
                     </div>
                     <div class="card-body">
                         <form method="POST" action="{{ route('meeting.corsec.approval', $meeting) }}" class="grid gap-4">
@@ -398,16 +442,15 @@
                     <div class="card-header">
                         <h3 class="card-title">{{ $preparationCardTitle }}</h3>
                     </div>
-                    <div class="card-body grid gap-1">
-                        <div class="text-sm text-gray-600 mb-3">
+                    <div class="card-body grid gap-0">
+                        {{-- <div class="text-sm text-gray-600 mb-3">
                             {{ $preparationHelperText }}
-                        </div>
+                        </div> --}}
                         @if ($canMarkPendingDirectorate && $status !== 'pending_direktorat')
                             <form method="POST" action="{{ route('meeting.mark.pending.directorate', $meeting) }}">
                                 @csrf
                                 <div class="flex justify-end">
-                                    <button type="submit" class="btn btn-light-primary">Set Status Pending
-                                        Direktorat</button>
+                                    <button type="submit" class="btn btn-warning">Pending PIC</button>
                                 </div>
                             </form>
                         @endif
@@ -417,10 +460,10 @@
                             @csrf
                             <div class="grid gap-4 md:grid-cols-2">
                                 <div class="flex flex-col">
-                                    <label class="form-label">Relasi Agenda Bahan (Opsional)</label>
+                                    <label class="form-label">Relasi Agenda Bahan</label>
                                     <select class="select" name="material_agenda_id">
                                         <option value="">- Pilih Agenda -</option>
-                                        @foreach ($meeting->agendas as $agenda)
+                                        @foreach ($materialAgendaOptions as $agenda)
                                             <option value="{{ $agenda->id }}"
                                                 {{ (string) old('material_agenda_id') === (string) $agenda->id ? 'selected' : '' }}>
                                                 {{ $agenda->order_no ? 'Agenda #' . $agenda->order_no . ' - ' : '' }}{{ $agenda->title }}
@@ -430,6 +473,10 @@
                                             </option>
                                         @endforeach
                                     </select>
+                                    <div class="text-xs text-gray-500 mt-1">
+                                        Wajib dipilih saat upload bahan rapat agar progress tiap agenda bisa tervalidasi.
+                                        Agenda yang tampil hanya agenda dengan PIC user Anda.
+                                    </div>
                                 </div>
                                 <div class="flex flex-col">
                                     <label class="form-label">Upload Bahan Rapat</label>
@@ -439,13 +486,19 @@
                             </div>
 
                             <div class="border border-gray-200 rounded-xl p-4 grid gap-3">
-                                <div class="font-semibold text-gray-800">Undang Direktorat Tambahan (Opsional)</div>
+                                <div class="font-semibold text-gray-800">Undang Peserta Tambahan (Opsional)</div>
                                 <div class="grid gap-2" style="max-height: 180px; overflow: auto;">
-                                    @foreach ($directorates as $directorate)
+                                    @foreach ($additionalParticipantDirectorateOptions as $directorateOption)
                                         <label class="flex items-center gap-2 text-sm">
                                             <input class="checkbox checkbox-sm" type="checkbox"
-                                                name="additional_participants[]" value="{{ $directorate->id }}">
-                                            <span>{{ $directorate->displayName() }}</span>
+                                                name="additional_participants[]" value="{{ $directorateOption['id'] }}"
+                                                {{ in_array((string) $directorateOption['id'], $selectedAdditionalParticipantIds, true) ? 'checked' : '' }}>
+                                            <span>
+                                                {{ $directorateOption['label'] }}
+                                                @if (($directorateOption['member_count'] ?? 0) > 1)
+                                                    ({{ $directorateOption['member_count'] }} unit)
+                                                @endif
+                                            </span>
                                         </label>
                                     @endforeach
                                 </div>
@@ -529,7 +582,7 @@
             @if ($canDirectorateCheckerApproval || $canDirectorateApproverApproval)
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">Approval EO + DD Direktorat</h3>
+                        <h3 class="card-title">Approval Direktorat</h3>
                     </div>
                     <div class="card-body">
                         <form method="POST" action="{{ route('meeting.directorate.approval', $meeting) }}"
@@ -1767,16 +1820,14 @@
         @if ($canDirectorNote)
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">Komentar Viewer</h3>
+                    <h3 class="card-title">Komentar Direksi</h3>
                 </div>
                 <div class="card-body">
                     <form method="POST" action="{{ route('meeting.director.note', $meeting) }}" class="grid gap-4">
                         @csrf
                         <div class="flex flex-col">
-                            <label class="form-label">Komentar Viewer (Direksi / Sekdir / Corporate Secretary) <span
-                                    class="text-danger">*</span></label>
-                            <textarea class="textarea w-full" name="note" rows="3"
-                                placeholder="Tambahkan komentar viewer..." required></textarea>
+                            <label class="form-label">Komentar Direksi<span class="text-danger">*</span></label>
+                            <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan komentar viewer..." required></textarea>
                         </div>
                         <div class="flex justify-end">
                             <button class="btn btn-primary" type="submit">Simpan Komentar</button>
@@ -1823,7 +1874,16 @@
 
 @push('scripts')
     @php
-        $directorateJsOptions = $directorates->map(fn($d) => ['id' => $d->id, 'name' => $d->displayName()])->values();
+        $directorateJsOptions = $additionalParticipantDirectorateOptions
+            ->map(
+                fn($option) => [
+                    'id' => $option['id'],
+                    'name' =>
+                        $option['label'] .
+                        (($option['member_count'] ?? 0) > 1 ? ' (' . $option['member_count'] . ' unit)' : ''),
+                ],
+            )
+            ->values();
 
         $userJsOptions = $users
             ->map(function ($u) {

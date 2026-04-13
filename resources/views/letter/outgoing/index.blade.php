@@ -313,10 +313,10 @@
 
             const map = {
                 draft: ['badge-light', 'Draft'],
-                waiting_dir_approval: ['badge-warning', 'Approval EO dan DD Direktorat'],
+                waiting_dir_approval: ['badge-warning', 'Approval Direktorat'],
                 compliance_review: ['badge-info', 'Review Kepatuhan'],
                 waiting_compliance_approval: ['badge-warning', 'Approval EO dan DD Kepatuhan'],
-                waiting_verification: ['badge-warning', 'Verifikasi EO Corp Affair'],
+                waiting_verification: ['badge-warning', 'Corporate Secretary'],
                 waiting_final_upload: ['badge-primary', 'Final Upload'],
                 waiting_cancel_approval: ['badge-warning', 'Approval Pembatalan EO Direktorat'],
                 done: ['badge-success', 'Done'],

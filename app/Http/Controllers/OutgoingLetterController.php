@@ -25,6 +25,8 @@ use Modules\Corsec\Models\Sender;
 use Modules\Corsec\Services\CorsecPermissionService;
 use Modules\Corsec\Services\OutgoingLetterWorkflowService;
 
+use function Symfony\Component\Clock\now;
+
 class OutgoingLetterController extends Controller
 {
     public function __construct(
@@ -350,6 +352,10 @@ class OutgoingLetterController extends Controller
     public function store(Request $request)
     {
         $this->authorizeCreate();
+        if ($request->boolean('is_bulk_number_request')) {
+            return $this->storeBulkNumberRequest($request);
+        }
+
         $this->normalizePerihalText($request);
         $submitForApproval = $request->boolean('submit_for_approval', true);
 
@@ -461,11 +467,82 @@ class OutgoingLetterController extends Controller
             return $letter;
         });
 
+        $submitResult = null;
         if ($submitForApproval) {
-            $this->workflow->submit($letter, $user);
+            $submitResult = $this->workflow->submit($letter, $user);
         }
 
-        return redirect()->route('letter.outgoing.show', $letter)->with('success', 'Surat keluar tersimpan.');
+        return redirect()
+            ->route('letter.outgoing.show', $letter)
+            ->with('success', (string) ($submitResult['success_message'] ?? 'Surat keluar tersimpan.'));
+    }
+
+    private function storeBulkNumberRequest(Request $request)
+    {
+        $validated = $request->validate([
+            'letter_type_id' => [
+                'required',
+                Rule::exists('corsec_letter_types', 'id')->where(function ($query) {
+                    $query->where('scope', LetterType::SCOPE_OUT);
+                }),
+            ],
+            'bulk_number_count' => ['required', 'integer', 'min:10'],
+        ]);
+
+        $user = Auth::user();
+        $count = (int) $validated['bulk_number_count'];
+        $letterTypeId = (int) $validated['letter_type_id'];
+        $orderDate = now()->toDateString();
+        $timestampTag = now()->format('YmdHis');
+
+        DB::transaction(function () use ($user, $count, $letterTypeId, $orderDate, $timestampTag) {
+            $this->acquireOutgoingRegistrationLock(
+                $letterTypeId,
+                $this->resolveRegistrationDate($orderDate)->format('Y')
+            );
+
+            for ($index = 1; $index <= $count; $index++) {
+                $letter = OutgoingLetter::created([
+                    'order_date' => $orderDate,
+                    'subject' => sprintf('[BULK REQUEST %s] Draft Surat #%02d', $timestampTag, $index),
+                    'letter_type_id' => $letterTypeId,
+                    'summary' => 'Draft hasil bulk request nomor surat. Lengkapi data melalui menu edit.',
+                    'note' => 'Auto generated dari bulk request nomor surat.',
+                    'need_compliance_review' => false,
+                    'requester_directorate_id' => $user?->directorate_id,
+                    'status' => OutgoingLetter::STATUS_DRAFT,
+                    'number_requested_at' => now(),
+                    'number_requested_by' => $user?->id,
+                    'number_request_note' => 'Bulk request ' . $count . ' nomor surat.',
+                    'created_by' => $user?->id,
+                    'updated_by' => $user?->id,
+                ]);
+
+                $generatedNumber = $this->generateRegistrationNoForPersist(
+                    $letter->id,
+                    $letterTypeId,
+                    $orderDate
+                );
+
+                $letter->update([
+                    'registration_no' => $generatedNumber,
+                    'letter_no' => $generatedNumber,
+                ]);
+            }
+        });
+
+        $message = 'Bulk request ' . $count . ' nomor surat berhasil dibuat sebagai draft.';
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'message' => $message,
+                'redirect_url' => route('letter.outgoing.index'),
+            ]);
+        }
+
+        return redirect()
+            ->route('letter.outgoing.index')
+            ->with('success', $message);
     }
 
     public function show(OutgoingLetter $outgoingLetter)
@@ -601,6 +678,24 @@ class OutgoingLetterController extends Controller
                 ]);
                 $outgoingLetter->update(['draft_attachment_id' => $attachment->id]);
             }
+
+            if ($outgoingLetter->number_requested_at) {
+                if ((int) $request->input('letter_type_id') !== (int) $outgoingLetter->letter_type_id) {
+                    throw ValidationException::withMessages([
+                        'letter_type_id' => 'Jenis surat tidak bisa diubah karena nomor surat sudah direquest.',
+                    ]);
+                }
+
+                if (
+                    $request->filled('order_date') &&
+                    $outgoingLetter->order_date &&
+                    $request->input('order_date') !== $outgoingLetter->order_date->format('Y-m-d')
+                ) {
+                    throw ValidationException::withMessages([
+                        'order_date' => 'Tanggal order tidak bisa diubah karena nomor surat sudah direquest.',
+                    ]);
+                }
+            }
         });
 
         return redirect()->route('letter.outgoing.show', $outgoingLetter)->with('success', 'Surat keluar diupdate.');
@@ -609,8 +704,8 @@ class OutgoingLetterController extends Controller
     public function submit(OutgoingLetter $outgoingLetter)
     {
         $this->authorizeUpdate();
-        $this->workflow->submit($outgoingLetter, Auth::user());
-        return back()->with('success', 'Surat keluar diajukan untuk approval direktorat.');
+        $submitResult = $this->workflow->submit($outgoingLetter, Auth::user());
+        return back()->with('success', (string) ($submitResult['success_message'] ?? 'Surat keluar diajukan untuk approval direktorat.'));
     }
 
     public function cancelRequest(Request $request, OutgoingLetter $outgoingLetter)
@@ -1211,5 +1306,4 @@ class OutgoingLetterController extends Controller
             abort(403, 'Role viewer tidak memiliki akses untuk aksi ini.');
         }
     }
-
 }

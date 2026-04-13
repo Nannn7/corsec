@@ -622,10 +622,10 @@
         @endif
 
         @if ($validationRequested || $incomingLetter->corp_secretary_validated_at)
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Validasi EO Corporate Secretary</h3>
-                </div>
+                <div class="card">
+                    <div class="card-header">
+                    <h3 class="card-title">Corporate Secretary</h3>
+                    </div>
                 <div class="card-body">
                     <div class="grid gap-4">
                         <div class="flex justify-between items-center">
@@ -1145,9 +1145,10 @@
                                                 'EO Direktorat Returned',
                                                 'DD Direktorat Approved',
                                                 'DD Direktorat Returned',
+                                                'Corporate Secretary Approved',
+                                                'Corporate Secretary Returned',
                                                 'EO Corp Affair Approved',
                                                 'EO Corp Affair Returned',
-                                                'Verifikasi EO Corp Affair',
                                             ];
 
                                             foreach ($knownLabels as $known) {
@@ -1214,7 +1215,7 @@
         @if ($canCorsecValidation)
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">Validasi EO Corporate Secretary</h3>
+                    <h3 class="card-title">Corporate Secretary</h3>
                 </div>
                 <div class="card-body">
                     <form method="POST" action="{{ route('letter.incoming.verify.action', $incomingLetter) }}"

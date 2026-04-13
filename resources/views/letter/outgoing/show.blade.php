@@ -24,10 +24,10 @@
         $sortedComments = $sortedComments ?? collect();
         $statusSteps = $permissionFlags['status_steps'] ?? [
             'draft' => 'Draft',
-            'waiting_dir_approval' => 'Approval EO dan DD Direktorat',
+            'waiting_dir_approval' => 'Approval Direktorat',
             'compliance_review' => 'Review Kepatuhan',
             'waiting_compliance_approval' => 'Approval EO dan DD Kepatuhan',
-            'waiting_verification' => 'Verifikasi EO Corp Affair',
+            'waiting_verification' => 'Corporate Secretary',
             'waiting_final_upload' => 'Final Upload',
             'waiting_cancel_approval' => 'Approval Pembatalan EO Direktorat',
             'verified' => 'Done',
@@ -436,7 +436,7 @@
                             class="grid gap-4 js-ajax-form" data-form-type="outgoing-verify">
                             @csrf
                             <div class="text-sm text-gray-500">
-                                Verifikasi EO Corp Affair
+                                Corporate Secretary
                             </div>
                             <div class="flex flex-col">
                                 <label class="form-label">Catatan (opsional)</label>

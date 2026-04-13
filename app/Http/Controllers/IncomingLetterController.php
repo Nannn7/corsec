@@ -966,7 +966,7 @@ class IncomingLetterController extends Controller
             return back()->withErrors(['followup_action' => 'Detail review/new ketentuan wajib diisi.'])->withInput();
         }
 
-        $this->workflow->directorateUpdate(
+        $submitResult = $this->workflow->directorateUpdate(
             incomingLetter: $incomingLetter,
             actor: auth()->user(),
             targetDate: $request->target_date,
@@ -978,7 +978,7 @@ class IncomingLetterController extends Controller
             submitForApproval: $submitForApproval
         );
 
-        return back()->with('success', 'Update tindak lanjut berhasil disimpan.');
+        return back()->with('success', (string) ($submitResult['success_message'] ?? 'Update tindak lanjut berhasil disimpan.'));
     }
 
     public function lookupUserByNik(Request $request)
@@ -1052,7 +1052,7 @@ class IncomingLetterController extends Controller
             note: $request->note
         );
 
-        return back()->with('success', 'Validasi EO Corporate Secretary berhasil diproses.');
+        return back()->with('success', 'Validasi Corporate Secretary berhasil diproses.');
     }
 
     // Direksi catatan

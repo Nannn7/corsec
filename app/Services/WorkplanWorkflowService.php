@@ -13,23 +13,42 @@ use Modules\Corsec\Models\WorkProgram;
 use Modules\Corsec\Models\WorkProgramItem;
 use Modules\Corsec\Models\WorkProgramUpdate;
 use Modules\Corsec\Notifications\CorsecFlowNotification;
+use Modules\Corsec\Support\DirectorateApprovalFlow;
 use Modules\Usermanagement\Models\Position;
 use Modules\Usermanagement\Models\User;
 
 class WorkplanWorkflowService
 {
-    public function submitProgram(WorkProgram $program, User $actor, ?string $note = null): void
+    public function submitProgram(WorkProgram $program, User $actor, ?string $note = null): array
     {
-        DB::transaction(function () use ($program, $actor, $note) {
+        return DB::transaction(function () use ($program, $actor, $note) {
             $pendingApproval = $this->latestPendingApproval($program);
             if ($pendingApproval) {
                 abort(422, 'Masih ada approval Workplan yang belum diproses.');
             }
 
-            $skipCheckerApproval = $this->shouldSkipCheckerForSubmission($actor);
-            $waitingApprovalLabel = $skipCheckerApproval
+            $approvalFlow = DirectorateApprovalFlow::forActor($actor);
+            $waitingApprovalLabel = $approvalFlow === DirectorateApprovalFlow::DD_ONLY
                 ? 'Menunggu approval DD Direktorat'
                 : 'Menunggu approval EO dan DD Direktorat';
+
+            if ($approvalFlow === DirectorateApprovalFlow::NONE) {
+                $program->loadMissing('items');
+                $program->update([
+                    'status' => $this->resolveProgramStatus($program),
+                    'authorized_status' => 'authorized',
+                    'authorized_at' => now(),
+                    'authorized_by' => $actor->id,
+                    'updated_by' => $actor->id,
+                ]);
+
+                $this->notifyProgramOwner($program, $actor, 'Program kerja langsung aktif tanpa approval direktorat karena submitter berposisi Deputy Director.');
+
+                return [
+                    'flow' => $approvalFlow,
+                    'success_message' => 'Program kerja berhasil disubmit. Karena submitter Deputy Director, data langsung aktif tanpa approval direktorat.',
+                ];
+            }
 
             $program->update([
                 'status' => WorkProgram::STATUS_WAITING_DIR_APPROVAL,
@@ -46,12 +65,19 @@ class WorkplanWorkflowService
                 'note' => $this->buildApprovalNote($waitingApprovalLabel, $note),
             ]);
 
-            if ($skipCheckerApproval) {
+            if ($approvalFlow === DirectorateApprovalFlow::DD_ONLY) {
                 $this->notifyDirectorateApprover($program, $actor, 'workplan_dd_approval', 'Workplan menunggu approval DD direktorat.');
-                return;
+                return [
+                    'flow' => $approvalFlow,
+                    'success_message' => 'Program kerja berhasil disubmit untuk approval DD Direktorat.',
+                ];
             }
 
             $this->notifyDirectorateChecker($program, $actor, 'workplan_dir_approval', 'Workplan menunggu approval direktorat.');
+            return [
+                'flow' => $approvalFlow,
+                'success_message' => 'Program kerja berhasil disubmit untuk approval EO + DD Direktorat.',
+            ];
         });
     }
 
@@ -63,15 +89,15 @@ class WorkplanWorkflowService
         ?string $note,
         ?string $revisedTargetDate,
         array $files
-    ): void {
-        DB::transaction(function () use ($item, $actor, $action, $progressPercent, $note, $revisedTargetDate, $files) {
+    ): array {
+        return DB::transaction(function () use ($item, $actor, $action, $progressPercent, $note, $revisedTargetDate, $files) {
             $program = $item->program()->lockForUpdate()->firstOrFail();
             if (!$program) {
                 abort(404, 'Program kerja tidak ditemukan.');
             }
 
-            $skipCheckerApproval = $this->shouldSkipCheckerForSubmission($actor);
-            $waitingApprovalLabel = $skipCheckerApproval
+            $approvalFlow = DirectorateApprovalFlow::forActor($actor);
+            $waitingApprovalLabel = $approvalFlow === DirectorateApprovalFlow::DD_ONLY
                 ? 'Menunggu approval DD Direktorat (Update Program Kerja)'
                 : 'Menunggu approval EO dan DD Direktorat (Update Program Kerja)';
 
@@ -101,6 +127,34 @@ class WorkplanWorkflowService
 
             $this->attachUpdateFiles($update, $files, $actor);
 
+            if ($approvalFlow === DirectorateApprovalFlow::NONE) {
+                $this->applyUpdateAction($update, $item);
+
+                $update->update([
+                    'status' => WorkProgramUpdate::STATUS_APPROVED,
+                    'authorized_status' => 'authorized',
+                    'authorized_at' => now(),
+                    'authorized_by' => $actor->id,
+                ]);
+
+                $program->refresh();
+                $program->loadMissing('items');
+                $program->update([
+                    'status' => $this->resolveProgramStatus($program),
+                    'authorized_status' => 'authorized',
+                    'authorized_at' => now(),
+                    'authorized_by' => $actor->id,
+                    'updated_by' => $actor->id,
+                ]);
+
+                $this->notifyProgramOwner($program, $actor, 'Update program kerja langsung diterapkan tanpa approval direktorat karena submitter berposisi Deputy Director.');
+
+                return [
+                    'flow' => $approvalFlow,
+                    'success_message' => 'Update program kerja berhasil disubmit. Karena submitter Deputy Director, update langsung diterapkan tanpa approval direktorat.',
+                ];
+            }
+
             $program->update([
                 'status' => WorkProgram::STATUS_WAITING_DIR_APPROVAL,
                 'authorized_status' => 'pending',
@@ -116,12 +170,19 @@ class WorkplanWorkflowService
                 'note' => $waitingApprovalLabel,
             ]);
 
-            if ($skipCheckerApproval) {
+            if ($approvalFlow === DirectorateApprovalFlow::DD_ONLY) {
                 $this->notifyDirectorateApprover($program, $actor, 'workplan_update_dd_approval', 'Update workplan menunggu approval DD direktorat.');
-                return;
+                return [
+                    'flow' => $approvalFlow,
+                    'success_message' => 'Update program kerja berhasil disubmit untuk approval DD Direktorat.',
+                ];
             }
 
             $this->notifyDirectorateChecker($program, $actor, 'workplan_update_dir_approval', 'Update workplan menunggu approval direktorat.');
+            return [
+                'flow' => $approvalFlow,
+                'success_message' => 'Update program kerja berhasil disubmit untuk approval EO + DD Direktorat.',
+            ];
         });
     }
 
@@ -316,7 +377,7 @@ class WorkplanWorkflowService
 
     public function canEditProgram(WorkProgram $program, User $user): bool
     {
-        if ($this->isViewerRole($user) || $this->isDeputyDirector($user)) {
+        if ($this->isViewerRole($user)) {
             return false;
         }
 
@@ -352,7 +413,7 @@ class WorkplanWorkflowService
 
     public function canSubmitUpdate(WorkProgram $program, User $user): bool
     {
-        if ($this->isViewerRole($user) || $this->isDeputyDirector($user)) {
+        if ($this->isViewerRole($user)) {
             return false;
         }
 
@@ -444,30 +505,7 @@ class WorkplanWorkflowService
                 continue;
             }
 
-            if ($update->action === WorkProgramUpdate::ACTION_PROGRESS) {
-                $item->update([
-                    'status' => $this->resolveProgressStatus($item->target_date),
-                    'completed_at' => null,
-                ]);
-            } elseif ($update->action === WorkProgramUpdate::ACTION_DONE_ON_TARGET) {
-                $item->update([
-                    'status' => WorkProgramItem::STATUS_DONE_ON_TARGET,
-                    'completed_at' => now(),
-                ]);
-            } elseif ($update->action === WorkProgramUpdate::ACTION_DONE_OVER_TARGET) {
-                $item->update([
-                    'status' => WorkProgramItem::STATUS_DONE_OVER_TARGET,
-                    'completed_at' => now(),
-                ]);
-            } elseif ($update->action === WorkProgramUpdate::ACTION_REVISION) {
-                $targetDate = $update->revised_target_date ?: $item->target_date;
-                $item->update([
-                    'initial_target_date' => $item->initial_target_date ?: $item->target_date,
-                    'target_date' => $targetDate,
-                    'status' => $this->resolveProgressStatus($targetDate),
-                    'completed_at' => null,
-                ]);
-            }
+            $this->applyUpdateAction($update, $item);
 
             $update->update([
                 'status' => WorkProgramUpdate::STATUS_APPROVED,
@@ -538,29 +576,59 @@ class WorkplanWorkflowService
 
     private function shouldSkipCheckerForSubmission(User $actor): bool
     {
-        return $this->isExecutiveOfficer($actor);
+        return DirectorateApprovalFlow::forActor($actor) === DirectorateApprovalFlow::DD_ONLY;
     }
 
     private function requiresCheckerApproval(Approval $pendingApproval): bool
     {
-        $pendingNote = Str::lower((string) $pendingApproval->note);
-        return !Str::startsWith($pendingNote, 'menunggu approval dd direktorat');
+        return DirectorateApprovalFlow::requiresCheckerApproval($pendingApproval);
     }
 
     private function isExecutiveOfficer(User $user): bool
     {
-        $user->loadMissing('position');
-        $positionName = Str::lower(trim((string) ($user->position?->name ?? '')));
-
-        return $positionName !== '' && Str::contains($positionName, 'executive officer');
+        return DirectorateApprovalFlow::isExecutiveOfficer($user);
     }
 
     public function isDeputyDirector(User $user): bool
     {
-        $user->loadMissing('position');
-        $positionName = Str::lower(trim((string) ($user->position?->name ?? '')));
+        return DirectorateApprovalFlow::isDeputyDirector($user);
+    }
 
-        return $positionName !== '' && Str::contains($positionName, 'deputy director');
+    private function applyUpdateAction(WorkProgramUpdate $update, WorkProgramItem $item): void
+    {
+        if ($update->action === WorkProgramUpdate::ACTION_PROGRESS) {
+            $item->update([
+                'status' => $this->resolveProgressStatus($item->target_date),
+                'completed_at' => null,
+            ]);
+            return;
+        }
+
+        if ($update->action === WorkProgramUpdate::ACTION_DONE_ON_TARGET) {
+            $item->update([
+                'status' => WorkProgramItem::STATUS_DONE_ON_TARGET,
+                'completed_at' => now(),
+            ]);
+            return;
+        }
+
+        if ($update->action === WorkProgramUpdate::ACTION_DONE_OVER_TARGET) {
+            $item->update([
+                'status' => WorkProgramItem::STATUS_DONE_OVER_TARGET,
+                'completed_at' => now(),
+            ]);
+            return;
+        }
+
+        if ($update->action === WorkProgramUpdate::ACTION_REVISION) {
+            $targetDate = $update->revised_target_date ?: $item->target_date;
+            $item->update([
+                'initial_target_date' => $item->initial_target_date ?: $item->target_date,
+                'target_date' => $targetDate,
+                'status' => $this->resolveProgressStatus($targetDate),
+                'completed_at' => null,
+            ]);
+        }
     }
 
     private function isAssistantDirectorOrAbove(User $user): bool
