@@ -28,6 +28,7 @@ use Modules\Corsec\Models\Sender;
 use Modules\Corsec\Models\LetterType;
 use Modules\Basicdata\Models\Branch;
 use Modules\Corsec\Notifications\CorsecFlowNotification;
+use Modules\Corsec\Support\UploadRule;
 use Modules\Usermanagement\Models\Position;
 use Modules\Usermanagement\Models\User;
 
@@ -88,7 +89,7 @@ class IncomingLetterController extends Controller
             'circulation_directorate_ids' => ['required', 'array'],
             'circulation_directorate_ids.*' => ['required', 'exists:corsec_directorates,id'],
             'files' => ['required', 'array'],
-            'files.*' => ['file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,xls,xlsx'], // 10MB
+            'files.*' => ['file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png,xls,xlsx'],
         ]);
 
         $user = auth()->user();
@@ -372,7 +373,7 @@ class IncomingLetterController extends Controller
             'register_due_date' => ['nullable', 'date'],
             'circulation_directorate_ids' => ['required', 'array'],
             'circulation_directorate_ids.*' => ['required', 'exists:corsec_directorates,id'],
-            'files.*' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,xls,xlsx'],
+            'files.*' => ['nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png,xls,xlsx'],
         ]);
 
         $user = auth()->user();
@@ -875,7 +876,7 @@ class IncomingLetterController extends Controller
             'followup_meeting_date' => ['nullable', 'date'],
             'followup_meeting_location' => ['nullable', 'string'],
             'followup_response_target_date' => ['nullable', 'date'],
-            'followup_social_material' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
+            'followup_social_material' => ['nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
             'followup_social_note' => ['nullable', 'string'],
             'followup_social_participants' => ['nullable', 'array'],
             'followup_social_participants.*' => ['nullable', 'exists:corsec_directorates,id'],
@@ -902,9 +903,9 @@ class IncomingLetterController extends Controller
 
         if ($submitForApproval && $followupActionInput !== 'response_letter') {
             $rules['evidence_files'] = ['required', 'array', 'min:1'];
-            $rules['evidence_files.*'] = ['file', 'max:10240'];
+            $rules['evidence_files.*'] = ['file', UploadRule::maxRule()];
         } else {
-            $rules['evidence_files.*'] = ['nullable', 'file', 'max:10240'];
+            $rules['evidence_files.*'] = ['nullable', 'file', UploadRule::maxRule()];
         }
 
         $request->validate($rules);

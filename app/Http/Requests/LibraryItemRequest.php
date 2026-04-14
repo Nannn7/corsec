@@ -5,6 +5,7 @@ namespace Modules\Corsec\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Modules\Corsec\Models\LibraryItem;
+use Modules\Corsec\Support\UploadRule;
 
 class LibraryItemRequest extends FormRequest
 {
@@ -15,7 +16,7 @@ class LibraryItemRequest extends FormRequest
 
     public function rules(): array
     {
-        $fileRules = ['nullable', 'file', 'mimes:pdf,doc,docx', 'max:10240'];
+        $fileRules = ['nullable', 'file', 'mimes:pdf,doc,docx', UploadRule::maxRule()];
         if ($this->isMethod('post')) {
             $fileRules[0] = 'required';
         }
@@ -35,7 +36,7 @@ class LibraryItemRequest extends FormRequest
             'file.required' => 'File daftar pustaka wajib diunggah.',
             'file.file' => 'Dokumen yang diunggah tidak valid.',
             'file.mimes' => 'File daftar pustaka hanya boleh berformat PDF, DOC, atau DOCX.',
-            'file.max' => 'Ukuran file maksimal 10 MB.',
+            'file.max' => 'Ukuran file maksimal ' . UploadRule::label() . '.',
         ];
     }
 }

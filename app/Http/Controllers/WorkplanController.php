@@ -24,6 +24,7 @@ use Modules\Corsec\Models\WorkProgramItem;
 use Modules\Corsec\Models\WorkProgramUpdate;
 use Modules\Corsec\Services\CorsecPermissionService;
 use Modules\Corsec\Services\WorkplanWorkflowService;
+use Modules\Corsec\Support\UploadRule;
 use Modules\Usermanagement\Models\User;
 
 class WorkplanController extends Controller
@@ -312,7 +313,7 @@ class WorkplanController extends Controller
             'items.*.target_date' => ['required', 'date'],
             'items.*.description' => ['nullable', 'string'],
             'items.*.note' => ['nullable', 'string'],
-            'items.*.file' => ['required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx'],
+            'items.*.file' => ['required', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx'],
             'submit_for_approval' => ['nullable', 'boolean'],
             'submit_note' => ['nullable', 'string'],
         ]);
@@ -527,7 +528,7 @@ class WorkplanController extends Controller
             'items.*.target_date' => ['required', 'date'],
             'items.*.description' => ['nullable', 'string'],
             'items.*.note' => ['nullable', 'string'],
-            'items.*.file' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx'],
+            'items.*.file' => ['nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx'],
             'submit_for_approval' => ['nullable', 'boolean'],
             'submit_note' => ['nullable', 'string'],
         ]);
@@ -725,7 +726,7 @@ class WorkplanController extends Controller
             'revised_target_date' => ['nullable', 'date'],
             'note' => ['required', 'string'],
             'evidence_files' => ['required', 'array', 'min:1'],
-            'evidence_files.*' => ['file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx'],
+            'evidence_files.*' => ['file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx'],
         ]);
 
         $action = (string) $request->input('action');

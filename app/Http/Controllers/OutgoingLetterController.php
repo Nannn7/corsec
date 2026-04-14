@@ -24,6 +24,7 @@ use Modules\Corsec\Models\OutgoingLetter;
 use Modules\Corsec\Models\Sender;
 use Modules\Corsec\Services\CorsecPermissionService;
 use Modules\Corsec\Services\OutgoingLetterWorkflowService;
+use Modules\Corsec\Support\UploadRule;
 
 use function Symfony\Component\Clock\now;
 
@@ -376,7 +377,7 @@ class OutgoingLetterController extends Controller
             'perihal_incoming_letter_id' => ['nullable', 'exists:corsec_incoming_letters,id'],
             'perihal_text' => ['nullable', 'string', 'max:255'],
             'note' => ['nullable', 'string'],
-            'draft_file' => [$submitForApproval ? 'required' : 'nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
+            'draft_file' => [$submitForApproval ? 'required' : 'nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
         ]);
 
         $user = Auth::user();
@@ -617,7 +618,7 @@ class OutgoingLetterController extends Controller
             'perihal_incoming_letter_id' => ['nullable', 'exists:corsec_incoming_letters,id'],
             'perihal_text' => ['nullable', 'string', 'max:255'],
             'note' => ['nullable', 'string'],
-            'draft_file' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
+            'draft_file' => ['nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
         ]);
 
         $recipientId = $request->input('recipient_id');
@@ -815,7 +816,7 @@ class OutgoingLetterController extends Controller
         }
 
         $request->validate([
-            'compliance_file' => ['required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
+            'compliance_file' => ['required', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
             'note' => ['nullable', 'string'],
         ]);
 
@@ -852,7 +853,7 @@ class OutgoingLetterController extends Controller
         $request->validate([
             'submit_action' => ['nullable', Rule::in(['draft', 'upload'])],
             'final_upload_date' => ['nullable', 'date'],
-            'final_file' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
+            'final_file' => ['nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
         ]);
 
         $submitAction = (string) $request->input('submit_action', 'upload');
@@ -870,7 +871,7 @@ class OutgoingLetterController extends Controller
         }
 
         $request->validate([
-            'final_file' => ['required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
+            'final_file' => ['required', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
         ]);
 
         $file = $request->file('final_file');

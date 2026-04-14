@@ -65,7 +65,8 @@
                             <input class="file-input @error('file') border-danger bg-danger-light @enderror" type="file"
                                 name="file" accept=".pdf,.doc,.docx" {{ isset($libraryItem) ? '' : 'required' }}>
                             <div class="mt-1 text-xs text-gray-500">
-                                Format file yang didukung: PDF, DOC, DOCX. Maksimal 10 MB.
+                                Format file yang didukung: PDF, DOC, DOCX. Maksimal
+                                {{ \Modules\Corsec\Support\UploadRule::label() }}.
                             </div>
                             @error('file')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>

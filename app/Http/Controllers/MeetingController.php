@@ -34,6 +34,7 @@ use Modules\Corsec\Models\Directorate;
 use Modules\Corsec\Models\Approval;
 use Modules\Corsec\Services\CorsecPermissionService;
 use Modules\Corsec\Services\MeetingWorkflowService;
+use Modules\Corsec\Support\UploadRule;
 use Modules\Usermanagement\Models\User;
 
 class MeetingController extends Controller
@@ -734,7 +735,7 @@ class MeetingController extends Controller
             'note' => ['nullable', 'string'],
             'material_agenda_id' => ['nullable', 'exists:corsec_meeting_agendas,id'],
             'material_files' => ['nullable', 'array'],
-            'material_files.*' => ['file', 'max:15360', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx,ppt,pptx'],
+            'material_files.*' => ['file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx,ppt,pptx'],
             'additional_participants' => ['nullable', 'array'],
             'additional_participants.*' => ['nullable', 'exists:corsec_directorates,id'],
             'additional_agendas' => ['nullable', 'array'],
@@ -878,7 +879,7 @@ class MeetingController extends Controller
 
         $request->validate([
             'minutes_text' => ['nullable', 'string'],
-            'minutes_file' => ['nullable', 'file', 'max:15360', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx,ppt,pptx'],
+            'minutes_file' => ['nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx,ppt,pptx'],
             'note' => ['nullable', 'string'],
             'submit_for_signature' => ['nullable', 'boolean'],
             'minutes_agendas' => ['nullable', 'array'],
@@ -890,7 +891,7 @@ class MeetingController extends Controller
             'minutes_agendas.*.owner_directorate_id' => ['nullable', 'exists:corsec_directorates,id'],
             'minutes_agendas.*.pic_user_id' => ['nullable', 'exists:users,id'],
             'minutes_agendas.*.photo_files' => ['nullable', 'array'],
-            'minutes_agendas.*.photo_files.*' => ['file', 'max:10240', 'mimes:jpg,jpeg,png'],
+            'minutes_agendas.*.photo_files.*' => ['file', UploadRule::maxRule(), 'mimes:jpg,jpeg,png'],
             'minutes_agendas.*.decision_id' => ['nullable', 'integer', 'exists:corsec_meeting_decisions,id'],
             'minutes_agendas.*.existing_decision_id' => ['nullable', 'integer', 'exists:corsec_meeting_decisions,id'],
             'minutes_agendas.*.followup_enabled' => ['nullable', 'boolean'],
@@ -1128,7 +1129,7 @@ class MeetingController extends Controller
             'final_minutes_file' => [
                 $meeting->isDirektoratType() ? 'nullable' : 'required',
                 'file',
-                'max:15360',
+                UploadRule::maxRule(),
                 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx,ppt,pptx',
             ],
             'note' => ['nullable', 'string'],
@@ -1203,7 +1204,7 @@ class MeetingController extends Controller
     {
         $request->validate([
             'minutes_text' => ['nullable', 'string'],
-            'minutes_file' => ['nullable', 'file', 'max:15360', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx,ppt,pptx'],
+            'minutes_file' => ['nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx,ppt,pptx'],
             'note' => ['nullable', 'string'],
             'submit_for_signature' => ['nullable', 'boolean'],
             'minutes_agendas' => ['required', 'array', 'min:1'],
@@ -1636,7 +1637,7 @@ class MeetingController extends Controller
             'reason' => ['nullable', 'string'],
             'note' => ['nullable', 'string'],
             'evidence_files' => ['required', 'array', 'min:1'],
-            'evidence_files.*' => ['file', 'max:15360', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx,ppt,pptx'],
+            'evidence_files.*' => ['file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx,ppt,pptx'],
         ]);
 
         if (!$request->boolean('is_on_target') && trim((string) $request->input('reason')) === '') {

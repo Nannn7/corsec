@@ -311,7 +311,7 @@
                             @enderror
 
                             <div class="mt-1 text-xs text-gray-500">
-                                Bisa multiple file. Max 10MB per file.
+                                Bisa multiple file. Max {{ \Modules\Corsec\Support\UploadRule::label() }} per file.
                             </div>
                         </div>
                     </div>
