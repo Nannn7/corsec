@@ -147,7 +147,7 @@
 
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">Flow Rapat</h3>
+                    <h3 class="card-title">Status Rapat</h3>
                 </div>
                 <div class="card-body">
                     <div class="flex flex-wrap gap-2">

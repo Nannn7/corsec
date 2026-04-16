@@ -3240,6 +3240,8 @@ class MeetingController extends Controller
         }
 
         $payload = [
+            'status' => $latestStatus,
+            'closed_at' => in_array($latestStatus, $this->resolvedDecisionStatuses(), true) ? ($latestDecision?->closed_at ?? now()) : null,
             'issue_key' => $issueKey,
             'first_discussed_at' => $firstDiscussedAt,
             'last_discussed_at' => $lastDiscussedAt,
