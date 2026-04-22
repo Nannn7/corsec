@@ -229,7 +229,7 @@
                                                 <div class="font-medium">
                                                     {{ $agenda->title }}
                                                     @if ($agenda->sourceDecision)
-                                                        <span class="badge badge-light-info ms-2">Agenda Relasi</span>
+                                                        <span class="badge badge-light-info ms-2">Agenda Default</span>
                                                     @endif
                                                 </div>
                                                 @if ($agenda->description)

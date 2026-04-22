@@ -2893,7 +2893,7 @@ class MeetingController extends Controller
             ])->filter();
 
             $descriptionParts = collect([
-                $sourceMeetingTitle !== '' ? 'Agenda otomatis dari ' . $sourceMeetingTitle : null,
+                $sourceMeetingTitle !== '' ? 'Agenda default dari ' . $sourceMeetingTitle : null,
                 $sourceDecision->target_date ? 'Target: ' . $sourceDecision->target_date->format('d/m/Y') : null,
             ])->filter();
 
