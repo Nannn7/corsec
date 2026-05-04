@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
@@ -487,33 +486,25 @@ class IncomingLetterController extends Controller
 
     private function getCachedDirectorates()
     {
-        return Cache::remember('corsec.directorates.list', 300, function () {
-            return Directorate::query()->orderBy('name')->get(['id', 'name', 'code']);
-        });
+        return Directorate::query()->orderBy('name')->get(['id', 'name', 'code']);
     }
 
     private function getCachedSenders()
     {
-        return Cache::remember('corsec.senders.list', 300, function () {
-            return Sender::query()->orderBy('name')->get(['id', 'name']);
-        });
+        return Sender::query()->orderBy('name')->get(['id', 'name']);
     }
 
     private function getCachedLetterTypes()
     {
-        return Cache::remember('corsec.letter_types.in.list', 300, function () {
-            return LetterType::query()
-                ->forScope(LetterType::SCOPE_IN)
-                ->orderBy('name')
-                ->get(['id', 'name']);
-        });
+        return LetterType::query()
+            ->forScope(LetterType::SCOPE_IN)
+            ->orderBy('name')
+            ->get(['id', 'name']);
     }
 
     private function getCachedBranches()
     {
-        return Cache::remember('corsec.branches.list', 300, function () {
-            return Branch::query()->orderBy('name')->get(['id', 'code', 'name']);
-        });
+        return Branch::query()->orderBy('name')->get(['id', 'code', 'name']);
     }
 
     private function getCustomerSenderId($senders): ?int

@@ -3727,19 +3727,15 @@ class MeetingController extends Controller
     {
         $directorates = $this->meetingDirectoratesCollection();
 
-        $users = Cache::remember('corsec.meeting.users.list', 300, function () {
-            return User::query()
-                ->with(['directorate:id,name,tabulation_label', 'position:id,name'])
-                ->orderBy('name')
-                ->get(['id', 'name', 'directorate_id', 'position_id']);
-        });
+        $users = User::query()
+            ->with(['directorate:id,name,tabulation_label', 'position:id,name'])
+            ->orderBy('name')
+            ->get(['id', 'name', 'directorate_id', 'position_id']);
 
-        $meetingPicUsers = Cache::remember('corsec.meeting.pic_users.list', 300, function () {
-            return $this->corpSecretaryStaffUsersQuery()
-                ->with(['directorate:id,name,tabulation_label', 'position:id,name'])
-                ->orderBy('name')
-                ->get(['id', 'name', 'directorate_id', 'position_id']);
-        });
+        $meetingPicUsers = $this->corpSecretaryStaffUsersQuery()
+            ->with(['directorate:id,name,tabulation_label', 'position:id,name'])
+            ->orderBy('name')
+            ->get(['id', 'name', 'directorate_id', 'position_id']);
 
         $selectedEscalationDecisionIds = $meeting
             ? MeetingAgenda::query()
@@ -3790,11 +3786,9 @@ class MeetingController extends Controller
 
     private function meetingDirectoratesCollection(): Collection
     {
-        return Cache::remember('corsec.meeting.directorates.list', 300, function () {
-            return Directorate::query()
-                ->orderByRaw('COALESCE(NULLIF(tabulation_label, \'\'), name)')
-                ->get(['id', 'name', 'tabulation_label', 'code', 'is_meeting_operational']);
-        });
+        return Directorate::query()
+            ->orderByRaw('COALESCE(NULLIF(tabulation_label, \'\'), name)')
+            ->get(['id', 'name', 'tabulation_label', 'code', 'is_meeting_operational']);
     }
 
     private function meetingIndexSummaryCacheKey(User $user): string

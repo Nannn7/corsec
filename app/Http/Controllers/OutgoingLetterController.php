@@ -8,7 +8,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -923,19 +922,15 @@ class OutgoingLetterController extends Controller
 
     private function getOutgoingLetterTypes()
     {
-        return Cache::remember('corsec.letter_types.out.list', 300, function () {
-            return LetterType::query()
-                ->forScope(LetterType::SCOPE_OUT)
-                ->orderBy('name')
-                ->get(['id', 'name']);
-        });
+        return LetterType::query()
+            ->forScope(LetterType::SCOPE_OUT)
+            ->orderBy('name')
+            ->get(['id', 'name']);
     }
 
     private function getCachedSenders()
     {
-        return Cache::remember('corsec.senders.list', 300, function () {
-            return Sender::query()->orderBy('name')->get(['id', 'name']);
-        });
+        return Sender::query()->orderBy('name')->get(['id', 'name']);
     }
 
     private function getIncomingLettersForResponseLetter(?int $selectedIncomingLetterId = null)

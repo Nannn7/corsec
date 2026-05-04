@@ -695,7 +695,9 @@ class CorsecPermissionService
             return false;
         }
 
-        return $user->hasRole(['maker', 'checker', 'approver', 'administrator', 'viewer']);
+        return $user->hasRole(['maker', 'checker', 'approver', 'administrator', 'viewer'])
+            || $user->can('corsec.read')
+            || $user->can('usermanagement.read');
     }
 
     public function dashboardCounts(User $user): array

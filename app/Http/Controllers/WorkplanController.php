@@ -873,9 +873,7 @@ class WorkplanController extends Controller
 
     private function getCachedDirectorates()
     {
-        return Cache::remember('corsec.directorates.list', 300, function () {
-            return Directorate::query()->orderBy('name')->get(['id', 'name', 'code']);
-        });
+        return Directorate::query()->orderBy('name')->get(['id', 'name', 'code']);
     }
 
     private function workplanIndexSummaryCacheKey(User $user): string
