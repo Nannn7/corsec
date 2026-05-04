@@ -15,6 +15,7 @@ class DirectorateSeeder extends Seeder
             ]);
 
             $directorate->fill([
+                'uuid' => $data['uuid'],
                 'name' => $data['name'],
                 'tabulation_label' => $this->nullableText($data['tabulation_label'] ?? null) ?? $data['name'],
                 'description' => $this->nullableText($data['description'] ?? null),
@@ -24,10 +25,6 @@ class DirectorateSeeder extends Seeder
                 'authorized_at' => $directorate->authorized_at ?? now(),
                 'deleted_by' => null,
             ]);
-
-            if (!$directorate->uuid && !empty($data['uuid'])) {
-                $directorate->uuid = $data['uuid'];
-            }
 
             $directorate->save();
 
