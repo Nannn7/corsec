@@ -169,6 +169,34 @@
 
 @push('scripts')
     <script type="text/javascript">
+        function workplanDeleteErrorMessage(error, fallback = 'Gagal menghapus program kerja.') {
+            if (typeof window.corsecAjaxMessage === 'function') {
+                return window.corsecAjaxMessage(error, fallback);
+            }
+
+            if (error?.responseJSON?.message) {
+                return error.responseJSON.message;
+            }
+
+            if (error?.responseJSON?.error) {
+                return error.responseJSON.error;
+            }
+
+            if (typeof error?.responseText === 'string' && error.responseText.trim() !== '') {
+                try {
+                    const payload = JSON.parse(error.responseText);
+
+                    if (payload?.message) {
+                        return payload.message;
+                    }
+                } catch (e) {
+                    return fallback;
+                }
+            }
+
+            return fallback;
+        }
+
         function deleteWorkplan(rowKey) {
             const element = document.querySelector('#workplan-table');
             const baseUrl = element.getAttribute('data-base-url');
@@ -194,11 +222,16 @@
                 $.ajax(`${baseUrl}/${rowKey}`, {
                     type: 'DELETE'
                 }).then((response) => {
+                    if (response?.success === false) {
+                        Swal.fire('Error!', response.message ?? 'Gagal menghapus program kerja.', 'error');
+                        return;
+                    }
+
                     Swal.fire('Terhapus!', response.message, 'success').then(() => {
                         window.location.reload();
                     });
-                }).catch(() => {
-                    Swal.fire('Error!', 'Terjadi kesalahan saat menghapus program kerja.', 'error');
+                }).catch((error) => {
+                    Swal.fire('Error!', workplanDeleteErrorMessage(error), 'error');
                 });
             });
         }
@@ -210,7 +243,6 @@
         const exportBtn = document.getElementById('export-btn');
         const apiUrl = element.getAttribute('data-api-url');
         const baseUrl = element.getAttribute('data-base-url');
-        const isAdmin = @json(auth()->user()?->hasRole('administrator'));
         const isDeputyDirector = @json($permissionFlags['is_deputy_director'] ?? false);
 
         const statusBadge = (status) => {
@@ -272,9 +304,7 @@
                     render: (item, data) => {
                         const status = (data.status ?? '').toString().toLowerCase();
                         const editableStatuses = ['draft', 'returned'];
-                        const deletableStatuses = ['draft', 'returned'];
                         const canEditStatus = editableStatuses.includes(status);
-                        const canDeleteStatus = isAdmin || deletableStatuses.includes(status);
                         const rowKey = data.uuid ?? data.id;
                         let html = `<div class="flex flex-nowrap justify-center">`;
 
@@ -293,11 +323,9 @@
                         @endif
 
                         @can('corsec.delete')
-                            if (canDeleteStatus) {
-                                html += `<a onclick="deleteWorkplan('${rowKey}')" class="btn btn-sm btn-icon btn-clear btn-danger">
-                                    <i class="ki-outline ki-trash"></i>
-                                </a>`;
-                            }
+                            html += `<a onclick="deleteWorkplan('${rowKey}')" class="btn btn-sm btn-icon btn-clear btn-danger">
+                                <i class="ki-outline ki-trash"></i>
+                            </a>`;
                         @endcan
 
                         html += `</div>`;

@@ -41,6 +41,9 @@
             ->unique()
             ->values()
             ->all();
+
+        $requiredMark = '<span class="text-danger">*</span>';
+        $fieldErrorClass = fn(string $field): string => $errors->has($field) ? 'border-danger bg-danger-light' : '';
     @endphp
 
     <div class="grid gap-5 lg:gap-7.5">
@@ -623,13 +626,19 @@
                                 <div class="grid gap-4 xl:grid-cols-2">
                                     <div class="flex flex-col">
                                         <label class="form-label">Catatan Umum Notulen (Opsional)</label>
-                                        <textarea class="textarea w-full" name="minutes_text" rows="5" placeholder="Catatan umum rapat direktorat...">{{ old('minutes_text', $minutes?->minutes_text) }}</textarea>
+                                        <textarea class="textarea w-full {{ $fieldErrorClass('minutes_text') }}" name="minutes_text" rows="5" placeholder="Catatan umum rapat direktorat...">{{ old('minutes_text', $minutes?->minutes_text) }}</textarea>
+                                        @error('minutes_text')
+                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                        @enderror
                                     </div>
                                     <div class="grid gap-4 content-start">
                                         <div class="flex flex-col">
                                             <label class="form-label">Lampiran Template/Notulen (Opsional)</label>
-                                            <input class="file-input" type="file" name="minutes_file"
+                                            <input class="file-input {{ $fieldErrorClass('minutes_file') }}" type="file" name="minutes_file"
                                                 accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx,.ppt,.pptx">
+                                            @error('minutes_file')
+                                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                            @enderror
                                         </div>
                                     </div>
                                 </div>
@@ -642,13 +651,16 @@
                                             <i class="ki-filled ki-plus"></i> Tambah Free Text
                                         </button>
                                     </div>
+                                    @error('minutes_agendas')
+                                        <em class="text-sm alert text-danger">{{ $message }}</em>
+                                    @enderror
                                     <div class="overflow-x-auto">
                                         <table class="table table-bordered align-top min-w-[1100px]">
                                             <thead>
                                                 <tr>
                                                     <th class="min-w-[60px]">No</th>
-                                                    <th class="min-w-[320px]">Materi Pembahasan</th>
-                                                    <th class="min-w-[260px]">PIC</th>
+                                                    <th class="min-w-[320px]">Materi Pembahasan {!! $requiredMark !!}</th>
+                                                    <th class="min-w-[260px]">PIC {!! $requiredMark !!}</th>
                                                     <th class="min-w-[380px]">Tindak Lanjut</th>
                                                     <th class="min-w-[90px]">Aksi</th>
                                                 </tr>
@@ -693,9 +705,12 @@
                                                                 name="minutes_agendas[{{ $index }}][description]"
                                                                 value="{{ $row['description'] ?? '' }}">
                                                             <div class="grid gap-2">
-                                                                <textarea class="textarea w-full minutes-agenda-title" rows="3"
+                                                                <textarea class="textarea w-full minutes-agenda-title {{ $fieldErrorClass('minutes_agendas.' . $index . '.title') }}" rows="3"
                                                                     name="minutes_agendas[{{ $index }}][title]" placeholder="Materi pembahasan..."
                                                                     {{ $sourceLocked ? 'readonly' : '' }}>{{ $row['title'] ?? '' }}</textarea>
+                                                                @error('minutes_agendas.' . $index . '.title')
+                                                                    <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                                @enderror
                                                                 @if ($sourceDecision)
                                                                     <div class="text-xs text-gray-500">
                                                                         <span
@@ -726,7 +741,7 @@
                                                                 </div>
                                                             @else
                                                                 <div class="grid gap-2">
-                                                                    <select class="select minutes-agenda-owner"
+                                                                    <select class="select minutes-agenda-owner {{ $fieldErrorClass('minutes_agendas.' . $index . '.owner_directorate_id') }}"
                                                                         name="minutes_agendas[{{ $index }}][owner_directorate_id]">
                                                                         <option value="">- Pilih Direktorat -
                                                                         </option>
@@ -737,7 +752,10 @@
                                                                             </option>
                                                                         @endforeach
                                                                     </select>
-                                                                    <select class="select minutes-agenda-pic"
+                                                                    @error('minutes_agendas.' . $index . '.owner_directorate_id')
+                                                                        <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                                    @enderror
+                                                                    <select class="select minutes-agenda-pic {{ $fieldErrorClass('minutes_agendas.' . $index . '.pic_user_id') }}"
                                                                         name="minutes_agendas[{{ $index }}][pic_user_id]">
                                                                         <option value="">- Pilih User -</option>
                                                                         @foreach ($users as $optionUser)
@@ -750,6 +768,9 @@
                                                                             </option>
                                                                         @endforeach
                                                                     </select>
+                                                                    @error('minutes_agendas.' . $index . '.pic_user_id')
+                                                                        <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                                    @enderror
                                                                 </div>
                                                             @endif
                                                         </td>
@@ -787,7 +808,7 @@
                                                                         <div class="flex flex-col">
                                                                             <label class="form-label">Link Issue
                                                                                 Existing</label>
-                                                                            <select class="select minutes-existing-issue"
+                                                                            <select class="select minutes-existing-issue {{ $fieldErrorClass('minutes_agendas.' . $index . '.existing_decision_id') }}"
                                                                                 name="minutes_agendas[{{ $index }}][existing_decision_id]">
                                                                                 <option value="">- Optional -
                                                                                 </option>
@@ -801,27 +822,36 @@
                                                                                     </option>
                                                                                 @endforeach
                                                                             </select>
+                                                                            @error('minutes_agendas.' . $index . '.existing_decision_id')
+                                                                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                                            @enderror
                                                                         </div>
                                                                     @endif
                                                                     <div class="flex flex-col">
                                                                         <label class="form-label">Update / Tindak
-                                                                            Lanjut</label>
-                                                                        <textarea class="textarea w-full minutes-decision-text" rows="3"
+                                                                            Lanjut {!! $requiredMark !!}</label>
+                                                                        <textarea class="textarea w-full minutes-decision-text {{ $fieldErrorClass('minutes_agendas.' . $index . '.decision_text') }}" rows="3"
                                                                             name="minutes_agendas[{{ $index }}][decision_text]"
                                                                             placeholder="Tindak lanjut opsional untuk materi ini..." {{ $followupEnabled ? '' : 'disabled' }}>{{ $row['decision_text'] ?? '' }}</textarea>
+                                                                        @error('minutes_agendas.' . $index . '.decision_text')
+                                                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                                        @enderror
                                                                     </div>
                                                                     <div class="grid gap-3 md:grid-cols-2">
                                                                         <div class="flex flex-col">
-                                                                            <label class="form-label">Target</label>
-                                                                            <input class="input minutes-target-date"
+                                                                            <label class="form-label">Target {!! $requiredMark !!}</label>
+                                                                            <input class="input minutes-target-date {{ $fieldErrorClass('minutes_agendas.' . $index . '.target_date') }}"
                                                                                 type="date"
                                                                                 name="minutes_agendas[{{ $index }}][target_date]"
                                                                                 value="{{ $row['target_date'] ?? '' }}"
                                                                                 {{ $followupEnabled ? '' : 'disabled' }}>
+                                                                            @error('minutes_agendas.' . $index . '.target_date')
+                                                                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                                            @enderror
                                                                         </div>
                                                                         <div class="flex flex-col">
-                                                                            <label class="form-label">Status</label>
-                                                                            <select class="select minutes-status-select"
+                                                                            <label class="form-label">Status {!! $requiredMark !!}</label>
+                                                                            <select class="select minutes-status-select {{ $fieldErrorClass('minutes_agendas.' . $index . '.status') }}"
                                                                                 name="minutes_agendas[{{ $index }}][status]"
                                                                                 {{ $followupEnabled ? '' : 'disabled' }}>
                                                                                 @foreach (['in_progress' => 'On Progress', 'continuous' => 'Berkelanjutan', 'done' => 'Done', 'pending' => 'Pending', 'dropped' => 'Drop'] as $statusValue => $statusLabel)
@@ -831,6 +861,9 @@
                                                                                     </option>
                                                                                 @endforeach
                                                                             </select>
+                                                                            @error('minutes_agendas.' . $index . '.status')
+                                                                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                                            @enderror
                                                                         </div>
                                                                     </div>
                                                                 </div>
@@ -870,15 +903,21 @@
                                 <div class="grid gap-4 xl:grid-cols-2">
                                     <div class="flex flex-col">
                                         <label class="form-label">Catatan Umum Notulen (Opsional)</label>
-                                        <textarea class="textarea w-full" name="minutes_text" rows="6"
+                                        <textarea class="textarea w-full {{ $fieldErrorClass('minutes_text') }}" name="minutes_text" rows="6"
                                             placeholder="Ringkasan umum meeting, kesimpulan, atau catatan tambahan...">{{ old('minutes_text', $minutes?->minutes_text) }}</textarea>
+                                        @error('minutes_text')
+                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                        @enderror
                                     </div>
 
                                     <div class="grid gap-4 content-start">
                                         <div class="flex flex-col">
                                             <label class="form-label">Lampiran Notulen (Opsional)</label>
-                                            <input class="file-input" type="file" name="minutes_file"
+                                            <input class="file-input {{ $fieldErrorClass('minutes_file') }}" type="file" name="minutes_file"
                                                 accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx,.ppt,.pptx">
+                                            @error('minutes_file')
+                                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                            @enderror
                                         </div>
                                     </div>
                                 </div>
@@ -893,6 +932,9 @@
                                             <i class="ki-filled ki-plus"></i> Tambah Poin
                                         </button>
                                     </div>
+                                    @error('minutes_agendas')
+                                        <em class="text-sm alert text-danger">{{ $message }}</em>
+                                    @enderror
                                     <div id="minutes-point-rows" class="grid gap-3">
                                         @foreach ($minutesAgendaRows as $index => $row)
                                             @php
@@ -962,9 +1004,12 @@
                                                     <div class="flex flex-col">
                                                         <label class="form-label">Judul / Topik Poin <span
                                                                 class="text-danger">*</span></label>
-                                                        <textarea class="textarea w-full minutes-point-title" rows="2"
+                                                        <textarea class="textarea w-full minutes-point-title {{ $fieldErrorClass('minutes_agendas.' . $index . '.title') }}" rows="2"
                                                             name="minutes_agendas[{{ $index }}][title]" placeholder="Topik pembahasan..."
                                                             {{ $sourceLocked ? 'readonly' : '' }}>{{ $row['title'] ?? '' }}</textarea>
+                                                        @error('minutes_agendas.' . $index . '.title')
+                                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                        @enderror
                                                     </div>
                                                     <div class="flex flex-col">
                                                         <label class="form-label">Pembahasan Notulen</label>
@@ -983,7 +1028,7 @@
                                                                     {{ optional($directorates->firstWhere('id', (int) ($row['owner_directorate_id'] ?? 0)))->displayName() ?? '-' }}
                                                                 </div>
                                                             @else
-                                                                <select class="select"
+                                                                <select class="select {{ $fieldErrorClass('minutes_agendas.' . $index . '.owner_directorate_id') }}"
                                                                     name="minutes_agendas[{{ $index }}][owner_directorate_id]">
                                                                     <option value="">- Pilih Direktorat -</option>
                                                                     @foreach ($directorates as $directorate)
@@ -993,10 +1038,13 @@
                                                                         </option>
                                                                     @endforeach
                                                                 </select>
+                                                                @error('minutes_agendas.' . $index . '.owner_directorate_id')
+                                                                    <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                                @enderror
                                                             @endif
                                                         </div>
                                                         <div class="flex flex-col">
-                                                            <label class="form-label">PIC User</label>
+                                                            <label class="form-label">PIC User {!! $followupEnabled ? $requiredMark : '' !!}</label>
                                                             @if ($sourceLocked)
                                                                 <input type="hidden"
                                                                     name="minutes_agendas[{{ $index }}][pic_user_id]"
@@ -1005,7 +1053,7 @@
                                                                     {{ optional($users->firstWhere('id', (int) ($row['pic_user_id'] ?? 0)))->name ?? '-' }}
                                                                 </div>
                                                             @else
-                                                                <select class="select"
+                                                                <select class="select {{ $fieldErrorClass('minutes_agendas.' . $index . '.pic_user_id') }}"
                                                                     name="minutes_agendas[{{ $index }}][pic_user_id]">
                                                                     <option value="">- Pilih User -</option>
                                                                     @foreach ($users as $optionUser)
@@ -1018,6 +1066,9 @@
                                                                         </option>
                                                                     @endforeach
                                                                 </select>
+                                                                @error('minutes_agendas.' . $index . '.pic_user_id')
+                                                                    <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                                @enderror
                                                             @endif
                                                         </div>
                                                     </div>
@@ -1025,9 +1076,17 @@
                                                     <div class="grid gap-3 lg:grid-cols-2">
                                                         <div class="flex flex-col">
                                                             <label class="form-label">Foto Dokumentasi (Opsional)</label>
-                                                            <input class="file-input" type="file"
+                                                            <input class="file-input {{ $fieldErrorClass('minutes_agendas.' . $index . '.photo_files') }}" type="file"
                                                                 name="minutes_agendas[{{ $index }}][photo_files][]"
                                                                 accept=".jpg,.jpeg,.png" multiple>
+                                                            @error('minutes_agendas.' . $index . '.photo_files')
+                                                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                            @enderror
+                                                            @foreach ($errors->get('minutes_agendas.' . $index . '.photo_files.*') as $messages)
+                                                                @foreach ($messages as $message)
+                                                                    <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                                @endforeach
+                                                            @endforeach
                                                             <small class="mt-1 text-xs text-gray-500">
                                                                 Unggah foto bukti atau dokumentasi untuk poin ini bila
                                                                 diperlukan.
@@ -1088,7 +1147,7 @@
                                                             @else
                                                                 <div class="flex flex-col">
                                                                     <label class="form-label">Link Issue Existing</label>
-                                                                    <select class="select"
+                                                                    <select class="select {{ $fieldErrorClass('minutes_agendas.' . $index . '.existing_decision_id') }}"
                                                                         name="minutes_agendas[{{ $index }}][existing_decision_id]"
                                                                         {{ $followupEnabled ? '' : 'disabled' }}>
                                                                         <option value="">- Buat issue baru -</option>
@@ -1101,24 +1160,33 @@
                                                                             </option>
                                                                         @endforeach
                                                                     </select>
+                                                                    @error('minutes_agendas.' . $index . '.existing_decision_id')
+                                                                        <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                                    @enderror
                                                                 </div>
                                                             @endif
                                                             <div class="flex flex-col">
-                                                                <label class="form-label">Tindak Lanjut</label>
-                                                                <textarea class="textarea w-full" rows="3" name="minutes_agendas[{{ $index }}][decision_text]"
+                                                                <label class="form-label">Tindak Lanjut {!! $followupEnabled ? $requiredMark : '' !!}</label>
+                                                                <textarea class="textarea w-full {{ $fieldErrorClass('minutes_agendas.' . $index . '.decision_text') }}" rows="3" name="minutes_agendas[{{ $index }}][decision_text]"
                                                                     placeholder="Isi tindak lanjut dari poin ini..." {{ $followupEnabled ? '' : 'disabled' }}>{{ $row['decision_text'] ?? '' }}</textarea>
+                                                                @error('minutes_agendas.' . $index . '.decision_text')
+                                                                    <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                                @enderror
                                                             </div>
                                                             <div class="grid gap-3 md:grid-cols-2">
                                                                 <div class="flex flex-col">
-                                                                    <label class="form-label">Target</label>
-                                                                    <input class="input" type="date"
+                                                                    <label class="form-label">Target {!! $followupEnabled ? $requiredMark : '' !!}</label>
+                                                                    <input class="input {{ $fieldErrorClass('minutes_agendas.' . $index . '.target_date') }}" type="date"
                                                                         name="minutes_agendas[{{ $index }}][target_date]"
                                                                         value="{{ $row['target_date'] ?? '' }}"
                                                                         {{ $followupEnabled ? '' : 'disabled' }}>
+                                                                    @error('minutes_agendas.' . $index . '.target_date')
+                                                                        <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                                    @enderror
                                                                 </div>
                                                                 <div class="flex flex-col">
-                                                                    <label class="form-label">Status</label>
-                                                                    <select class="select"
+                                                                    <label class="form-label">Status {!! $followupEnabled ? $requiredMark : '' !!}</label>
+                                                                    <select class="select {{ $fieldErrorClass('minutes_agendas.' . $index . '.status') }}"
                                                                         name="minutes_agendas[{{ $index }}][status]"
                                                                         {{ $followupEnabled ? '' : 'disabled' }}>
                                                                         @foreach (['pending' => 'Pending', 'in_progress' => 'Proses', 'continuous' => 'Berkelanjutan', 'done' => 'Done', 'dropped' => 'Drop'] as $statusValue => $statusLabel)
@@ -1128,6 +1196,9 @@
                                                                             </option>
                                                                         @endforeach
                                                                     </select>
+                                                                    @error('minutes_agendas.' . $index . '.status')
+                                                                        <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                                    @enderror
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -1161,7 +1232,7 @@
                                                 <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                                                     <div class="flex flex-col md:col-span-2 xl:col-span-3">
                                                         <label class="form-label">Link Issue Existing</label>
-                                                        <select class="select"
+                                                        <select class="select {{ $fieldErrorClass('decisions.' . $index . '.existing_decision_id') }}"
                                                             name="decisions[{{ $index }}][existing_decision_id]">
                                                             <option value="">- Buat issue baru -</option>
                                                             @foreach ($linkableDecisions as $linkableDecision)
@@ -1173,14 +1244,20 @@
                                                                 </option>
                                                             @endforeach
                                                         </select>
+                                                        @error('decisions.' . $index . '.existing_decision_id')
+                                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                        @enderror
                                                     </div>
                                                     <div class="flex flex-col md:col-span-2 xl:col-span-3">
                                                         <label class="form-label">Item Tindaklanjut</label>
-                                                        <textarea class="textarea w-full" rows="2" name="decisions[{{ $index }}][decision_text]">{{ old('decisions.' . $index . '.decision_text', $decision['decision_text'] ?? '') }}</textarea>
+                                                        <textarea class="textarea w-full {{ $fieldErrorClass('decisions.' . $index . '.decision_text') }}" rows="2" name="decisions[{{ $index }}][decision_text]">{{ old('decisions.' . $index . '.decision_text', $decision['decision_text'] ?? '') }}</textarea>
+                                                        @error('decisions.' . $index . '.decision_text')
+                                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                        @enderror
                                                     </div>
                                                     <div class="flex flex-col">
-                                                        <label class="form-label">PIC Direktorat</label>
-                                                        <select class="select"
+                                                        <label class="form-label">PIC Direktorat {!! trim((string) old('decisions.' . $index . '.decision_text', $decision['decision_text'] ?? '')) !== '' ? $requiredMark : '' !!}</label>
+                                                        <select class="select {{ $fieldErrorClass('decisions.' . $index . '.owner_directorate_id') }}"
                                                             name="decisions[{{ $index }}][owner_directorate_id]">
                                                             <option value="">- Pilih Direktorat -</option>
                                                             @foreach ($directorates as $directorate)
@@ -1190,10 +1267,13 @@
                                                                 </option>
                                                             @endforeach
                                                         </select>
+                                                        @error('decisions.' . $index . '.owner_directorate_id')
+                                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                        @enderror
                                                     </div>
                                                     <div class="flex flex-col">
-                                                        <label class="form-label">PIC User</label>
-                                                        <select class="select"
+                                                        <label class="form-label">PIC User {!! trim((string) old('decisions.' . $index . '.decision_text', $decision['decision_text'] ?? '')) !== '' ? $requiredMark : '' !!}</label>
+                                                        <select class="select {{ $fieldErrorClass('decisions.' . $index . '.pic_user_id') }}"
                                                             name="decisions[{{ $index }}][pic_user_id]">
                                                             <option value="">- Pilih User -</option>
                                                             @foreach ($users as $optionUser)
@@ -1206,10 +1286,13 @@
                                                                 </option>
                                                             @endforeach
                                                         </select>
+                                                        @error('decisions.' . $index . '.pic_user_id')
+                                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                        @enderror
                                                     </div>
                                                     <div class="flex flex-col">
-                                                        <label class="form-label">Status Issue</label>
-                                                        <select class="select"
+                                                        <label class="form-label">Status Issue {!! trim((string) old('decisions.' . $index . '.decision_text', $decision['decision_text'] ?? '')) !== '' ? $requiredMark : '' !!}</label>
+                                                        <select class="select {{ $fieldErrorClass('decisions.' . $index . '.status') }}"
                                                             name="decisions[{{ $index }}][status]">
                                                             @foreach (['pending' => 'Pending', 'in_progress' => 'Proses', 'continuous' => 'Berkelanjutan', 'done' => 'Done', 'dropped' => 'Drop'] as $statusValue => $statusLabel)
                                                                 <option value="{{ $statusValue }}"
@@ -1218,12 +1301,18 @@
                                                                 </option>
                                                             @endforeach
                                                         </select>
+                                                        @error('decisions.' . $index . '.status')
+                                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                        @enderror
                                                     </div>
                                                     <div class="flex flex-col md:col-span-2 xl:col-span-3">
-                                                        <label class="form-label">Target Penyelesaian</label>
-                                                        <input class="input" type="date"
+                                                        <label class="form-label">Target Penyelesaian {!! trim((string) old('decisions.' . $index . '.decision_text', $decision['decision_text'] ?? '')) !== '' ? $requiredMark : '' !!}</label>
+                                                        <input class="input {{ $fieldErrorClass('decisions.' . $index . '.target_date') }}" type="date"
                                                             name="decisions[{{ $index }}][target_date]"
                                                             value="{{ old('decisions.' . $index . '.target_date', $decision['target_date'] ?? '') }}">
+                                                        @error('decisions.' . $index . '.target_date')
+                                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                                        @enderror
                                                     </div>
                                                 </div>
                                                 <div class="flex justify-end mt-2">
@@ -1607,7 +1696,7 @@
             </div>
         </div>
 
-        @if ($canInputFollowup && $meeting->decisions->count() > 0)
+        @if ($canInputFollowup)
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Update Progress Tindaklanjut</h3>
@@ -1631,48 +1720,74 @@
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div class="flex flex-col">
                                         <label class="form-label">Jenis Update <span class="text-danger">*</span></label>
-                                        <select class="select js-update-type" name="update_type" required>
-                                            <option value="progress">Progress</option>
-                                            <option value="continuous">Berkelanjutan</option>
-                                            <option value="done">Selesai</option>
-                                            <option value="drop">Drop</option>
+                                        <select class="select js-update-type {{ $fieldErrorClass('update_type') }}" name="update_type" required>
+                                            <option value="progress" {{ old('update_type', 'progress') === 'progress' ? 'selected' : '' }}>Progress</option>
+                                            <option value="continuous" {{ old('update_type') === 'continuous' ? 'selected' : '' }}>Berkelanjutan</option>
+                                            <option value="done" {{ old('update_type') === 'done' ? 'selected' : '' }}>Selesai</option>
+                                            <option value="drop" {{ old('update_type') === 'drop' ? 'selected' : '' }}>Drop</option>
                                         </select>
+                                        @error('update_type')
+                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                        @enderror
                                     </div>
                                     <div class="flex flex-col js-progress-wrap">
                                         <label class="form-label">Progress (%)</label>
-                                        <input class="input" type="number" min="0" max="100"
+                                        <input class="input {{ $fieldErrorClass('progress_percent') }}" type="number" min="0" max="100"
                                             name="progress_percent"
-                                            value="{{ $decisionProgressById[$decision->id] ?? 0 }}">
+                                            value="{{ old('progress_percent', $decisionProgressById[$decision->id] ?? 0) }}">
+                                        @error('progress_percent')
+                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                        @enderror
                                     </div>
                                     <div class="flex flex-col">
                                         <label class="form-label">Tanggal Realisasi <span
                                                 class="text-danger">*</span></label>
-                                        <input class="input" type="date" name="happened_at"
-                                            value="{{ now()->format('Y-m-d') }}" required>
+                                        <input class="input {{ $fieldErrorClass('happened_at') }}" type="date" name="happened_at"
+                                            value="{{ old('happened_at', now()->format('Y-m-d')) }}" required>
+                                        @error('happened_at')
+                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                        @enderror
                                     </div>
                                     <div class="flex flex-col">
                                         <label class="form-label">Sesuai Target? <span
                                                 class="text-danger">*</span></label>
-                                        <select class="select js-on-target" name="is_on_target" required>
-                                            <option value="1">Ya</option>
-                                            <option value="0">Tidak</option>
+                                        <select class="select js-on-target {{ $fieldErrorClass('is_on_target') }}" name="is_on_target" required>
+                                            <option value="1" {{ old('is_on_target', '1') === '1' ? 'selected' : '' }}>Ya</option>
+                                            <option value="0" {{ old('is_on_target') === '0' ? 'selected' : '' }}>Tidak</option>
                                         </select>
+                                        @error('is_on_target')
+                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                        @enderror
                                     </div>
-                                    <div class="flex flex-col md:col-span-2 js-reason-wrap hidden">
+                                    <div class="flex flex-col md:col-span-2 js-reason-wrap {{ old('is_on_target') === '0' || $errors->has('reason') ? '' : 'hidden' }}">
                                         <label class="form-label">Alasan Tidak Sesuai Target <span
                                                 class="text-danger">*</span></label>
-                                        <textarea class="textarea w-full" name="reason" rows="2" placeholder="Wajib diisi jika tidak sesuai target"></textarea>
+                                        <textarea class="textarea w-full {{ $fieldErrorClass('reason') }}" name="reason" rows="2" placeholder="Wajib diisi jika tidak sesuai target">{{ old('reason') }}</textarea>
+                                        @error('reason')
+                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                        @enderror
                                     </div>
                                     <div class="flex flex-col md:col-span-2">
                                         <label class="form-label">Catatan</label>
-                                        <textarea class="textarea w-full" name="note" rows="2" placeholder="Catatan update progress"></textarea>
+                                        <textarea class="textarea w-full {{ $fieldErrorClass('note') }}" name="note" rows="2" placeholder="Catatan update progress">{{ old('note') }}</textarea>
+                                        @error('note')
+                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                        @enderror
                                     </div>
                                     <div class="flex flex-col md:col-span-2">
                                         <label class="form-label">Bukti Progress <span
                                                 class="text-danger">*</span></label>
-                                        <input class="file-input" type="file" name="evidence_files[]"
+                                        <input class="file-input {{ $fieldErrorClass('evidence_files') }}" type="file" name="evidence_files[]"
                                             accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx,.ppt,.pptx" multiple
                                             required>
+                                        @error('evidence_files')
+                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                        @enderror
+                                        @foreach ($errors->get('evidence_files.*') as $messages)
+                                            @foreach ($messages as $message)
+                                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                            @endforeach
+                                        @endforeach
                                     </div>
                                 </div>
                                 <div class="flex justify-end">
@@ -2074,7 +2189,7 @@
                                         </select>
                                     </div>
                                     <div class="flex flex-col">
-                                        <label class="form-label">Update / Tindak Lanjut</label>
+                                        <label class="form-label">Update / Tindak Lanjut <span class="text-danger">*</span></label>
                                         <textarea class="textarea w-full minutes-decision-text" rows="3"
                                             name="minutes_agendas[${index}][decision_text]"
                                             placeholder="Tindak lanjut opsional untuk materi ini..."
@@ -2082,12 +2197,12 @@
                                     </div>
                                     <div class="grid gap-3 md:grid-cols-2">
                                         <div class="flex flex-col">
-                                            <label class="form-label">Target</label>
+                                            <label class="form-label">Target <span class="text-danger">*</span></label>
                                             <input class="input minutes-target-date" type="date"
                                                 name="minutes_agendas[${index}][target_date]" disabled>
                                         </div>
                                         <div class="flex flex-col">
-                                            <label class="form-label">Status</label>
+                                            <label class="form-label">Status <span class="text-danger">*</span></label>
                                             <select class="select minutes-status-select" name="minutes_agendas[${index}][status]" disabled>
                                                 <option value="in_progress">On Progress</option>
                                                 <option value="continuous">Berkelanjutan</option>
@@ -2261,7 +2376,7 @@
                                         </select>
                                     </div>
                                     <div class="flex flex-col">
-                                        <label class="form-label">Tindak Lanjut</label>
+                                        <label class="form-label">Tindak Lanjut <span class="text-danger">*</span></label>
                                         <textarea class="textarea w-full" rows="3"
                                             name="minutes_agendas[${index}][decision_text]"
                                             placeholder="Isi tindak lanjut dari poin ini..."
@@ -2269,12 +2384,12 @@
                                     </div>
                                     <div class="grid gap-3 md:grid-cols-2">
                                         <div class="flex flex-col">
-                                            <label class="form-label">Target</label>
+                                            <label class="form-label">Target <span class="text-danger">*</span></label>
                                             <input class="input" type="date"
                                                 name="minutes_agendas[${index}][target_date]" disabled>
                                         </div>
                                         <div class="flex flex-col">
-                                            <label class="form-label">Status</label>
+                                            <label class="form-label">Status <span class="text-danger">*</span></label>
                                             <select class="select" name="minutes_agendas[${index}][status]" disabled>
                                                 <option value="pending">Pending</option>
                                                 <option value="in_progress">Proses</option>
@@ -2378,7 +2493,7 @@
                                 </select>
                             </div>
                             <div class="flex flex-col">
-                                <label class="form-label">Status Issue</label>
+                                <label class="form-label">Status Issue <span class="text-danger">*</span></label>
                                 <select class="select" name="decisions[${index}][status]">
                                     <option value="pending">Pending</option>
                                     <option value="in_progress">Proses</option>
@@ -2388,7 +2503,7 @@
                                 </select>
                             </div>
                             <div class="flex flex-col md:col-span-2 xl:col-span-3">
-                                <label class="form-label">Target Penyelesaian</label>
+                                <label class="form-label">Target Penyelesaian <span class="text-danger">*</span></label>
                                 <input class="input" type="date" name="decisions[${index}][target_date]">
                             </div>
                         </div>

@@ -765,7 +765,7 @@ class WorkplanController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.export')) {
-            abort(403, 'Sorry! You are not allowed to export work plan.');
+            abort(403, 'Anda tidak memiliki akses untuk export program kerja.');
         }
 
         return Excel::download(
@@ -784,7 +784,7 @@ class WorkplanController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.read')) {
-            abort(403, 'Sorry! You are not allowed to access this page.');
+            abort(403, 'Anda tidak memiliki akses ke halaman ini.');
         }
     }
 
@@ -792,7 +792,7 @@ class WorkplanController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.create')) {
-            abort(403, 'Sorry! You are not allowed to create work plan.');
+            abort(403, 'Anda tidak memiliki akses untuk menambah program kerja.');
         }
     }
 
@@ -800,7 +800,7 @@ class WorkplanController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.update')) {
-            abort(403, 'Sorry! You are not allowed to update work plan.');
+            abort(403, 'Anda tidak memiliki akses untuk mengubah program kerja.');
         }
         if ($this->workflow->isViewerRole($user)) {
             abort(403, 'Role viewer tidak memiliki akses untuk update work plan.');
@@ -811,7 +811,7 @@ class WorkplanController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.delete')) {
-            abort(403, 'Sorry! You are not allowed to delete work plan.');
+            abort(403, 'Anda tidak memiliki akses untuk menghapus program kerja.');
         }
     }
 
@@ -819,7 +819,7 @@ class WorkplanController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.authorize')) {
-            abort(403, 'Sorry! You are not allowed to authorize work plan.');
+            abort(403, 'Anda tidak memiliki akses untuk memproses persetujuan program kerja.');
         }
     }
 

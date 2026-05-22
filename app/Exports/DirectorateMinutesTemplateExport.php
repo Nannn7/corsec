@@ -8,6 +8,9 @@ use Modules\Corsec\Models\MeetingAgenda;
 use Modules\Corsec\Models\MeetingDecision;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class DirectorateMinutesTemplateExport
@@ -24,8 +27,7 @@ class DirectorateMinutesTemplateExport
 
     public function storeTemporaryFile(): string
     {
-        $templatePath = module_path('Corsec', self::TEMPLATE_PATH);
-        $spreadsheet = IOFactory::load($templatePath);
+        $spreadsheet = $this->spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
 
         $this->fillSheet($sheet);
@@ -44,6 +46,103 @@ class DirectorateMinutesTemplateExport
         unset($spreadsheet);
 
         return $filePath;
+    }
+
+    private function spreadsheet(): Spreadsheet
+    {
+        $templatePath = module_path('Corsec', self::TEMPLATE_PATH);
+        if (is_file($templatePath)) {
+            try {
+                return IOFactory::load($templatePath);
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        return $this->fallbackSpreadsheet();
+    }
+
+    private function fallbackSpreadsheet(): Spreadsheet
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Template Notulen');
+
+        $sheet->mergeCells('B2:G2');
+        $sheet->setCellValue('B2', 'TEMPLATE NOTULEN RAPAT DIREKTORAT');
+        $sheet->setCellValue('B3', 'Direktorat : -');
+        $sheet->setCellValue('B4', 'Tanggal');
+        $sheet->setCellValue('C4', '-');
+
+        $headings = [
+            'B7' => 'No',
+            'C7' => 'Agenda / Topik',
+            'D7' => 'PIC',
+            'E7' => 'Tindak Lanjut',
+            'F7' => 'Target',
+            'G7' => 'Status',
+        ];
+        foreach ($headings as $cell => $heading) {
+            $sheet->setCellValue($cell, $heading);
+        }
+
+        $sheet->mergeCells('B13:C13');
+        $sheet->mergeCells('D13:G13');
+        $sheet->setCellValue('B13', 'Notulis');
+        $sheet->setCellValue('D13', 'Mengetahui / Approval');
+        $sheet->setCellValue('B16', 'Nama');
+        $sheet->setCellValue('C16', 'EO dan DD');
+
+        $sheet->getColumnDimension('B')->setWidth(8);
+        $sheet->getColumnDimension('C')->setWidth(34);
+        $sheet->getColumnDimension('D')->setWidth(28);
+        $sheet->getColumnDimension('E')->setWidth(40);
+        $sheet->getColumnDimension('F')->setWidth(16);
+        $sheet->getColumnDimension('G')->setWidth(18);
+
+        $sheet->getStyle('B2:G2')->getFont()->setBold(true)->setSize(14);
+        $sheet->getStyle('B2:G2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle('B7:G7')->applyFromArray([
+            'font' => ['bold' => true],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['argb' => 'FFE5E7EB'],
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_CENTER,
+                'vertical' => Alignment::VERTICAL_CENTER,
+            ],
+        ]);
+        $sheet->getStyle('B7:G12')->applyFromArray([
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['argb' => 'FF9CA3AF'],
+                ],
+            ],
+            'alignment' => [
+                'vertical' => Alignment::VERTICAL_TOP,
+                'wrapText' => true,
+            ],
+        ]);
+        $sheet->getStyle('B13:G16')->applyFromArray([
+            'borders' => [
+                'outline' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['argb' => 'FF9CA3AF'],
+                ],
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_CENTER,
+                'vertical' => Alignment::VERTICAL_CENTER,
+            ],
+        ]);
+
+        for ($row = self::DATA_START_ROW; $row < self::SIGNATURE_START_ROW; $row++) {
+            $sheet->getRowDimension($row)->setRowHeight(32);
+        }
+
+        return $spreadsheet;
     }
 
     private function fillSheet(Worksheet $sheet): void

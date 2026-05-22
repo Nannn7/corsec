@@ -179,7 +179,7 @@ class LibraryController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.read')) {
-            abort(403, 'Sorry! You are not allowed to download library files.');
+            abort(403, 'Anda tidak memiliki akses untuk mengunduh dokumen pustaka.');
         }
 
         $disk = (string) ($libraryItem->file_disk ?: 'public');
@@ -201,7 +201,7 @@ class LibraryController extends Controller
     ): View {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.read')) {
-            abort(403, 'Sorry! You are not allowed to view library.');
+            abort(403, 'Anda tidak memiliki akses untuk melihat daftar pustaka.');
         }
 
         $activeCategory = $forcedCategory ?? $this->resolveCategoryCode($request->query('category'));

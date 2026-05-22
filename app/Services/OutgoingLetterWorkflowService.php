@@ -27,6 +27,10 @@ class OutgoingLetterWorkflowService
                 abort(403, 'Submit surat hanya untuk direktorat pemohon.');
             }
 
+            if (!$letter->draft_attachment_id) {
+                abort(422, 'Upload draft surat wajib diisi sebelum submit approval.');
+            }
+
             $approvalFlow = DirectorateApprovalFlow::forActor($actor);
 
             if ($approvalFlow === DirectorateApprovalFlow::NONE) {
@@ -343,67 +347,6 @@ class OutgoingLetterWorkflowService
                 $actor,
                 'Review Direktorat Kepatuhan telah disubmit. Menunggu approval EO dan DD Kepatuhan.'
             );
-        });
-    }
-
-    public function verifyAction(OutgoingLetter $letter, User $actor, string $action, ?string $note): void
-    {
-        DB::transaction(function () use ($letter, $actor, $action, $note) {
-            if ($letter->status !== OutgoingLetter::STATUS_WAITING_VERIFICATION) {
-                abort(403, 'Tahap Corporate Secretary tidak sesuai status.');
-            }
-
-            $isAdmin = $actor->hasRole('administrator');
-            if (!$isAdmin && !$this->isCorpSecretaryDirectorate($actor)) {
-                abort(403, 'Verifikasi hanya untuk direktorat Corporate Secretary.');
-            }
-            if (!$isAdmin && !$actor->hasRole('checker')) {
-                abort(403, 'Verifikasi hanya untuk role checker dari Corporate Secretary.');
-            }
-
-            $approval = $this->latestPendingApproval($letter);
-
-            if (in_array($action, ['verify', 'approve'], true)) {
-                $this->closeOrCreateApproval($letter, $approval, 'approved', 'Corporate Secretary Approved', $note, $actor);
-
-                $letter->update([
-                    'status' => OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD,
-                    'authorized_status' => 'authorized',
-                    'authorized_at' => now(),
-                    'authorized_by' => $actor->id,
-                    'updated_by' => $actor->id,
-                ]);
-
-                $this->notifyOutgoingDecision(
-                    $letter,
-                    $actor,
-                    'Surat keluar disetujui Corporate Secretary. Menunggu final upload oleh staff direktorat terkait.'
-                );
-
-                $this->notifyFinalUploadRequired($letter, $actor);
-
-                return;
-            }
-
-            if (in_array($action, ['return', 'reject'], true)) {
-                $this->closeOrCreateApproval($letter, $approval, 'returned', 'Corporate Secretary Returned', $note, $actor);
-
-                $letter->update([
-                    'status' => OutgoingLetter::STATUS_RETURNED,
-                    'authorized_status' => 'returned',
-                    'authorized_at' => null,
-                    'authorized_by' => null,
-                    'updated_by' => $actor->id,
-                ]);
-
-                $this->notifyOutgoingDecision(
-                    $letter,
-                    $actor,
-                    'Surat keluar dikembalikan Corporate Secretary.'
-                );
-
-                $this->addOutgoingComment($letter, $actor, 'RETURN CORPORATE SECRETARY', $note);
-            }
         });
     }
 
@@ -1016,7 +959,6 @@ class OutgoingLetterWorkflowService
             OutgoingLetter::STATUS_WAITING_DIR_APPROVAL,
             OutgoingLetter::STATUS_COMPLIANCE_REVIEW,
             OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL,
-            OutgoingLetter::STATUS_WAITING_VERIFICATION,
             OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD,
         ];
     }
@@ -1140,48 +1082,6 @@ class OutgoingLetterWorkflowService
             ->pluck('id');
     }
 
-    private function corpSecretaryValidationUserIds()
-    {
-        $directorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
-        if ($directorateCode === '') {
-            return collect();
-        }
-
-        $directorateId = Directorate::query()
-            ->where('code', $directorateCode)
-            ->value('id');
-        if (!$directorateId) {
-            return collect();
-        }
-
-        return User::query()
-            ->where('directorate_id', $directorateId)
-            ->whereHas('position', function ($query) {
-                $query->where('name', 'ilike', '%executive officer%');
-            })
-            ->pluck('id');
-    }
-
-    private function isCorpSecretaryDirectorate(User $user): bool
-    {
-        $corpCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
-        $user->loadMissing('directorate');
-
-        $directorateCode = $user->directorate?->code;
-        $directorateName = $user->directorate?->name;
-
-        if ($directorateCode && $corpCode !== '' && $directorateCode === $corpCode) {
-            return true;
-        }
-
-        if ($directorateName) {
-            $normalized = Str::lower($directorateName);
-            return Str::contains($normalized, 'corporate secretary');
-        }
-
-        return false;
-    }
-
     private function isComplianceDirectorate(User $user): bool
     {
         $complianceCode = (string) config('corsec.compliance_directorate_code', '');
@@ -1200,23 +1100,6 @@ class OutgoingLetterWorkflowService
         }
 
         return false;
-    }
-
-    private function getCorpSecretaryDirectorateId(): ?int
-    {
-        $corpCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
-        if ($corpCode !== '') {
-            $directorateId = Directorate::query()
-                ->where('code', $corpCode)
-                ->value('id');
-            if ($directorateId) {
-                return (int) $directorateId;
-            }
-        }
-
-        return Directorate::query()
-            ->where('name', 'ilike', '%corporate secretary%')
-            ->value('id');
     }
 
     private function getComplianceDirectorateId(): ?int
@@ -1239,18 +1122,4 @@ class OutgoingLetterWorkflowService
             ->value('id');
     }
 
-    private function getCorpSecretaryCheckerIds()
-    {
-        $directorateId = $this->getCorpSecretaryDirectorateId();
-        if (!$directorateId) {
-            return collect();
-        }
-
-        return User::query()
-            ->where('directorate_id', $directorateId)
-            ->whereHas('roles', function ($query) {
-                $query->where('name', 'checker');
-            })
-            ->pluck('id');
-    }
 }

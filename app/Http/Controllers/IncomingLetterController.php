@@ -56,6 +56,8 @@ class IncomingLetterController extends Controller
      */
     public function create()
     {
+        $this->authorizeIncomingCreate();
+
         $directorates = $this->getCachedDirectorates();
         $senders = $this->getCachedSenders();
         $letterTypes = $this->getCachedLetterTypes();
@@ -69,6 +71,8 @@ class IncomingLetterController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorizeIncomingCreate();
+
         $request->validate([
             'external_letter_no' => ['required', 'string', 'max:255'],
             'letter_date' => ['required', 'date'],
@@ -150,6 +154,9 @@ class IncomingLetterController extends Controller
         }
 
         $letter = DB::transaction(function () use ($request, $user, $circulationDirectorateIds, $senderId, $senderName, $isCustomerSender, $letterTypeId, $isInvitationLetter) {
+            $this->lockIncomingLetterDuplicateCheck($request, $senderId);
+            $this->ensureIncomingLetterIsNotDuplicate($request, $senderId);
+
             $letter = IncomingLetter::create([
                 'external_letter_no' => $request->external_letter_no,
                 'letter_date' => $request->letter_date,
@@ -376,6 +383,14 @@ class IncomingLetterController extends Controller
         ]);
 
         $user = auth()->user();
+        $submitForApproval = $request->boolean('submit_for_approval', false);
+        if ($submitForApproval && !in_array((string) $incomingLetter->status, [
+            IncomingLetter::STATUS_DRAFT,
+            IncomingLetter::STATUS_RETURNED,
+        ], true)) {
+            abort(422, 'Surat masuk hanya bisa disubmit dari status Draft atau Returned.');
+        }
+
         $circulationDirectorateIds = array_values(array_filter(
             (array) $request->input('circulation_directorate_ids', [])
         ));
@@ -433,6 +448,9 @@ class IncomingLetterController extends Controller
         }
 
         DB::transaction(function () use ($request, $incomingLetter, $user, $circulationDirectorateIds, $senderName, $senderId, $isCustomerSender, $letterTypeId, $isInvitationLetter) {
+            $this->lockIncomingLetterDuplicateCheck($request, $senderId);
+            $this->ensureIncomingLetterIsNotDuplicate($request, $senderId, $incomingLetter);
+
             $incomingLetter->update([
                 'external_letter_no' => $request->external_letter_no,
                 'letter_date' => $request->letter_date,
@@ -479,9 +497,67 @@ class IncomingLetterController extends Controller
             }
         });
 
+        if ($submitForApproval) {
+            $this->workflow->submitToEoCorpAffair($incomingLetter, $user);
+        }
+
+        if ($submitForApproval && !empty($circulationDirectorateIds)) {
+            $this->notifyIncomingDirectorates($circulationDirectorateIds, $incomingLetter, $user);
+        }
+
+        if ($submitForApproval) {
+            return redirect()
+                ->route('letter.incoming.show', $incomingLetter)
+                ->with('success', 'Surat masuk berhasil diupdate dan disirkulasikan.');
+        }
+
         return redirect()
             ->route('letter.incoming.index')
             ->with('success', 'Surat masuk berhasil diupdate.');
+    }
+
+    private function lockIncomingLetterDuplicateCheck(Request $request, string|int|null $senderId): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
+        $lockKey = abs(crc32(implode('|', [
+            'incoming-letter',
+            trim((string) $request->input('external_letter_no')),
+            (string) $request->input('letter_date'),
+            (string) $senderId,
+            Str::lower(trim((string) $request->input('sender_other'))),
+        ])));
+
+        DB::statement('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+    }
+
+    private function ensureIncomingLetterIsNotDuplicate(
+        Request $request,
+        string|int|null $senderId,
+        ?IncomingLetter $ignoreIncomingLetter = null
+    ): void {
+        $query = IncomingLetter::query()
+            ->where('external_letter_no', trim((string) $request->input('external_letter_no')))
+            ->whereDate('letter_date', $request->input('letter_date'));
+
+        if ($senderId === 'other') {
+            $query->whereNull('sender_id')
+                ->whereRaw('LOWER(sender_other) = ?', [Str::lower(trim((string) $request->input('sender_other')))]);
+        } else {
+            $query->where('sender_id', $senderId);
+        }
+
+        if ($ignoreIncomingLetter) {
+            $query->whereKeyNot($ignoreIncomingLetter->getKey());
+        }
+
+        if ($query->exists()) {
+            throw ValidationException::withMessages([
+                'external_letter_no' => 'Nomor surat dengan pengirim dan tanggal surat yang sama sudah pernah diinput.',
+            ]);
+        }
     }
 
     private function getCachedDirectorates()
@@ -527,7 +603,7 @@ class IncomingLetterController extends Controller
         if (!$user || !$user->can('corsec.read')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to view incoming letters.'
+                'message' => 'Anda tidak memiliki akses untuk melihat surat masuk.'
             ], 403);
         }
 
@@ -672,7 +748,7 @@ class IncomingLetterController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.export')) {
-            abort(403, 'Sorry! You are not allowed to export incoming letters.');
+            abort(403, 'Anda tidak memiliki akses untuk export surat masuk.');
         }
 
         $search = trim((string) $request->get('search', ''));
@@ -689,7 +765,7 @@ class IncomingLetterController extends Controller
         if (!$user || !$user->can('corsec.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete incoming letters.'
+                'message' => 'Anda tidak memiliki akses untuk menghapus surat masuk.'
             ], 403);
         }
 
@@ -741,7 +817,7 @@ class IncomingLetterController extends Controller
         if (!$user || !$user->can('corsec.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete incoming letters.'
+                'message' => 'Anda tidak memiliki akses untuk menghapus surat masuk.'
             ], 403);
         }
 
@@ -1227,10 +1303,18 @@ class IncomingLetterController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.update')) {
-            abort(403, 'Sorry! You are not allowed to update incoming letters.');
+            abort(403, 'Anda tidak memiliki akses untuk mengubah surat masuk.');
         }
         if ($this->permissionService->isViewerRole($user)) {
             abort(403, 'Role viewer tidak memiliki akses untuk aksi update ini.');
+        }
+    }
+
+    private function authorizeIncomingCreate(): void
+    {
+        $user = Auth::user();
+        if (!$this->permissionService->canCreateIncoming($user)) {
+            abort(403, 'Tambah surat masuk hanya untuk maker staff Corporate Secretary.');
         }
     }
 }

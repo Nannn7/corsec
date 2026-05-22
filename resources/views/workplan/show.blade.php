@@ -81,12 +81,12 @@
                             Edit
                         </a>
                     @endif
-                    @if ($canDelete)
+                    @can('corsec.delete')
                         <button type="button" class="btn btn-sm btn-danger"
                             onclick="deleteWorkplanDetail('{{ $workplan->uuid }}')">
                             Hapus
                         </button>
-                    @endif
+                    @endcan
                 </div>
             </div>
         </div>
@@ -511,6 +511,34 @@
 
 @push('scripts')
     <script type="text/javascript">
+        function workplanDeleteErrorMessage(error, fallback = 'Gagal menghapus program kerja.') {
+            if (typeof window.corsecAjaxMessage === 'function') {
+                return window.corsecAjaxMessage(error, fallback);
+            }
+
+            if (error?.responseJSON?.message) {
+                return error.responseJSON.message;
+            }
+
+            if (error?.responseJSON?.error) {
+                return error.responseJSON.error;
+            }
+
+            if (typeof error?.responseText === 'string' && error.responseText.trim() !== '') {
+                try {
+                    const payload = JSON.parse(error.responseText);
+
+                    if (payload?.message) {
+                        return payload.message;
+                    }
+                } catch (e) {
+                    return fallback;
+                }
+            }
+
+            return fallback;
+        }
+
         function deleteWorkplanDetail(rowKey) {
             Swal.fire({
                 title: 'Apakah Anda yakin?',
@@ -533,11 +561,16 @@
                 $.ajax(`{{ url('workplan') }}/${rowKey}`, {
                     type: 'DELETE'
                 }).then((response) => {
+                    if (response?.success === false) {
+                        Swal.fire('Error!', response.message ?? 'Gagal menghapus program kerja.', 'error');
+                        return;
+                    }
+
                     Swal.fire('Terhapus!', response.message, 'success').then(() => {
                         window.location.href = '{{ route('workplan.index') }}';
                     });
-                }).catch(() => {
-                    Swal.fire('Error!', 'Gagal menghapus program kerja.', 'error');
+                }).catch((error) => {
+                    Swal.fire('Error!', workplanDeleteErrorMessage(error), 'error');
                 });
             });
         }

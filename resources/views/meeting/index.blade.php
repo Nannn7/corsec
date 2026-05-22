@@ -132,6 +132,25 @@
 
 @push('scripts')
     <script type="text/javascript">
+        function resolveDeleteMeetingErrorMessage(error, fallback = 'Gagal menghapus meeting.') {
+            if (error?.responseJSON?.message) {
+                return error.responseJSON.message;
+            }
+
+            if (typeof error?.responseText === 'string' && error.responseText.trim() !== '') {
+                try {
+                    const payload = JSON.parse(error.responseText);
+                    if (payload?.message) {
+                        return payload.message;
+                    }
+                } catch (parseError) {
+                    // ignore invalid JSON payload and use fallback
+                }
+            }
+
+            return fallback;
+        }
+
         function deleteData(rowKey) {
             const element = document.querySelector('#meeting-table');
             if (!element) {
@@ -162,16 +181,41 @@
                 });
 
                 $.ajax(`${baseUrl}/${rowKey}`, {
-                    type: 'DELETE'
-                }).then((response) => {
-                    Swal.fire('Terhapus!', response.message ?? 'Meeting berhasil dihapus.', 'success').then(
-                        () => {
+                    type: 'DELETE',
+                    dataType: 'json'
+                }).done((response) => {
+                    if (response?.success === false) {
+                        Swal.close();
+                        setTimeout(() => {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Gagal hapus meeting',
+                                text: response.message ?? 'Gagal menghapus meeting.'
+                            });
+                        }, 50);
+                        return;
+                    }
+
+                    Swal.close();
+                    setTimeout(() => {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Terhapus',
+                            text: response?.message ?? 'Meeting berhasil dihapus.'
+                        }).then(() => {
                             window.location.reload();
                         });
-                }).catch((error) => {
-                    const message = error?.responseJSON?.message ??
-                        'Terjadi kesalahan saat menghapus meeting.';
-                    Swal.fire('Error!', message, 'error');
+                    }, 50);
+                }).fail((error) => {
+                    const message = resolveDeleteMeetingErrorMessage(error, 'Gagal menghapus meeting.');
+                    Swal.close();
+                    setTimeout(() => {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Gagal hapus meeting',
+                            text: message
+                        });
+                    }, 50);
                 });
             });
         }

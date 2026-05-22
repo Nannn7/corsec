@@ -187,7 +187,8 @@
                         })
                         .catch((error) => {
                             console.error('Error:', error);
-                            Swal.fire('Error!', 'Terjadi kesalahan saat menghapus surat.', 'error');
+                            Swal.fire('Error!', window.corsecAjaxMessage(error,
+                                'Gagal menghapus surat masuk.'), 'error');
                         });
                 }
             })
@@ -230,7 +231,8 @@
                         });
                     }).catch((error) => {
                         console.error('Error:', error);
-                        Swal.fire('Error!', 'Terjadi kesalahan saat menghapus baris.', 'error');
+                        Swal.fire('Error!', window.corsecAjaxMessage(error,
+                            'Gagal menghapus surat masuk terpilih.'), 'error');
                     });
                 }
             })

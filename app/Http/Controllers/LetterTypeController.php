@@ -39,7 +39,7 @@ class LetterTypeController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('letter-type.read')) {
-            abort(403, 'Sorry! You are not allowed to view letter type.');
+            abort(403, 'Anda tidak memiliki akses untuk melihat tipe surat.');
         }
 
         $scope = $this->resolveScope($request);
@@ -60,7 +60,7 @@ class LetterTypeController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('letter-type.create')) {
-            abort(403, 'Sorry! You are not allowed to create letter type.');
+            abort(403, 'Anda tidak memiliki akses untuk menambah tipe surat.');
         }
 
         $scope = $this->resolveScope($request);
@@ -82,7 +82,7 @@ class LetterTypeController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('letter-type.create')) {
-            abort(403, 'Sorry! You are not allowed to create letter type.');
+            abort(403, 'Anda tidak memiliki akses untuk menambah tipe surat.');
         }
 
         $scope = $this->resolveScope($request);
@@ -116,7 +116,7 @@ class LetterTypeController extends Controller
 
             return redirect()
                 ->route($routePrefix . '.index')
-                ->with('success', 'Letter type submitted for approval.');
+                ->with('success', 'Pengajuan tipe surat berhasil dikirim untuk persetujuan.');
         } catch (Exception $e) {
             Log::error('Failed to create letter type: ' . $e->getMessage(), [
                 'user_id' => $user->id,
@@ -125,7 +125,7 @@ class LetterTypeController extends Controller
 
             return redirect()
                 ->route($routePrefix . '.create')
-                ->with('error', 'Failed to create letter type: ' . $e->getMessage())
+                ->with('error', 'Gagal mengajukan tipe surat: ' . $e->getMessage())
                 ->withInput();
         }
     }
@@ -142,7 +142,7 @@ class LetterTypeController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('letter-type.update')) {
-            abort(403, 'Sorry! You are not allowed to update letter type.');
+            abort(403, 'Anda tidak memiliki akses untuk mengubah tipe surat.');
         }
 
         $scope = $this->resolveScope($request);
@@ -165,7 +165,7 @@ class LetterTypeController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('letter-type.update')) {
-            abort(403, 'Sorry! You are not allowed to update letter type.');
+            abort(403, 'Anda tidak memiliki akses untuk mengubah tipe surat.');
         }
 
         $scope = $this->resolveScope($request);
@@ -201,7 +201,7 @@ class LetterTypeController extends Controller
 
             return redirect()
                 ->route($routePrefix . '.index')
-                ->with('success', 'Letter type update submitted for approval.');
+                ->with('success', 'Pengajuan perubahan tipe surat berhasil dikirim untuk persetujuan.');
         } catch (Exception $e) {
             Log::error('Failed to update letter type: ' . $e->getMessage(), [
                 'letter_type_id' => $letterType->id,
@@ -211,7 +211,7 @@ class LetterTypeController extends Controller
 
             return redirect()
                 ->route($routePrefix . '.edit', $letterType)
-                ->with('error', 'Failed to update letter type: ' . $e->getMessage())
+                ->with('error', 'Gagal mengajukan perubahan tipe surat: ' . $e->getMessage())
                 ->withInput();
         }
     }
@@ -222,7 +222,7 @@ class LetterTypeController extends Controller
         if (!$user || !$user->can('letter-type.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete letter type.'
+                'message' => 'Anda tidak memiliki akses untuk menghapus tipe surat.'
             ], 403);
         }
 
@@ -245,7 +245,7 @@ class LetterTypeController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Letter type deleted successfully.'
+                'message' => 'Tipe surat berhasil dihapus.'
             ]);
         } catch (Exception $e) {
             Log::error('Failed to delete letter type: ' . $e->getMessage(), [
@@ -257,7 +257,7 @@ class LetterTypeController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit delete request. Please try again later.'
+                'message' => 'Gagal menghapus tipe surat. Silakan coba lagi.'
             ], 500);
         }
     }
@@ -268,7 +268,7 @@ class LetterTypeController extends Controller
         if (!$user || !$user->can('letter-type.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete letter type.'
+                'message' => 'Anda tidak memiliki akses untuk menghapus tipe surat.'
             ], 403);
         }
 
@@ -279,7 +279,7 @@ class LetterTypeController extends Controller
             if (empty($ids)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No letter type selected for deletion'
+                    'message' => 'Pilih minimal satu tipe surat untuk dihapus.'
                 ], 400);
             }
 
@@ -301,7 +301,7 @@ class LetterTypeController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Some selected letter type were not found.',
+                    'message' => 'Sebagian tipe surat yang dipilih tidak ditemukan.',
                     'missing_ids' => $missingIds,
                     'existing_ids' => $existingLetterType
                 ], 404);
@@ -329,7 +329,7 @@ class LetterTypeController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Multiple letter type deleted successfully.'
+                'message' => 'Tipe surat terpilih berhasil dihapus.'
             ]);
         } catch (Exception $e) {
             Log::error('Failed to delete multiple letter type: ' . $e->getMessage(), [
@@ -341,7 +341,7 @@ class LetterTypeController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit delete request. Please try again later.',
+                'message' => 'Gagal menghapus tipe surat terpilih. Silakan coba lagi.',
                 'error_details' => $e->getMessage()
             ], 500);
         }
@@ -353,7 +353,7 @@ class LetterTypeController extends Controller
         if (!$user || !$user->can('letter-type.read')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to view letter type.'
+                'message' => 'Anda tidak memiliki akses untuk melihat tipe surat.'
             ], 403);
         }
 
@@ -425,7 +425,7 @@ class LetterTypeController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load data'
+                'message' => 'Gagal memuat data tipe surat.'
             ], 500);
         }
     }
@@ -434,7 +434,7 @@ class LetterTypeController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('letter-type.export')) {
-            abort(403, 'Sorry! You are not allowed to export letter type.');
+            abort(403, 'Anda tidak memiliki akses untuk export tipe surat.');
         }
 
         $scope = $this->resolveScope($request);
@@ -459,7 +459,7 @@ class LetterTypeController extends Controller
 
             return redirect()
                 ->route($routePrefix . '.index')
-                ->with('error', 'Failed to export letter type.');
+                ->with('error', 'Gagal export tipe surat.');
         }
     }
 
@@ -548,7 +548,7 @@ class LetterTypeController extends Controller
     {
         $letterTypeScope = (string) ($letterType->scope ?: LetterType::SCOPE_IN);
         if ($letterTypeScope !== $scope) {
-            abort(404, 'Letter type not found.');
+            abort(404, 'Tipe surat tidak ditemukan.');
         }
     }
 

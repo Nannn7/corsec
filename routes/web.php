@@ -74,7 +74,6 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () us
         Route::post('/{outgoingLetter}/approval', [OutgoingLetterController::class, 'approvalAction'])->middleware(['permission:corsec.authorize', $writeHeavyThrottle])->name('approval.action');
         Route::post('/{outgoingLetter}/compliance-review', [OutgoingLetterController::class, 'complianceReview'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('compliance.review');
         Route::post('/{outgoingLetter}/upload-final', [OutgoingLetterController::class, 'uploadFinal'])->middleware(['permission:corsec.create|corsec.update', $writeHeavyThrottle])->name('upload_final');
-        Route::post('/{outgoingLetter}/verify', [OutgoingLetterController::class, 'verifyAction'])->middleware(['permission:corsec.authorize', $writeHeavyThrottle])->name('verify.action');
         Route::post('/{outgoingLetter}/note', [OutgoingLetterController::class, 'directorNote'])->middleware(['permission:corsec.read', $writeHeavyThrottle])->name('director.note');
         Route::delete('/{outgoingLetter}', [OutgoingLetterController::class, 'destroy'])->middleware(['permission:corsec.delete', $writeHeavyThrottle])->name('destroy');
     });

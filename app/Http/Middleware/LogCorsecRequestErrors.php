@@ -4,9 +4,12 @@ namespace Modules\Corsec\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
 class LogCorsecRequestErrors
@@ -44,7 +47,46 @@ class LogCorsecRequestErrors
                 'line' => $exception->getLine(),
             ]);
 
+            if ($exception instanceof ValidationException) {
+                throw $exception;
+            }
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $this->messageForUser($exception),
+                ], $this->statusCode($exception));
+            }
+
             throw $exception;
         }
+    }
+
+    private function statusCode(Throwable $exception): int
+    {
+        if ($exception instanceof HttpExceptionInterface) {
+            return $exception->getStatusCode();
+        }
+
+        if ($exception instanceof AuthorizationException) {
+            return 403;
+        }
+
+        return 500;
+    }
+
+    private function messageForUser(Throwable $exception): string
+    {
+        $message = trim($exception->getMessage());
+
+        if ($exception instanceof AuthorizationException || $exception instanceof HttpExceptionInterface) {
+            return $message !== '' ? $message : 'Aksi tidak dapat diproses.';
+        }
+
+        if (config('app.debug') && $message !== '') {
+            return 'Aksi gagal diproses: ' . $message;
+        }
+
+        return 'Aksi gagal diproses. Detail teknis sudah dicatat di log.';
     }
 }

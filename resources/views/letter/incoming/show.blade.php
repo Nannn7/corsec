@@ -1710,8 +1710,7 @@
                                 setTimeout(reloadPage, 800);
                                 return;
                             }
-                            alert(successMessage);
-                            reloadPage();
+                            Swal.fire('Berhasil', successMessage, 'success').then(reloadPage);
                         },
                         error: function(xhr) {
                             if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON
@@ -1724,8 +1723,8 @@
                                 });
                                 return;
                             }
-                            // fallback
-                            alert('Gagal memproses. Coba lagi ya.');
+                            Swal.fire('Error!', window.corsecAjaxMessage(xhr,
+                                'Gagal memproses surat masuk.'), 'error');
                         }
                     });
                 });

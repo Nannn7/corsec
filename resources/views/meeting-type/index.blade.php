@@ -115,7 +115,8 @@
                         });
                     }).catch((error) => {
                         console.error('Error:', error);
-                        Swal.fire('Error!', 'An error occurred while deleting the meeting type.', 'error');
+                        Swal.fire('Error!', window.corsecAjaxMessage(error, 'Gagal menghapus tipe meeting.'),
+                            'error');
                     });
                 }
             })
@@ -158,7 +159,8 @@
                         });
                     }).catch((error) => {
                         console.error('Error:', error);
-                        Swal.fire('Error!', 'An error occurred while deleting the rows.', 'error');
+                        Swal.fire('Error!', window.corsecAjaxMessage(error,
+                            'Gagal menghapus tipe meeting terpilih.'), 'error');
                     });
                 }
             })

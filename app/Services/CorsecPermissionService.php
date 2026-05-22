@@ -177,6 +177,32 @@ class CorsecPermissionService
         return !$this->isCorpSecretaryDirectorate($user);
     }
 
+    public function canCreateIncoming(?User $user): bool
+    {
+        if (!$user || !$user->can('corsec.create')) {
+            return false;
+        }
+
+        if ($user->hasRole('administrator')) {
+            return true;
+        }
+
+        return $user->hasRole('maker')
+            && $this->isCorpSecretaryDirectorate($user)
+            && $this->isStaffPosition($user);
+    }
+
+    public function canCreateMeeting(?User $user): bool
+    {
+        if (!$user || !$user->can('corsec.create')) {
+            return false;
+        }
+
+        return $user->hasRole('maker')
+            && $this->isCorpSecretaryDirectorate($user)
+            && $this->isStaffPosition($user);
+    }
+
     public function isRequesterDirectorateMakerStaff(OutgoingLetter $outgoingLetter, User $user): bool
     {
         if ($user->hasRole('administrator')) {
@@ -196,13 +222,15 @@ class CorsecPermissionService
 
     public function incomingIndexFlags(?User $user): array
     {
+        $canCreateIncoming = $this->canCreateIncoming($user);
+
         return [
             'is_admin' => (bool) ($user?->hasRole('administrator') ?? false),
             'can_read' => (bool) ($user?->can('corsec.read') ?? false),
-            'can_create' => (bool) ($user?->can('corsec.create') ?? false),
+            'can_create' => $canCreateIncoming,
             'can_export' => (bool) ($user?->can('corsec.export') ?? false),
             'can_delete' => (bool) ($user?->can('corsec.delete') ?? false),
-            'can_edit_action' => (bool) (($user?->hasRole('administrator') ?? false) || ($user?->can('corsec.create') ?? false)),
+            'can_edit_action' => (bool) (($user?->hasRole('administrator') ?? false) || $canCreateIncoming),
         ];
     }
 
@@ -342,7 +370,6 @@ class CorsecPermissionService
         $isRequesterDirectorate = $user
             && (int) ($outgoingLetter->requester_directorate_id ?? 0) === (int) ($user->directorate_id ?? 0);
 
-        $isCorpSecretaryDirectorate = $this->isCorpSecretaryDirectorate($user);
         $isComplianceDirectorate = $this->isComplianceDirectorate($user);
 
         $roleNames = $this->normalizedRoleNames($user);
@@ -392,10 +419,6 @@ class CorsecPermissionService
             'DD Kepatuhan Returned',
         ]);
 
-        $isCorpSecretaryChecker = $isCorpSecretaryDirectorate && $roleNames->contains(function (string $name) {
-            return Str::contains($name, 'checker');
-        });
-
         $isComplianceMakerStaff = $isComplianceDirectorate
             && $roleNames->contains(function (string $name) {
                 return Str::contains($name, 'maker');
@@ -440,15 +463,12 @@ class CorsecPermissionService
                 && !$userHasComplianceApproverAction,
             'can_final_upload' => $status === OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD
                 && ($isAdmin || $isRequesterDirectorateMakerStaff),
-            'can_verify' => $status === OutgoingLetter::STATUS_WAITING_VERIFICATION
-                && ($isAdmin || $isCorpSecretaryChecker),
             'can_cancel_request' => in_array($status, [
                 OutgoingLetter::STATUS_DRAFT,
                 OutgoingLetter::STATUS_RETURNED,
                 OutgoingLetter::STATUS_WAITING_DIR_APPROVAL,
                 OutgoingLetter::STATUS_COMPLIANCE_REVIEW,
                 OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL,
-                OutgoingLetter::STATUS_WAITING_VERIFICATION,
                 OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD,
             ], true)
                 && ($isAdmin || ($isRequesterDirectorateMakerStaff && $isRequesterCreator)),
@@ -464,7 +484,7 @@ class CorsecPermissionService
             'is_admin' => (bool) ($user?->hasRole('administrator') ?? false),
             'actor_id' => (int) ($user?->id ?? 0),
             'can_read' => (bool) ($user?->can('corsec.read') ?? false),
-            'can_create' => (bool) ($user?->can('corsec.create') ?? false),
+            'can_create' => $this->canCreateMeeting($user),
             'can_export' => (bool) ($user?->can('corsec.export') ?? false),
             'can_delete' => (bool) ($user?->can('corsec.delete') ?? false),
             'can_edit_action' => $this->canCorsecUpdateAction($user),
@@ -625,8 +645,7 @@ class CorsecPermissionService
             ->all();
         $hasUpdatableDecision = !empty($updatableDecisionIds);
 
-        $allDecisionsDone = $meeting->decisions->count() > 0
-            && $meeting->decisions->every(function ($decision) {
+        $allDecisionsDone = $meeting->decisions->every(function ($decision) {
                 return in_array((string) ($decision->status ?? ''), [
                     MeetingDecision::STATUS_CONTINUOUS,
                     MeetingDecision::STATUS_DONE,
@@ -971,9 +990,6 @@ class CorsecPermissionService
             if ($status === OutgoingLetter::STATUS_COMPLIANCE_REVIEW) {
                 $statusSteps[OutgoingLetter::STATUS_COMPLIANCE_REVIEW] = 'Review Kepatuhan (Legacy)';
             }
-            if ($status === OutgoingLetter::STATUS_WAITING_VERIFICATION) {
-                $statusSteps[OutgoingLetter::STATUS_WAITING_VERIFICATION] = 'Corporate Secretary (Legacy)';
-            }
 
             return $statusSteps;
         }
@@ -983,7 +999,6 @@ class CorsecPermissionService
             OutgoingLetter::STATUS_WAITING_DIR_APPROVAL => 'Approval Direktorat',
             OutgoingLetter::STATUS_COMPLIANCE_REVIEW => 'Review Kepatuhan',
             OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL => 'Approval EO dan DD Kepatuhan',
-            OutgoingLetter::STATUS_WAITING_VERIFICATION => 'Corporate Secretary',
             OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD => 'Final Upload',
             OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL => 'Approval Pembatalan EO Direktorat',
             OutgoingLetter::STATUS_VERIFIED => 'Done',

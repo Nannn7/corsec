@@ -215,7 +215,7 @@ class MeetingController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.export')) {
-            abort(403, 'Sorry! You are not allowed to export meeting.');
+            abort(403, 'Anda tidak memiliki akses untuk export meeting.');
         }
 
         $search = trim((string) $request->get('search', ''));
@@ -906,6 +906,15 @@ class MeetingController extends Controller
             'decisions.*.pic_user_id' => ['nullable', 'exists:users,id'],
             'decisions.*.target_date' => ['nullable', 'date'],
             'decisions.*.status' => ['nullable', Rule::in($this->allDecisionStatuses())],
+        ], [
+            'minutes_file.file' => 'Lampiran notulen harus berupa file yang valid.',
+            'minutes_file.mimes' => 'Format lampiran notulen tidak didukung.',
+            'minutes_agendas.*.title.required_with' => 'Materi pembahasan wajib diisi.',
+            'minutes_agendas.*.title.max' => 'Materi pembahasan maksimal 255 karakter.',
+            'minutes_agendas.*.target_date.date' => 'Target tindaklanjut harus berupa tanggal yang valid.',
+            'minutes_agendas.*.status.in' => 'Status tindaklanjut tidak valid.',
+            'decisions.*.target_date.date' => 'Target penyelesaian harus berupa tanggal yang valid.',
+            'decisions.*.status.in' => 'Status issue tidak valid.',
         ]);
 
         $shouldSyncMinutesAgendas = $request->has('minutes_agendas_present');
@@ -968,7 +977,7 @@ class MeetingController extends Controller
                 $this->cleanupMinutesAgendas($meeting, $retainedAgendaIds);
             }
 
-            foreach ((array) $request->input('decisions', []) as $decisionPayload) {
+            foreach ((array) $request->input('decisions', []) as $decisionIndex => $decisionPayload) {
                 $decisionText = trim((string) ($decisionPayload['decision_text'] ?? ''));
                 if ($decisionText === '') {
                     continue;
@@ -985,12 +994,12 @@ class MeetingController extends Controller
                 $targetDate = $decisionPayload['target_date'] ?? null;
                 if (!$ownerDirectorateId && !$picUserId) {
                     throw ValidationException::withMessages([
-                        'decisions' => 'PIC user atau direktorat wajib diisi untuk setiap tindaklanjut notulen.',
+                        "decisions.{$decisionIndex}.pic_user_id" => 'PIC user atau direktorat wajib diisi untuk tindaklanjut ini.',
                     ]);
                 }
                 if (!$targetDate) {
                     throw ValidationException::withMessages([
-                        'decisions' => 'Target wajib diisi untuk setiap tindaklanjut notulen.',
+                        "decisions.{$decisionIndex}.target_date" => 'Target wajib diisi untuk tindaklanjut ini.',
                     ]);
                 }
 
@@ -1220,6 +1229,15 @@ class MeetingController extends Controller
             'minutes_agendas.*.decision_text' => ['nullable', 'string'],
             'minutes_agendas.*.target_date' => ['nullable', 'date'],
             'minutes_agendas.*.status' => ['nullable', Rule::in($this->allDecisionStatuses())],
+        ], [
+            'minutes_file.file' => 'Lampiran notulen harus berupa file yang valid.',
+            'minutes_file.mimes' => 'Format lampiran notulen tidak didukung.',
+            'minutes_agendas.required' => 'Minimal satu materi pembahasan wajib diisi.',
+            'minutes_agendas.min' => 'Minimal satu materi pembahasan wajib diisi.',
+            'minutes_agendas.*.title.required' => 'Materi pembahasan wajib diisi.',
+            'minutes_agendas.*.title.max' => 'Materi pembahasan maksimal 255 karakter.',
+            'minutes_agendas.*.target_date.date' => 'Target tindaklanjut harus berupa tanggal yang valid.',
+            'minutes_agendas.*.status.in' => 'Status tindaklanjut tidak valid.',
         ]);
 
         $user = Auth::user();
@@ -1638,6 +1656,20 @@ class MeetingController extends Controller
             'note' => ['nullable', 'string'],
             'evidence_files' => ['required', 'array', 'min:1'],
             'evidence_files.*' => ['file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx,ppt,pptx'],
+        ], [
+            'update_type.required' => 'Jenis update wajib dipilih.',
+            'update_type.in' => 'Jenis update tidak valid.',
+            'progress_percent.integer' => 'Progress harus berupa angka.',
+            'progress_percent.min' => 'Progress minimal 0%.',
+            'progress_percent.max' => 'Progress maksimal 100%.',
+            'happened_at.required' => 'Tanggal realisasi wajib diisi.',
+            'happened_at.date' => 'Tanggal realisasi tidak valid.',
+            'is_on_target.required' => 'Status sesuai target wajib dipilih.',
+            'is_on_target.boolean' => 'Status sesuai target tidak valid.',
+            'evidence_files.required' => 'Bukti progress wajib diunggah.',
+            'evidence_files.min' => 'Bukti progress wajib diunggah minimal 1 file.',
+            'evidence_files.*.file' => 'Bukti progress harus berupa file yang valid.',
+            'evidence_files.*.mimes' => 'Format bukti progress tidak didukung.',
         ]);
 
         if (!$request->boolean('is_on_target') && trim((string) $request->input('reason')) === '') {
@@ -1809,7 +1841,6 @@ class MeetingController extends Controller
 
         if (Meeting::isDirektoratTypeCode($meetingType)) {
             $participantCount = $this->expandParticipantDirectorateIds((array) ($payload['participants'] ?? []))
-                ->merge($this->resolveMandatoryDirectorateIds())
                 ->filter()
                 ->unique()
                 ->count();
@@ -3666,15 +3697,15 @@ class MeetingController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.read')) {
-            abort(403, 'Sorry! You are not allowed to access this page.');
+            abort(403, 'Anda tidak memiliki akses ke halaman ini.');
         }
     }
 
     private function authorizeCreate(): void
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.create')) {
-            abort(403, 'Sorry! You are not allowed to create meeting.');
+        if (!$this->permissionService->canCreateMeeting($user)) {
+            abort(403, 'Tambah meeting hanya untuk maker staff Corporate Secretary.');
         }
     }
 
@@ -3682,7 +3713,7 @@ class MeetingController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.update')) {
-            abort(403, 'Sorry! You are not allowed to update meeting.');
+            abort(403, 'Anda tidak memiliki akses untuk mengubah meeting.');
         }
         if ($this->permissionService->isViewerRole($user)) {
             abort(403, 'Role viewer tidak memiliki akses untuk update meeting.');
@@ -3693,7 +3724,7 @@ class MeetingController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.delete')) {
-            abort(403, 'Sorry! You are not allowed to delete meeting.');
+            abort(403, 'Anda tidak memiliki akses untuk menghapus meeting.');
         }
     }
 
@@ -3701,7 +3732,7 @@ class MeetingController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.authorize')) {
-            abort(403, 'Sorry! You are not allowed to authorize meeting.');
+            abort(403, 'Anda tidak memiliki akses untuk memproses persetujuan meeting.');
         }
     }
 

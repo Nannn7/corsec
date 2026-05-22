@@ -68,7 +68,7 @@ class ReportController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.read')) {
-            abort(403, 'Sorry! You are not allowed to access this page.');
+            abort(403, 'Anda tidak memiliki akses ke halaman ini.');
         }
     }
 
@@ -426,7 +426,6 @@ class ReportController extends Controller
             OutgoingLetter::STATUS_WAITING_DIR_APPROVAL => OutgoingLetter::displayStatusLabel(OutgoingLetter::STATUS_WAITING_DIR_APPROVAL),
             OutgoingLetter::STATUS_COMPLIANCE_REVIEW => OutgoingLetter::displayStatusLabel(OutgoingLetter::STATUS_COMPLIANCE_REVIEW),
             OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL => OutgoingLetter::displayStatusLabel(OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL),
-            OutgoingLetter::STATUS_WAITING_VERIFICATION => OutgoingLetter::displayStatusLabel(OutgoingLetter::STATUS_WAITING_VERIFICATION),
             OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD => OutgoingLetter::displayStatusLabel(OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD),
             OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL => OutgoingLetter::displayStatusLabel(OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL),
             OutgoingLetter::STATUS_VERIFIED => OutgoingLetter::displayStatusLabel(OutgoingLetter::STATUS_VERIFIED),
@@ -438,7 +437,6 @@ class ReportController extends Controller
             OutgoingLetter::STATUS_WAITING_DIR_APPROVAL => 'text-amber-700',
             OutgoingLetter::STATUS_COMPLIANCE_REVIEW => 'text-orange-700',
             OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL => 'text-yellow-700',
-            OutgoingLetter::STATUS_WAITING_VERIFICATION => 'text-blue-700',
             OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD => 'text-cyan-700',
             OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL => 'text-rose-600',
             OutgoingLetter::STATUS_VERIFIED => 'text-emerald-600',
@@ -449,7 +447,6 @@ class ReportController extends Controller
             OutgoingLetter::STATUS_WAITING_DIR_APPROVAL,
             OutgoingLetter::STATUS_COMPLIANCE_REVIEW,
             OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL,
-            OutgoingLetter::STATUS_WAITING_VERIFICATION,
             OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD,
             OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL,
             OutgoingLetter::STATUS_RETURNED,
@@ -510,7 +507,6 @@ class ReportController extends Controller
                 OutgoingLetter::STATUS_WAITING_DIR_APPROVAL => 'badge-warning',
                 OutgoingLetter::STATUS_COMPLIANCE_REVIEW => 'badge-warning',
                 OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL => 'badge-warning',
-                OutgoingLetter::STATUS_WAITING_VERIFICATION => 'badge-primary',
                 OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD => 'badge-info',
                 OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL => 'badge-danger',
                 OutgoingLetter::STATUS_VERIFIED => 'badge-success',

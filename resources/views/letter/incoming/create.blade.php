@@ -33,9 +33,8 @@
                     @csrf
                     @if (isset($incomingLetter))
                         @method('PUT')
-                    @else
-                        <input type="hidden" name="submit_for_approval" id="submit_for_approval" value="1">
                     @endif
+                    <input type="hidden" name="submit_for_approval" id="submit_for_approval" value="1">
 
                     {{-- INFO SURAT --}}
                     <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -323,8 +322,11 @@
                         @if (isset($incomingLetter))
                             @can('corsec.update')
                                 @if ($isEditableStatus)
-                                    <button type="submit" class="btn btn-primary">
-                                        <i class="ki-filled ki-check"></i> Update
+                                    <button type="button" id="save-draft" class="btn btn-light">
+                                        <i class="ki-filled ki-archive"></i> Update Draft
+                                    </button>
+                                    <button type="submit" id="submit-approval" class="btn btn-primary">
+                                        <i class="ki-filled ki-check"></i> Submit
                                     </button>
                                 @endif
                             @endcan
@@ -604,6 +606,10 @@
                     $document.on('submit', 'form.js-ajax-form', function(event) {
                         event.preventDefault();
                         const $form = window.jQuery(this);
+                        if ($form.data('submitting')) {
+                            return;
+                        }
+
                         clearValidation($form);
 
                         const errors = validateIncomingForm($form);
@@ -613,6 +619,10 @@
                             });
                             return;
                         }
+
+                        $form.data('submitting', true);
+                        const $submitButtons = $form.find('button[type="submit"], button[type="button"]');
+                        $submitButtons.prop('disabled', true).addClass('disabled');
 
                         const formData = new FormData(this);
                         window.jQuery.ajax({
@@ -643,12 +653,15 @@
                                     }, 600);
                                     return;
                                 }
-                                alert('Berhasil disimpan.');
-                                if (approvalInput && approvalInput.value === '1') {
-                                    window.location.href = indexUrl;
-                                    return;
-                                }
-                                window.location.reload();
+                                Swal.fire('Berhasil', 'Data berhasil disimpan.', 'success').then(
+                                    function() {
+                                        if (approvalInput && approvalInput.value === '1') {
+                                            window.location.href = indexUrl;
+                                            return;
+                                        }
+                                        window.location.reload();
+                                    });
+                                return;
                             },
                             error: function(xhr) {
                                 if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON
@@ -658,9 +671,12 @@
                                         showFieldError($form, field, serverErrors[field]
                                             [0]);
                                     });
-                                    return;
+                                } else {
+                                    Swal.fire('Error!', window.corsecAjaxMessage(xhr,
+                                        'Gagal memproses surat masuk.'), 'error');
                                 }
-                                alert('Gagal memproses. Coba lagi ya.');
+                                $form.data('submitting', false);
+                                $submitButtons.prop('disabled', false).removeClass('disabled');
                             }
                         });
                     });

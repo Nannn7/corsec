@@ -56,6 +56,7 @@
                     @csrf
                     @if (isset($outgoingLetter))
                         @method('PUT')
+                        <input type="hidden" name="submit_for_approval" id="submit_for_approval" value="0">
                     @else
                         <input type="hidden" name="submit_for_approval" id="submit_for_approval" value="1">
                         <input type="hidden" name="is_bulk_number_request" id="is_bulk_number_request" value="0">
@@ -292,8 +293,11 @@
                         @if (isset($outgoingLetter))
                             @can('corsec.update')
                                 @if ($isEditableStatus)
-                                    <button type="submit" class="btn btn-primary">
-                                        <i class="ki-filled ki-check"></i> Update
+                                    <button type="button" id="save-draft" class="btn btn-light">
+                                        <i class="ki-filled ki-archive"></i> Simpan Draft
+                                    </button>
+                                    <button type="submit" id="submit-approval" class="btn btn-primary">
+                                        <i class="ki-filled ki-check"></i> Submit Approval
                                     </button>
                                 @endif
                             @endcan
@@ -326,6 +330,7 @@
             const saveDraftButton = document.getElementById('save-draft');
             const submitApprovalButton = document.getElementById('submit-approval');
             const isEdit = {{ isset($outgoingLetter) ? 'true' : 'false' }};
+            const hasDraftAttachment = {{ $outgoingLetter?->draft_attachment_id ? 'true' : 'false' }};
             const registrationPreviewUrl = @json(route('letter.outgoing.registration_preview'));
             const incomingPreviewUrl = @json(route('letter.outgoing.incoming_preview'));
             const letterTypeSelect = document.getElementById('letter_type_id');
@@ -448,6 +453,14 @@
                 return !isEdit && bulkModeInput && bulkModeInput.value === '1';
             }
 
+            function setSectionControlsDisabled(section, disabled) {
+                if (!section) return;
+
+                section.querySelectorAll('input, select, textarea, button').forEach((control) => {
+                    control.disabled = disabled;
+                });
+            }
+
             function syncBulkModeUI() {
                 const hasLetterType = !!(letterTypeSelect && letterTypeSelect.value);
                 const bulkEnabled = hasLetterType && isBulkMode();
@@ -469,6 +482,8 @@
                     if (outgoingFormExtra) outgoingFormExtra.style.display = bulkEnabled ? 'none' : (hasLetterType ?
                         '' : 'none');
                     if (outgoingFormActions) outgoingFormActions.style.display = hasLetterType ? 'flex' : 'none';
+                    setSectionControlsDisabled(outgoingFormFields, bulkEnabled);
+                    setSectionControlsDisabled(outgoingFormExtra, bulkEnabled);
 
                     if (saveDraftButton) saveDraftButton.classList.toggle('hidden', bulkEnabled);
                     if (submitApprovalButton) submitApprovalButton.classList.toggle('hidden', bulkEnabled);
@@ -675,7 +690,7 @@
                 function validateOutgoingForm($form) {
                     const errors = {};
                     const requiredMessage = 'Field ini tidak boleh kosong.';
-                    const submitForApproval = !isEdit && approvalInput && approvalInput.value === '1';
+                    const submitForApproval = approvalInput && approvalInput.value === '1';
                     const bulkRequestMode = !isEdit && bulkModeInput && bulkModeInput.value === '1';
 
                     if (!$form.find('[name="letter_type_id"]').val()) {
@@ -735,7 +750,7 @@
                             unifiedField.val(perihalText);
                         }
                         if (!perihalText) {
-                            errors.perihal_text = requiredMessage;
+                            errors[inputName] = requiredMessage;
                         }
                     } else {
                         const unifiedField = $form.find('[name="perihal_text"]');
@@ -745,11 +760,31 @@
                     }
 
                     const filesInput = $form.find('[name="draft_file"]')[0];
-                    if (submitForApproval && filesInput && filesInput.files.length === 0) {
+                    if (submitForApproval && !hasDraftAttachment && filesInput && filesInput.files.length === 0) {
                         errors.draft_file = 'Harap upload file.';
                     }
 
                     return errors;
+                }
+
+                function resolveOutgoingErrorField(field) {
+                    if (field !== 'perihal_text') {
+                        return field;
+                    }
+
+                    const perihalType = $formPerihalType();
+                    if (perihalType === 'rutinitas') {
+                        return 'perihal_text_rutinitas';
+                    }
+                    if (perihalType === 'insidentil') {
+                        return 'perihal_text_insidentil';
+                    }
+
+                    return field;
+                }
+
+                function $formPerihalType() {
+                    return window.jQuery('[name="perihal_type"]', '#outgoing-letter-form').val();
                 }
 
                 $document.on('submit', 'form.js-ajax-form', function(event) {
@@ -760,7 +795,7 @@
                     const errors = validateOutgoingForm($form);
                     if (Object.keys(errors).length > 0) {
                         Object.keys(errors).forEach((field) => {
-                            showFieldError($form, field, errors[field]);
+                            showFieldError($form, resolveOutgoingErrorField(field), errors[field]);
                         });
                         return;
                     }
@@ -809,26 +844,28 @@
                                 return;
                             }
 
-                            alert(successMessage);
-                            if (bulkRequestMode || (approvalInput && approvalInput.value ===
-                                    '1')) {
-                                window.location.href = indexUrl;
-                                return;
-                            }
-                            window.location.reload();
+                            Swal.fire('Berhasil', successMessage, 'success').then(function() {
+                                if (bulkRequestMode || (approvalInput && approvalInput.value ===
+                                        '1')) {
+                                    window.location.href = indexUrl;
+                                    return;
+                                }
+                                window.location.reload();
+                            });
+                            return;
                         },
                         error: function(xhr) {
                             if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON
                                 .errors) {
                                 const serverErrors = xhr.responseJSON.errors;
                                 Object.keys(serverErrors).forEach((field) => {
-                                    showFieldError($form, field, serverErrors[field][
-                                        0
-                                    ]);
+                                    showFieldError($form, resolveOutgoingErrorField(field),
+                                        serverErrors[field][0]);
                                 });
                                 return;
                             }
-                            alert('Gagal memproses. Coba lagi ya.');
+                            Swal.fire('Error!', window.corsecAjaxMessage(xhr,
+                                'Gagal memproses surat keluar.'), 'error');
                         }
                     });
                 });

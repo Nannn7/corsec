@@ -38,7 +38,7 @@ class SenderController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('sender.read')) {
-            abort(403, 'Sorry! You are not allowed to view sender.');
+            abort(403, 'Anda tidak memiliki akses untuk melihat pengirim.');
         }
 
         Log::info('User accessed sender index', ['user_id' => $user->id]);
@@ -50,7 +50,7 @@ class SenderController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('sender.create')) {
-            abort(403, 'Sorry! You are not allowed to create sender.');
+            abort(403, 'Anda tidak memiliki akses untuk menambah pengirim.');
         }
 
         Log::info('User accessed sender create form', ['user_id' => $user->id]);
@@ -63,7 +63,7 @@ class SenderController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('sender.create')) {
-            abort(403, 'Sorry! You are not allowed to create sender.');
+            abort(403, 'Anda tidak memiliki akses untuk menambah pengirim.');
         }
 
         try {
@@ -90,13 +90,13 @@ class SenderController extends Controller
 
             return redirect()
                 ->route('sender.index')
-                ->with('success', 'Sender submitted for approval.');
+                ->with('success', 'Pengajuan pengirim berhasil dikirim untuk persetujuan.');
         } catch (Exception $e) {
             Log::error('Failed to create sender: ' . $e->getMessage(), ['user_id' => $user->id]);
 
             return redirect()
                 ->route('sender.create')
-                ->with('error', 'Failed to create sender: ' . $e->getMessage())
+                ->with('error', 'Gagal mengajukan pengirim: ' . $e->getMessage())
                 ->withInput();
         }
     }
@@ -110,7 +110,7 @@ class SenderController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('sender.update')) {
-            abort(403, 'Sorry! You are not allowed to update sender.');
+            abort(403, 'Anda tidak memiliki akses untuk mengubah pengirim.');
         }
 
         Log::info('User accessed sender edit form', ['sender_id' => $sender->id, 'user_id' => $user->id]);
@@ -121,7 +121,7 @@ class SenderController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('sender.update')) {
-            abort(403, 'Sorry! You are not allowed to update sender.');
+            abort(403, 'Anda tidak memiliki akses untuk mengubah pengirim.');
         }
 
         try {
@@ -147,13 +147,13 @@ class SenderController extends Controller
 
             return redirect()
                 ->route('sender.index')
-                ->with('success', 'Sender update submitted for approval.');
+                ->with('success', 'Pengajuan perubahan pengirim berhasil dikirim untuk persetujuan.');
         } catch (Exception $e) {
             Log::error('Failed to update sender: ' . $e->getMessage(), ['sender_id' => $sender->id, 'user_id' => $user->id]);
 
             return redirect()
                 ->route('sender.edit', $sender)
-                ->with('error', 'Failed to update sender: ' . $e->getMessage())
+                ->with('error', 'Gagal mengajukan perubahan pengirim: ' . $e->getMessage())
                 ->withInput();
         }
     }
@@ -164,7 +164,7 @@ class SenderController extends Controller
         if (!$user || !$user->can('sender.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete sender.'
+                'message' => 'Anda tidak memiliki akses untuk menghapus pengirim.'
             ], 403);
         }
 
@@ -181,18 +181,18 @@ class SenderController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Sender deleted successfully.'
+                'message' => 'Pengirim berhasil dihapus.'
             ]);
         } catch (Exception $e) {
             Log::error('Failed to delete sender: ' . $e->getMessage(), [
-                'sender_id' => $id,
+                'sender_id' => $sender->id,
                 'user_id' => $user->id,
                 'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit delete request. Please try again later.'
+                'message' => 'Gagal menghapus pengirim. Silakan coba lagi.'
             ], 500);
         }
     }
@@ -203,7 +203,7 @@ class SenderController extends Controller
         if (!$user || !$user->can('sender.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete sender.'
+                'message' => 'Anda tidak memiliki akses untuk menghapus pengirim.'
             ], 403);
         }
 
@@ -212,7 +212,7 @@ class SenderController extends Controller
             if (empty($ids)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No sender selected for deletion'
+                    'message' => 'Pilih minimal satu pengirim untuk dihapus.'
                 ], 400);
             }
 
@@ -228,7 +228,7 @@ class SenderController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Some selected sender were not found.',
+                    'message' => 'Sebagian pengirim yang dipilih tidak ditemukan.',
                     'missing_ids' => $missingIds,
                     'existing_ids' => $existingSender
                 ], 404);
@@ -246,7 +246,7 @@ class SenderController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Multiple sender deleted successfully.'
+                'message' => 'Pengirim terpilih berhasil dihapus.'
             ]);
         } catch (Exception $e) {
             Log::error('Failed to delete multiple sender: ' . $e->getMessage(), [
@@ -257,7 +257,7 @@ class SenderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit delete request. Please try again later.',
+                'message' => 'Gagal menghapus pengirim terpilih. Silakan coba lagi.',
                 'error_details' => $e->getMessage()
             ], 500);
         }
@@ -269,7 +269,7 @@ class SenderController extends Controller
         if (!$user || !$user->can('sender.read')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to view sender.'
+                'message' => 'Anda tidak memiliki akses untuk melihat pengirim.'
             ], 403);
         }
 
@@ -332,7 +332,7 @@ class SenderController extends Controller
             Log::error('Failed to get sender datatables data: ' . $e->getMessage(), ['user_id' => $user->id]);
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load data'
+                'message' => 'Gagal memuat data pengirim.'
             ], 500);
         }
     }
@@ -341,7 +341,7 @@ class SenderController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('sender.export')) {
-            abort(403, 'Sorry! You are not allowed to export sender.');
+            abort(403, 'Anda tidak memiliki akses untuk export pengirim.');
         }
 
         try {
@@ -352,7 +352,7 @@ class SenderController extends Controller
             Log::error('Failed to export sender: ' . $e->getMessage(), ['user_id' => $user->id]);
             return redirect()
                 ->route('sender.index')
-                ->with('error', 'Failed to export sender.');
+                ->with('error', 'Gagal export pengirim.');
         }
     }
 

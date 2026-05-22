@@ -38,7 +38,7 @@ class MeetingTypeController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('meeting-type.read')) {
-            abort(403, 'Sorry! You are not allowed to view meeting type.');
+            abort(403, 'Anda tidak memiliki akses untuk melihat tipe meeting.');
         }
 
         Log::info('User accessed meeting type index', ['user_id' => $user->id]);
@@ -51,7 +51,7 @@ class MeetingTypeController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('meeting-type.create')) {
-            abort(403, 'Sorry! You are not allowed to create meeting type.');
+            abort(403, 'Anda tidak memiliki akses untuk menambah tipe meeting.');
         }
 
         Log::info('User accessed meeting type create form', ['user_id' => $user->id]);
@@ -64,7 +64,7 @@ class MeetingTypeController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('meeting-type.create')) {
-            abort(403, 'Sorry! You are not allowed to create meeting type.');
+            abort(403, 'Anda tidak memiliki akses untuk menambah tipe meeting.');
         }
 
         try {
@@ -91,13 +91,13 @@ class MeetingTypeController extends Controller
 
             return redirect()
                 ->route('meeting-type.index')
-                ->with('success', 'Meeting type submitted for approval.');
+                ->with('success', 'Pengajuan tipe meeting berhasil dikirim untuk persetujuan.');
         } catch (Exception $e) {
             Log::error('Failed to create meeting type: ' . $e->getMessage(), ['user_id' => $user->id]);
 
             return redirect()
                 ->route('meeting-type.create')
-                ->with('error', 'Failed to create meeting type: ' . $e->getMessage())
+                ->with('error', 'Gagal mengajukan tipe meeting: ' . $e->getMessage())
                 ->withInput();
         }
     }
@@ -111,7 +111,7 @@ class MeetingTypeController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('meeting-type.update')) {
-            abort(403, 'Sorry! You are not allowed to update meeting type.');
+            abort(403, 'Anda tidak memiliki akses untuk mengubah tipe meeting.');
         }
 
         Log::info('User accessed meeting type edit form', [
@@ -126,7 +126,7 @@ class MeetingTypeController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('meeting-type.update')) {
-            abort(403, 'Sorry! You are not allowed to update meeting type.');
+            abort(403, 'Anda tidak memiliki akses untuk mengubah tipe meeting.');
         }
 
         try {
@@ -155,7 +155,7 @@ class MeetingTypeController extends Controller
 
             return redirect()
                 ->route('meeting-type.index')
-                ->with('success', 'Meeting type update submitted for approval.');
+                ->with('success', 'Pengajuan perubahan tipe meeting berhasil dikirim untuk persetujuan.');
         } catch (Exception $e) {
             Log::error('Failed to update meeting type: ' . $e->getMessage(), [
                 'meeting_type_id' => $meetingType->id,
@@ -164,7 +164,7 @@ class MeetingTypeController extends Controller
 
             return redirect()
                 ->route('meeting-type.edit', $meetingType)
-                ->with('error', 'Failed to update meeting type: ' . $e->getMessage())
+                ->with('error', 'Gagal mengajukan perubahan tipe meeting: ' . $e->getMessage())
                 ->withInput();
         }
     }
@@ -175,7 +175,7 @@ class MeetingTypeController extends Controller
         if (!$user || !$user->can('meeting-type.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete meeting type.',
+                'message' => 'Anda tidak memiliki akses untuk menghapus tipe meeting.',
             ], 403);
         }
 
@@ -192,7 +192,7 @@ class MeetingTypeController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Meeting type deleted successfully.',
+                'message' => 'Tipe meeting berhasil dihapus.',
             ]);
         } catch (Exception $e) {
             Log::error('Failed to delete meeting type: ' . $e->getMessage(), [
@@ -203,7 +203,7 @@ class MeetingTypeController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit delete request. Please try again later.',
+                'message' => 'Gagal menghapus tipe meeting. Silakan coba lagi.',
             ], 500);
         }
     }
@@ -214,7 +214,7 @@ class MeetingTypeController extends Controller
         if (!$user || !$user->can('meeting-type.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete meeting type.',
+                'message' => 'Anda tidak memiliki akses untuk menghapus tipe meeting.',
             ], 403);
         }
 
@@ -223,7 +223,7 @@ class MeetingTypeController extends Controller
             if (empty($ids)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No meeting type selected for deletion',
+                    'message' => 'Pilih minimal satu tipe meeting untuk dihapus.',
                 ], 400);
             }
 
@@ -239,7 +239,7 @@ class MeetingTypeController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Some selected meeting type were not found.',
+                    'message' => 'Sebagian tipe meeting yang dipilih tidak ditemukan.',
                     'missing_ids' => $missingIds,
                     'existing_ids' => $existingMeetingType,
                 ], 404);
@@ -257,7 +257,7 @@ class MeetingTypeController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Multiple meeting type deleted successfully.',
+                'message' => 'Tipe meeting terpilih berhasil dihapus.',
             ]);
         } catch (Exception $e) {
             Log::error('Failed to delete multiple meeting type: ' . $e->getMessage(), [
@@ -268,7 +268,7 @@ class MeetingTypeController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit delete request. Please try again later.',
+                'message' => 'Gagal menghapus tipe meeting terpilih. Silakan coba lagi.',
                 'error_details' => $e->getMessage(),
             ], 500);
         }
@@ -280,7 +280,7 @@ class MeetingTypeController extends Controller
         if (!$user || !$user->can('meeting-type.read')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to view meeting type.',
+                'message' => 'Anda tidak memiliki akses untuk melihat tipe meeting.',
             ], 403);
         }
 
@@ -346,7 +346,7 @@ class MeetingTypeController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load data',
+                'message' => 'Gagal memuat data tipe meeting.',
             ], 500);
         }
     }
@@ -355,7 +355,7 @@ class MeetingTypeController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('meeting-type.export')) {
-            abort(403, 'Sorry! You are not allowed to export meeting type.');
+            abort(403, 'Anda tidak memiliki akses untuk export tipe meeting.');
         }
 
         try {
@@ -368,7 +368,7 @@ class MeetingTypeController extends Controller
 
             return redirect()
                 ->route('meeting-type.index')
-                ->with('error', 'Failed to export meeting type.');
+                ->with('error', 'Gagal export tipe meeting.');
         }
     }
 

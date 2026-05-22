@@ -24,7 +24,7 @@ class LetterController extends Controller
     private function authorizeRead()
     {
         if (!$this->user || !$this->user->can('corsec.read')) {
-            abort(403, 'Sorry! You are not allowed to access this page.');
+            abort(403, 'Anda tidak memiliki akses ke halaman ini.');
         }
     }
 
