@@ -86,16 +86,6 @@ class Directorate extends Model
         return $this->hasMany(MeetingDecision::class, 'owner_directorate_id');
     }
 
-    public function supportedMeetingDecisions()
-    {
-        return $this->belongsToMany(
-            MeetingDecision::class,
-            'corsec_meeting_decision_support_directorates',
-            'directorate_id',
-            'meeting_decision_id'
-        );
-    }
-
     public function meetingParticipants()
     {
         return $this->hasMany(MeetingParticipant::class, 'directorate_id');

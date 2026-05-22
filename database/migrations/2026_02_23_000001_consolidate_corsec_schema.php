@@ -17,6 +17,8 @@ return new class extends Migration {
         $this->ensureMeetingSchema();
         $this->ensureMeetingParticipantSchema();
         $this->ensureWorkProgramSchema();
+        $this->createPerformanceIndexes();
+        $this->createTrigramIndexesIfAvailable();
         $this->removeLegacyBankSchema();
     }
 
@@ -136,6 +138,28 @@ return new class extends Migration {
             }
             if (!Schema::hasColumn('corsec_incoming_letters', 'followup_submitted_by')) {
                 $table->foreignId('followup_submitted_by')->nullable()->constrained('users')->nullOnDelete();
+            }
+            if (!Schema::hasColumn('corsec_incoming_letters', 'register_due_date')) {
+                $table->date('register_due_date')->nullable()->index('corsec_incoming_letters_register_due_date_idx');
+            }
+            if (!Schema::hasColumn('corsec_incoming_letters', 'corp_secretary_validation_requested_at')) {
+                $table->timestamp('corp_secretary_validation_requested_at')
+                    ->nullable()
+                    ->index('corsec_incoming_letters_validation_requested_at_idx');
+            }
+            if (!Schema::hasColumn('corsec_incoming_letters', 'corp_secretary_validated_at')) {
+                $table->timestamp('corp_secretary_validated_at')
+                    ->nullable()
+                    ->index('corsec_incoming_letters_validated_at_idx');
+            }
+            if (!Schema::hasColumn('corsec_incoming_letters', 'corp_secretary_validated_by')) {
+                $table->foreignId('corp_secretary_validated_by')
+                    ->nullable()
+                    ->constrained('users')
+                    ->nullOnDelete();
+            }
+            if (!Schema::hasColumn('corsec_incoming_letters', 'corp_secretary_validation_comment')) {
+                $table->text('corp_secretary_validation_comment')->nullable();
             }
             if (!Schema::hasColumn('corsec_incoming_letters', 'last_routed_from_directorate_id')) {
                 $table->foreignId('last_routed_from_directorate_id')->nullable()->constrained('corsec_directorates')->nullOnDelete();
@@ -478,7 +502,6 @@ return new class extends Migration {
                 $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
                 $table->text('note')->nullable();
                 $table->timestamps();
-                $table->unique(['meeting_id', 'directorate_id'], 'corsec_meeting_participants_unique');
             });
         }
 
@@ -493,6 +516,17 @@ return new class extends Migration {
                 DB::statement('ALTER TABLE corsec_meeting_participants ALTER COLUMN directorate_id DROP NOT NULL');
             }
 
+            DB::statement('ALTER TABLE corsec_meeting_participants DROP CONSTRAINT IF EXISTS corsec_meeting_participants_unique');
+            DB::statement('DROP INDEX IF EXISTS corsec_meeting_participants_unique');
+            DB::statement(
+                'CREATE UNIQUE INDEX IF NOT EXISTS corsec_meeting_participants_meeting_directorate_null_user_unique '
+                . 'ON corsec_meeting_participants (meeting_id, directorate_id) '
+                . 'WHERE user_id IS NULL AND directorate_id IS NOT NULL'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_meeting_participants_meeting_directorate_idx '
+                . 'ON corsec_meeting_participants (meeting_id, directorate_id)'
+            );
             DB::statement(
                 'CREATE INDEX IF NOT EXISTS corsec_meeting_participants_directorate_idx ON corsec_meeting_participants (directorate_id, meeting_id)'
             );
@@ -555,6 +589,202 @@ return new class extends Migration {
         }
 
         DB::statement('DROP TABLE IF EXISTS corsec_banks CASCADE');
+    }
+
+    private function createPerformanceIndexes(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
+        if (Schema::hasTable('corsec_outgoing_letters')) {
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_outgoing_letters_status_created_at_idx '
+                . 'ON corsec_outgoing_letters (status, created_at DESC)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_outgoing_letters_perihal_status_idx '
+                . 'ON corsec_outgoing_letters (perihal_type, perihal_incoming_letter_id, status)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_outgoing_letters_letter_type_created_idx '
+                . 'ON corsec_outgoing_letters (letter_type_id, created_at DESC)'
+            );
+        }
+
+        if (Schema::hasTable('corsec_incoming_letters')) {
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_incoming_letters_status_created_at_idx '
+                . 'ON corsec_incoming_letters (status, created_at DESC)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_incoming_letters_target_created_at_idx '
+                . 'ON corsec_incoming_letters (target_directorate_id, created_at DESC)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_incoming_letters_created_by_created_at_idx '
+                . 'ON corsec_incoming_letters (created_by, created_at DESC)'
+            );
+        }
+
+        if (Schema::hasTable('corsec_meetings')) {
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_meetings_meeting_at_id_idx '
+                . 'ON corsec_meetings (meeting_at DESC, id DESC)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_meetings_status_meeting_at_idx '
+                . 'ON corsec_meetings (status, meeting_at DESC)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_meetings_created_by_meeting_at_idx '
+                . 'ON corsec_meetings (created_by, meeting_at DESC)'
+            );
+        }
+
+        if (Schema::hasTable('corsec_meeting_agendas')) {
+            if (Schema::hasColumn('corsec_meeting_agendas', 'pic_user_id')) {
+                DB::statement(
+                    'CREATE INDEX IF NOT EXISTS corsec_meeting_agendas_pic_user_meeting_idx '
+                    . 'ON corsec_meeting_agendas (pic_user_id, meeting_id)'
+                );
+            }
+            if (Schema::hasColumn('corsec_meeting_agendas', 'owner_directorate_id')) {
+                DB::statement(
+                    'CREATE INDEX IF NOT EXISTS corsec_meeting_agendas_owner_directorate_meeting_idx '
+                    . 'ON corsec_meeting_agendas (owner_directorate_id, meeting_id)'
+                );
+            }
+        }
+
+        if (Schema::hasTable('corsec_meeting_decisions')) {
+            if (Schema::hasColumn('corsec_meeting_decisions', 'pic_user_id')) {
+                DB::statement(
+                    'CREATE INDEX IF NOT EXISTS corsec_meeting_decisions_pic_user_meeting_idx '
+                    . 'ON corsec_meeting_decisions (pic_user_id, meeting_id)'
+                );
+            }
+            if (Schema::hasColumn('corsec_meeting_decisions', 'owner_directorate_id')) {
+                DB::statement(
+                    'CREATE INDEX IF NOT EXISTS corsec_meeting_decisions_owner_directorate_meeting_idx '
+                    . 'ON corsec_meeting_decisions (owner_directorate_id, meeting_id)'
+                );
+            }
+        }
+
+        if (Schema::hasTable('corsec_work_programs')) {
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_work_programs_status_year_created_at_idx '
+                . 'ON corsec_work_programs (status, year, created_at DESC)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_work_programs_created_by_status_year_idx '
+                . 'ON corsec_work_programs (created_by, status, year)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_work_programs_directorate_year_status_idx '
+                . 'ON corsec_work_programs (directorate_id, year, status)'
+            );
+        }
+    }
+
+    private function createTrigramIndexesIfAvailable(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
+        try {
+            DB::statement('CREATE EXTENSION IF NOT EXISTS pg_trgm');
+        } catch (\Throwable) {
+            return;
+        }
+
+        if (Schema::hasTable('corsec_outgoing_letters')) {
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_outgoing_letters_subject_trgm_idx '
+                . 'ON corsec_outgoing_letters USING gin (subject gin_trgm_ops)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_outgoing_letters_summary_trgm_idx '
+                . 'ON corsec_outgoing_letters USING gin (summary gin_trgm_ops)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_outgoing_letters_registration_no_trgm_idx '
+                . 'ON corsec_outgoing_letters USING gin (registration_no gin_trgm_ops)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_outgoing_letters_letter_no_trgm_idx '
+                . 'ON corsec_outgoing_letters USING gin (letter_no gin_trgm_ops)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_outgoing_letters_perihal_text_trgm_idx '
+                . 'ON corsec_outgoing_letters USING gin (perihal_text gin_trgm_ops)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_outgoing_letters_recipient_other_trgm_idx '
+                . 'ON corsec_outgoing_letters USING gin (recipient_other gin_trgm_ops)'
+            );
+        }
+
+        if (Schema::hasTable('corsec_incoming_letters')) {
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_incoming_letters_subject_trgm_idx '
+                . 'ON corsec_incoming_letters USING gin (subject gin_trgm_ops)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_incoming_letters_summary_trgm_idx '
+                . 'ON corsec_incoming_letters USING gin (summary gin_trgm_ops)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_incoming_letters_registration_no_trgm_idx '
+                . 'ON corsec_incoming_letters USING gin (registration_no gin_trgm_ops)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_incoming_letters_external_letter_no_trgm_idx '
+                . 'ON corsec_incoming_letters USING gin (external_letter_no gin_trgm_ops)'
+            );
+        }
+
+        if (Schema::hasTable('corsec_senders')) {
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_senders_name_trgm_idx '
+                . 'ON corsec_senders USING gin (name gin_trgm_ops)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_senders_code_trgm_idx '
+                . 'ON corsec_senders USING gin (code gin_trgm_ops)'
+            );
+        }
+
+        if (Schema::hasTable('corsec_letter_types')) {
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_letter_types_name_trgm_idx '
+                . 'ON corsec_letter_types USING gin (name gin_trgm_ops)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_letter_types_code_trgm_idx '
+                . 'ON corsec_letter_types USING gin (code gin_trgm_ops)'
+            );
+        }
+
+        if (Schema::hasTable('corsec_meetings')) {
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_meetings_title_trgm_idx '
+                . 'ON corsec_meetings USING gin (title gin_trgm_ops)'
+            );
+        }
+
+        if (Schema::hasTable('corsec_work_programs')) {
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_work_programs_title_trgm_idx '
+                . 'ON corsec_work_programs USING gin (title gin_trgm_ops)'
+            );
+            DB::statement(
+                'CREATE INDEX IF NOT EXISTS corsec_work_programs_description_trgm_idx '
+                . 'ON corsec_work_programs USING gin (description gin_trgm_ops)'
+            );
+        }
     }
 
     private function foreignKeyExists(string $table, string $constraint): bool

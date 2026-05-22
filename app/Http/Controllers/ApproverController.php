@@ -45,7 +45,7 @@ class ApproverController extends Controller
         if (!$user || !$user->can('corsec.authorize')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to view approval requests.'
+                'message' => 'Anda tidak memiliki akses untuk melihat daftar persetujuan.'
             ], 403);
         }
 
@@ -151,7 +151,7 @@ class ApproverController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load approval requests.'
+                'message' => 'Gagal memuat daftar persetujuan.'
             ], 500);
         }
     }

@@ -187,7 +187,8 @@
                         })
                         .catch((error) => {
                             console.error('Error:', error);
-                            Swal.fire('Error!', 'Terjadi kesalahan saat menghapus surat.', 'error');
+                            Swal.fire('Error!', window.corsecAjaxMessage(error,
+                                'Gagal menghapus surat masuk.'), 'error');
                         });
                 }
             })
@@ -230,7 +231,8 @@
                         });
                     }).catch((error) => {
                         console.error('Error:', error);
-                        Swal.fire('Error!', 'Terjadi kesalahan saat menghapus baris.', 'error');
+                        Swal.fire('Error!', window.corsecAjaxMessage(error,
+                            'Gagal menghapus surat masuk terpilih.'), 'error');
                     });
                 }
             })
@@ -250,7 +252,28 @@
         const canDelete = @json((bool) ($permissionFlags['can_delete'] ?? false));
         const canEditAction = @json((bool) ($permissionFlags['can_edit_action'] ?? false));
 
-        const statusBadge = (status) => {
+        const isValidationOverdue = (data) => {
+            if (data?.corp_secretary_validated_at) {
+                return false;
+            }
+
+            if (!data?.corp_secretary_validation_requested_at) {
+                return false;
+            }
+
+            const requestedAt = new Date(data.corp_secretary_validation_requested_at);
+            if (Number.isNaN(requestedAt.getTime())) {
+                return false;
+            }
+
+            const deadline = new Date(requestedAt);
+            deadline.setDate(deadline.getDate() + 1);
+            deadline.setHours(23, 59, 59, 999);
+
+            return new Date() > deadline;
+        };
+
+        const statusBadge = (status, data = null) => {
             const val = (status ?? '').toString().toLowerCase();
 
             // sesuai status constants yang kita pake
@@ -261,14 +284,16 @@
                 in_progress: ['badge-warning', 'In Progress'],
                 waiting_dir_approval: ['badge-warning', 'Waiting Dir Approval'],
                 waiting_response_letter: ['badge-info', 'Waiting Response Letter'],
-                waiting_verification: ['badge-info', 'Waiting Verification'],
+                waiting_verification: ['badge-info', 'Waiting Validation'],
                 verified: ['badge-success', 'Verified'],
                 returned: ['badge-danger', 'Returned'],
                 rejected: ['badge-danger', 'Rejected'],
             };
 
             const [cls, text] = map[val] ?? ['badge-light', status ?? '-'];
-            return `<span class="badge ${cls}">${text}</span>`;
+            const overdueBadge = isValidationOverdue(data) ?
+                ' <span class="badge badge-danger">Overdue Validasi</span>' : '';
+            return `<span class="badge ${cls}">${text}</span>${overdueBadge}`;
         };
 
         const dataTableOptions = {
@@ -350,7 +375,7 @@
 
                 status: {
                     title: 'Status',
-                    render: (item, data) => statusBadge(data.status),
+                    render: (item, data) => statusBadge(data.status, data),
                 },
 
                 received_date: {

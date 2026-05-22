@@ -17,16 +17,15 @@
         $canComplianceCheckerApproval = (bool) ($permissionFlags['can_compliance_checker_approval'] ?? false);
         $canComplianceApproverApproval = (bool) ($permissionFlags['can_compliance_approver_approval'] ?? false);
         $canFinalUpload = (bool) ($permissionFlags['can_final_upload'] ?? false);
-        $canVerify = (bool) ($permissionFlags['can_verify'] ?? false);
         $canCancelRequest = (bool) ($permissionFlags['can_cancel_request'] ?? false);
         $canCancelApproval = (bool) ($permissionFlags['can_cancel_approval'] ?? false);
+        $canDirectorNote = (bool) ($permissionFlags['can_director_note'] ?? false);
         $sortedComments = $sortedComments ?? collect();
         $statusSteps = $permissionFlags['status_steps'] ?? [
             'draft' => 'Draft',
-            'waiting_dir_approval' => 'Approval EO dan DD Direktorat',
+            'waiting_dir_approval' => 'Approval Direktorat',
             'compliance_review' => 'Review Kepatuhan',
             'waiting_compliance_approval' => 'Approval EO dan DD Kepatuhan',
-            'waiting_verification' => 'Verifikasi EO Corp Affair',
             'waiting_final_upload' => 'Final Upload',
             'waiting_cancel_approval' => 'Approval Pembatalan EO Direktorat',
             'verified' => 'Done',
@@ -273,6 +272,29 @@
             @endif
         @endif
 
+        @if ($canDirectorNote)
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Komentar Viewer</h3>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ route('letter.outgoing.director.note', $outgoingLetter) }}"
+                        class="grid gap-4 js-ajax-form" data-form-type="outgoing-director-note">
+                        @csrf
+                        <div class="flex flex-col">
+                            <label class="form-label">Komentar Viewer (Direksi / Sekdir / Corporate Secretary) <span
+                                    class="text-danger">*</span></label>
+                            <textarea class="textarea w-full" name="note" rows="3"
+                                placeholder="Tambahkan komentar viewer..." required></textarea>
+                        </div>
+                        <div class="flex justify-end">
+                            <button class="btn btn-primary" type="submit">Simpan Komentar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        @endif
+
         @if ($approvals->count() > 0)
             <div class="card">
                 <div class="card-header">
@@ -315,7 +337,7 @@
 
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">Riwayat Catatan</h3>
+                    <h3 class="card-title">Riwayat Komentar</h3>
             </div>
             <div class="card-body">
                 @if ($sortedComments->count() > 0)
@@ -405,24 +427,6 @@
                                     value="reject">Reject</button>
                                 <button class="btn btn-sm btn-success" type="submit" name="action"
                                     value="approve">Approve</button>
-                            </div>
-                        </form>
-                    @elseif ($canVerify)
-                        <form method="POST" action="{{ route('letter.outgoing.verify.action', $outgoingLetter) }}"
-                            class="grid gap-4 js-ajax-form" data-form-type="outgoing-verify">
-                            @csrf
-                            <div class="text-sm text-gray-500">
-                                Verifikasi EO Corp Affair
-                            </div>
-                            <div class="flex flex-col">
-                                <label class="form-label">Catatan (opsional)</label>
-                                <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan..."></textarea>
-                            </div>
-                            <div class="flex flex-wrap gap-2 justify-end">
-                                <button class="btn btn-sm btn-danger" type="submit" name="action"
-                                    value="reject">Reject</button>
-                                <button class="btn btn-sm btn-success" type="submit" name="action"
-                                    value="verify">Verify</button>
                             </div>
                         </form>
                     @else
@@ -534,8 +538,8 @@
                                 setTimeout(() => window.location.reload(), 800);
                                 return;
                             }
-                            alert(successMessage);
-                            window.location.reload();
+                            Swal.fire('Berhasil', successMessage, 'success').then(() => window
+                                .location.reload());
                         },
                         error: function(xhr) {
                             if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON
@@ -548,7 +552,8 @@
                                 });
                                 return;
                             }
-                            alert('Gagal memproses. Coba lagi ya.');
+                            Swal.fire('Error!', window.corsecAjaxMessage(xhr,
+                                'Gagal memproses surat keluar.'), 'error');
                         }
                     });
                 });

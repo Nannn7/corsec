@@ -14,15 +14,19 @@
         $canCheckerDirApproval = (bool) ($permissionFlags['can_checker_dir_approval'] ?? false);
         $canApproverApproval = (bool) ($permissionFlags['can_approver_approval'] ?? false);
         $canCheckerApproval = (bool) ($permissionFlags['can_checker_approval'] ?? false);
+        $canCorsecValidation = (bool) ($permissionFlags['can_corsec_validation'] ?? false);
         $canAddMonitoring = (bool) ($permissionFlags['can_add_monitoring'] ?? false);
+        $validationRequested = (bool) $incomingLetter->corp_secretary_validation_requested_at;
+        $validationOverdue = $incomingLetter->isCorpSecretaryValidationOverdue();
+        $validationCompletedLate = $incomingLetter->isCorpSecretaryValidatedLate();
+        $sortedComments = $sortedComments ?? collect();
         $statusSteps = [
             'draft' => 'Draft',
-            'on_approval' => 'On Approval',
             'dispatched' => 'Dispatched',
             'in_progress' => 'In Progress',
             'waiting_dir_approval' => 'Waiting Dir Approval',
             'waiting_response_letter' => 'Waiting Response Letter',
-            'waiting_verification' => 'Waiting Verification',
+            'waiting_verification' => 'Waiting Validation',
             'verified' => 'Verified',
             'returned' => 'Returned',
             'rejected' => 'Rejected',
@@ -159,10 +163,39 @@
                                 {{ $incomingLetter->target_date ? $incomingLetter->target_date->format('Y-m-d') : '-' }}
                             </span>
                         </div>
+                        @if ($incomingLetter->register_due_date)
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Due Date Register:</span>
+                                <span class="font-medium">
+                                    {{ $incomingLetter->register_due_date->format('Y-m-d') }}
+                                </span>
+                            </div>
+                        @endif
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600">Status:</span>
-                            <span class="badge badge-light">
-                                {{ $statusSteps[$incomingLetter->status] ?? ($incomingLetter->status ?? '-') }}
+                            <div class="flex items-center gap-2">
+                                <span class="badge badge-light">
+                                    {{ $statusSteps[$incomingLetter->status] ?? ($incomingLetter->status ?? '-') }}
+                                </span>
+                                @if ($validationOverdue)
+                                    <span class="badge badge-danger">Belum divalidasi EO Corp Secretary</span>
+                                @endif
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Validasi EO Corp Secretary:</span>
+                            <span class="font-medium">
+                                @if ($incomingLetter->corp_secretary_validated_at && $validationCompletedLate)
+                                    <span class="badge badge-warning">Terlambat divalidasi</span>
+                                @elseif ($incomingLetter->corp_secretary_validated_at)
+                                    <span class="badge badge-success">Sudah divalidasi</span>
+                                @elseif ($validationRequested)
+                                    <span class="badge {{ $validationOverdue ? 'badge-danger' : 'badge-warning' }}">
+                                        {{ $validationOverdue ? 'Terlambat divalidasi' : 'Belum validasi' }}
+                                    </span>
+                                @else
+                                    -
+                                @endif
                             </span>
                         </div>
                     </div>
@@ -224,9 +257,7 @@
                         <div class="flex flex-wrap gap-2 justify-end">
                             @foreach ($statusSteps as $key => $label)
                                 @php
-                                    $isActive =
-                                        $status === $key ||
-                                        ($key === 'on_approval' && $incomingLetter->authorized_status === 'pending');
+                                    $isActive = $status === $key;
                                     $badgeClass = $isActive ? 'badge-success' : 'badge-light';
                                 @endphp
                                 <span class="badge {{ $badgeClass }}">{{ $label }}</span>
@@ -359,7 +390,7 @@
                                     @if ($responseOutgoingLetter)
                                         <a class="text-primary hover:underline"
                                             href="{{ route('letter.outgoing.show', $responseOutgoingLetter) }}">
-                                            {{ $responseOutgoingLetter->registration_no ?? ('ID #' . $responseOutgoingLetter->id) }}
+                                            {{ $responseOutgoingLetter->registration_no ?? 'ID #' . $responseOutgoingLetter->id }}
                                         </a>
                                     @else
                                         <span class="text-warning">Belum dibuat</span>
@@ -475,42 +506,87 @@
                             </div>
                         @elseif ($incomingLetter->followup_action === 'invitation')
                             @php
-                                $invitationDirectorateValue = $followupDetail['directorate'] ?? null;
-                                $invitationDirectorateLabel = '-';
-                                if (!is_null($invitationDirectorateValue) && $invitationDirectorateValue !== '') {
-                                    $invitationDirectorateLabel = $invitationDirectorateValue;
-                                    if (is_numeric($invitationDirectorateValue)) {
-                                        $invitationDirectorateLabel =
-                                            $directorateMap->get((int) $invitationDirectorateValue)?->name ??
-                                            $invitationDirectorateValue;
-                                    }
+                                $invitationParticipants = $followupDetail['participants'] ?? [];
+                                if (!is_array($invitationParticipants) || $invitationParticipants === []) {
+                                    $invitationParticipants = [
+                                        [
+                                            'nik' => $followupDetail['nik'] ?? null,
+                                            'name' => $followupDetail['name'] ?? null,
+                                            'directorate' => $followupDetail['directorate'] ?? null,
+                                            'position' => $followupDetail['position'] ?? null,
+                                            'registration_status' => $followupDetail['registration'] ?? null,
+                                            'pic_name' => null,
+                                            'pic_contact' => null,
+                                            'registration_deadline' => null,
+                                            'note' => $followupDetail['note'] ?? null,
+                                        ],
+                                    ];
                                 }
                             @endphp
-                            <div class="flex justify-between items-center">
-                                <span class="text-gray-600">NIK:</span>
-                                <span class="font-medium">{{ $followupDetail['nik'] ?? '-' }}</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-gray-600">Nama:</span>
-                                <span class="font-medium">{{ $followupDetail['name'] ?? '-' }}</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-gray-600">Direktorat:</span>
-                                <span class="font-medium">{{ $invitationDirectorateLabel }}</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-gray-600">Jabatan:</span>
-                                <span class="font-medium">{{ $followupDetail['position'] ?? '-' }}</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-gray-600">Pendaftaran:</span>
-                                <span class="font-medium">
-                                    {{ ($followupDetail['registration'] ?? '') === 'sudah' ? 'Sudah' : (($followupDetail['registration'] ?? '') === 'belum' ? 'Belum' : '-') }}
-                                </span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-gray-600">Catatan Pendaftaran:</span>
-                                <span class="font-medium">{{ $followupDetail['note'] ?? '-' }}</span>
+                            <div class="flex flex-col gap-4">
+                                @foreach ($invitationParticipants as $participantIndex => $participant)
+                                    @php
+                                        $invitationDirectorateValue = $participant['directorate'] ?? null;
+                                        $invitationDirectorateLabel = '-';
+                                        if (
+                                            !is_null($invitationDirectorateValue) &&
+                                            $invitationDirectorateValue !== ''
+                                        ) {
+                                            $invitationDirectorateLabel = $invitationDirectorateValue;
+                                            if (is_numeric($invitationDirectorateValue)) {
+                                                $invitationDirectorateLabel =
+                                                    $directorateMap->get((int) $invitationDirectorateValue)?->name ??
+                                                    $invitationDirectorateValue;
+                                            }
+                                        }
+                                    @endphp
+                                    <div class="rounded border border-gray-200 p-4">
+                                        <div class="mb-3 font-semibold text-gray-800">Peserta {{ $participantIndex + 1 }}
+                                        </div>
+                                        <div class="grid gap-3 lg:grid-cols-2">
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-gray-600">NIK:</span>
+                                                <span class="font-medium">{{ $participant['nik'] ?? '-' }}</span>
+                                            </div>
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-gray-600">Nama:</span>
+                                                <span class="font-medium">{{ $participant['name'] ?? '-' }}</span>
+                                            </div>
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-gray-600">Direktorat:</span>
+                                                <span class="font-medium">{{ $invitationDirectorateLabel }}</span>
+                                            </div>
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-gray-600">Jabatan:</span>
+                                                <span class="font-medium">{{ $participant['position'] ?? '-' }}</span>
+                                            </div>
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-gray-600">Status Pendaftaran:</span>
+                                                <span class="font-medium">
+                                                    {{ ($participant['registration_status'] ?? '') === 'sudah' ? 'Sudah' : (($participant['registration_status'] ?? '') === 'belum' ? 'Belum' : '-') }}
+                                                </span>
+                                            </div>
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-gray-600">Nama PIC:</span>
+                                                <span class="font-medium">{{ $participant['pic_name'] ?? '-' }}</span>
+                                            </div>
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-gray-600">Contact PIC:</span>
+                                                <span class="font-medium">{{ $participant['pic_contact'] ?? '-' }}</span>
+                                            </div>
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-gray-600">Deadline Pendaftaran:</span>
+                                                <span
+                                                    class="font-medium">{{ $participant['registration_deadline'] ?? '-' }}</span>
+                                            </div>
+                                            <div class="flex justify-between items-start gap-3 lg:col-span-2">
+                                                <span class="text-gray-600 shrink-0">Catatan:</span>
+                                                <span
+                                                    class="font-medium text-right">{{ $participant['note'] ?? '-' }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endforeach
                             </div>
                         @elseif ($incomingLetter->followup_action === 'review')
                             <div class="flex justify-between items-center">
@@ -545,26 +621,107 @@
             </div>
         @endif
 
+        @if ($validationRequested || $incomingLetter->corp_secretary_validated_at)
+                <div class="card">
+                    <div class="card-header">
+                    <h3 class="card-title">Corporate Secretary</h3>
+                    </div>
+                <div class="card-body">
+                    <div class="grid gap-4">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Requested At:</span>
+                            <span class="font-medium">
+                                {{ $incomingLetter->corp_secretary_validation_requested_at ? $incomingLetter->corp_secretary_validation_requested_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s') : '-' }}
+                            </span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Status:</span>
+                            <span class="font-medium">
+                                @if ($incomingLetter->corp_secretary_validated_at && $validationCompletedLate)
+                                    <span class="badge badge-warning">Sudah divalidasi, melewati batas waktu</span>
+                                @elseif ($incomingLetter->corp_secretary_validated_at)
+                                    <span class="badge badge-success">Sudah divalidasi</span>
+                                @elseif ($validationOverdue)
+                                    <span class="badge badge-danger">Terlambat divalidasi</span>
+                                @else
+                                    <span class="badge badge-warning">Belum divalidasi</span>
+                                @endif
+                            </span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Validator:</span>
+                            <span class="font-medium">{{ $incomingLetter->corpSecretaryValidatedBy?->name ?? '-' }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Validated At:</span>
+                            <span class="font-medium">
+                                {{ $incomingLetter->corp_secretary_validated_at ? $incomingLetter->corp_secretary_validated_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s') : '-' }}
+                            </span>
+                        </div>
+                        <div class="flex justify-between items-start gap-3">
+                            <span class="text-gray-600 shrink-0">Komentar Validasi:</span>
+                            <span
+                                class="font-medium text-right">{{ $incomingLetter->corp_secretary_validation_comment ?? '-' }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
+
         @if ($canViewerNote)
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">Tambah Catatan</h3>
+                    <h3 class="card-title">Komentar Viewer</h3>
                 </div>
                 <div class="card-body">
                     <form method="POST" action="{{ route('letter.incoming.director.note', $incomingLetter) }}"
                         class="grid gap-4 js-ajax-form" data-form-type="incoming-viewer-note">
                         @csrf
                         <div class="flex flex-col">
-                            <label class="form-label">Catatan <span class="text-danger">*</span></label>
-                            <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan..." required></textarea>
+                            <label class="form-label">Komentar Viewer (Direksi / Sekdir / Corporate Secretary) <span
+                                    class="text-danger">*</span></label>
+                            <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan komentar viewer..." required></textarea>
                         </div>
                         <div class="flex justify-end">
-                            <button type="submit" class="btn btn-primary">Simpan Catatan</button>
+                            <button type="submit" class="btn btn-primary">Simpan Komentar</button>
                         </div>
                     </form>
                 </div>
             </div>
         @endif
+
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Riwayat Komentar</h3>
+            </div>
+            <div class="card-body">
+                @if ($sortedComments->count() > 0)
+                    <div class="overflow-x-auto">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th class="min-w-[280px]">Komentar</th>
+                                    <th class="min-w-[200px]">Oleh</th>
+                                    <th class="min-w-[170px]">Waktu</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($sortedComments as $comment)
+                                    <tr>
+                                        <td>{{ $comment->body ?? '-' }}</td>
+                                        <td>{{ $comment->createdBy?->name ?? '-' }}</td>
+                                        <td>{{ $comment->created_at ? $comment->created_at->format('d/m/Y H:i') : '-' }}
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @else
+                    <div class="text-sm text-gray-500">Belum ada komentar untuk surat masuk ini.</div>
+                @endif
+            </div>
+        </div>
 
         @if ($canCorsecUpdateAction)
             @if ($canDirectorateUpdate)
@@ -658,7 +815,8 @@
                                 </div>
 
                                 <div class="flex flex-col followup-field hidden" data-followup="response_letter">
-                                    <label class="form-label">Target Surat Jawaban <span class="text-danger">*</span></label>
+                                    <label class="form-label">Target Surat Jawaban <span
+                                            class="text-danger">*</span></label>
                                     <input class="input" type="date" name="followup_response_target_date"
                                         min="{{ now()->format('Y-m-d') }}"
                                         value="{{ old('followup_response_target_date', $incomingLetter->followup_detail['target_date'] ?? '') }}">
@@ -666,7 +824,8 @@
 
                                 <div class="flex flex-col followup-field hidden" data-followup="socialization"
                                     data-field="followup_social_participants">
-                                    <label class="form-label">Peserta Sosialisasi <span class="text-danger">*</span></label>
+                                    <label class="form-label">Peserta Sosialisasi <span
+                                            class="text-danger">*</span></label>
                                     @php
                                         $socialParticipants = old(
                                             'followup_social_participants',
@@ -705,7 +864,8 @@
                                     </div>
                                 </div>
                                 <div class="flex flex-col followup-field hidden" data-followup="socialization">
-                                    <label class="form-label">Tanggal Sosialisasi <span class="text-danger">*</span></label>
+                                    <label class="form-label">Tanggal Sosialisasi <span
+                                            class="text-danger">*</span></label>
                                     <input class="input" type="date" name="followup_social_date"
                                         value="{{ old('followup_social_date', $incomingLetter->followup_detail['date'] ?? '') }}">
                                 </div>
@@ -764,51 +924,129 @@
                                     <textarea class="textarea w-full" name="followup_social_note" rows="3" placeholder="Catatan sosialisasi...">{{ old('followup_social_note', $incomingLetter->followup_detail['note'] ?? '') }}</textarea>
                                 </div>
 
-                                <div class="flex flex-col followup-field hidden" data-followup="invitation">
-                                    <label class="form-label">NIK <span class="text-danger">*</span></label>
-                                    <input class="input" type="text" name="followup_invitation_nik"
-                                        id="followup-invitation-nik" maxlength="16" inputmode="numeric" pattern="[0-9]*"
-                                        value="{{ old('followup_invitation_nik', $incomingLetter->followup_detail['nik'] ?? '') }}"
-                                        placeholder="NIK peserta...">
-                                </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="invitation">
-                                    <label class="form-label">Nama Peserta <span class="text-danger">*</span></label>
-                                    <input class="input" type="text" name="followup_invitation_name"
-                                        id="followup-invitation-name"
-                                        value="{{ old('followup_invitation_name', $incomingLetter->followup_detail['name'] ?? '') }}"
-                                        placeholder="Nama peserta...">
-                                </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="invitation">
-                                    <label class="form-label">Direktorat</label>
-                                    <input class="input" type="text" name="followup_invitation_directorate"
-                                        id="followup-invitation-directorate"
-                                        value="{{ old('followup_invitation_directorate', $incomingLetter->followup_detail['directorate'] ?? '') }}"
-                                        placeholder="Direktorat peserta...">
-                                </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="invitation">
-                                    <label class="form-label">Jabatan</label>
-                                    <input class="input" type="text" name="followup_invitation_position"
-                                        id="followup-invitation-position"
-                                        value="{{ old('followup_invitation_position', $incomingLetter->followup_detail['position'] ?? '') }}"
-                                        placeholder="Jabatan peserta...">
-                                </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="invitation">
-                                    <label class="form-label">Status Pendaftaran</label>
-                                    <select class="select" name="followup_invitation_registration">
-                                        <option value="">- Pilih -</option>
-                                        <option value="sudah"
-                                            {{ old('followup_invitation_registration', $incomingLetter->followup_detail['registration'] ?? '') === 'sudah' ? 'selected' : '' }}>
-                                            Sudah
-                                        </option>
-                                        <option value="belum"
-                                            {{ old('followup_invitation_registration', $incomingLetter->followup_detail['registration'] ?? '') === 'belum' ? 'selected' : '' }}>
-                                            Belum
-                                        </option>
-                                    </select>
-                                </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="invitation">
-                                    <label class="form-label">Catatan</label>
-                                    <textarea class="textarea w-full" name="followup_invitation_note" rows="3" placeholder="Catatan peserta...">{{ old('followup_invitation_note', $incomingLetter->followup_detail['note'] ?? '') }}</textarea>
+                                <div class="flex flex-col followup-field hidden lg:col-span-2" data-followup="invitation">
+                                    <div class="flex items-center justify-between gap-3">
+                                        <label class="form-label">Peserta Undangan <span
+                                                class="text-danger">*</span></label>
+                                        <button class="btn btn-sm btn-success" type="button"
+                                            id="add-invitation-participant">
+                                            Tambah Peserta
+                                        </button>
+                                    </div>
+                                    @php
+                                        $defaultInvitationParticipants =
+                                            $incomingLetter->followup_detail['participants'] ?? [];
+                                        if (
+                                            !is_array($defaultInvitationParticipants) ||
+                                            $defaultInvitationParticipants === []
+                                        ) {
+                                            $defaultInvitationParticipants = [
+                                                [
+                                                    'nik' => $incomingLetter->followup_detail['nik'] ?? '',
+                                                    'name' => $incomingLetter->followup_detail['name'] ?? '',
+                                                    'directorate' =>
+                                                        $incomingLetter->followup_detail['directorate'] ?? '',
+                                                    'position' => $incomingLetter->followup_detail['position'] ?? '',
+                                                    'registration_status' =>
+                                                        $incomingLetter->followup_detail['registration'] ?? '',
+                                                    'pic_name' => '',
+                                                    'pic_contact' => '',
+                                                    'registration_deadline' => '',
+                                                    'note' => $incomingLetter->followup_detail['note'] ?? '',
+                                                ],
+                                            ];
+                                        }
+                                        $invitationParticipants = old(
+                                            'followup_invitation_participants',
+                                            $defaultInvitationParticipants,
+                                        );
+                                    @endphp
+                                    <div id="invitation-participants-container" class="mt-4 grid gap-4">
+                                        @foreach ($invitationParticipants as $participantIndex => $participant)
+                                            <div class="rounded border border-gray-200 p-4 invitation-participant-item"
+                                                data-index="{{ $participantIndex }}">
+                                                <div class="mb-3 flex items-center justify-between gap-3">
+                                                    <div class="font-semibold text-gray-800">Peserta
+                                                        {{ $participantIndex + 1 }}</div>
+                                                    <button class="btn btn-xs btn-danger remove-invitation-participant"
+                                                        type="button">
+                                                        Hapus
+                                                    </button>
+                                                </div>
+                                                <div class="grid gap-4 lg:grid-cols-2">
+                                                    <div class="flex flex-col">
+                                                        <label class="form-label">NIK</label>
+                                                        <input class="input invitation-nik-input" type="text"
+                                                            name="followup_invitation_participants[{{ $participantIndex }}][nik]"
+                                                            maxlength="16" inputmode="numeric" pattern="[0-9]*"
+                                                            value="{{ $participant['nik'] ?? '' }}"
+                                                            placeholder="NIK peserta...">
+                                                    </div>
+                                                    <div class="flex flex-col">
+                                                        <label class="form-label">Nama Peserta <span
+                                                                class="text-danger">*</span></label>
+                                                        <input class="input invitation-name-input" type="text"
+                                                            name="followup_invitation_participants[{{ $participantIndex }}][name]"
+                                                            value="{{ $participant['name'] ?? '' }}"
+                                                            placeholder="Nama peserta...">
+                                                    </div>
+                                                    <div class="flex flex-col">
+                                                        <label class="form-label">Direktorat</label>
+                                                        <input class="input invitation-directorate-input" type="text"
+                                                            name="followup_invitation_participants[{{ $participantIndex }}][directorate]"
+                                                            value="{{ $participant['directorate'] ?? '' }}"
+                                                            placeholder="Direktorat peserta...">
+                                                    </div>
+                                                    <div class="flex flex-col">
+                                                        <label class="form-label">Jabatan</label>
+                                                        <input class="input invitation-position-input" type="text"
+                                                            name="followup_invitation_participants[{{ $participantIndex }}][position]"
+                                                            value="{{ $participant['position'] ?? '' }}"
+                                                            placeholder="Jabatan peserta...">
+                                                    </div>
+                                                    <div class="flex flex-col">
+                                                        <label class="form-label">Status Pendaftaran</label>
+                                                        <select class="select invitation-registration-status"
+                                                            name="followup_invitation_participants[{{ $participantIndex }}][registration_status]">
+                                                            <option value="">- Pilih -</option>
+                                                            <option value="sudah"
+                                                                {{ ($participant['registration_status'] ?? '') === 'sudah' ? 'selected' : '' }}>
+                                                                Sudah</option>
+                                                            <option value="belum"
+                                                                {{ ($participant['registration_status'] ?? '') === 'belum' ? 'selected' : '' }}>
+                                                                Belum</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="flex flex-col">
+                                                        <label class="form-label">Nama PIC</label>
+                                                        <input class="input invitation-pic-name-input" type="text"
+                                                            name="followup_invitation_participants[{{ $participantIndex }}][pic_name]"
+                                                            value="{{ $participant['pic_name'] ?? '' }}"
+                                                            placeholder="Nama PIC...">
+                                                    </div>
+                                                    <div class="flex flex-col">
+                                                        <label class="form-label">Nomor Contact PIC</label>
+                                                        <input class="input invitation-pic-contact-input" type="text"
+                                                            name="followup_invitation_participants[{{ $participantIndex }}][pic_contact]"
+                                                            value="{{ $participant['pic_contact'] ?? '' }}"
+                                                            placeholder="Nomor contact PIC...">
+                                                    </div>
+                                                    <div class="flex flex-col">
+                                                        <label class="form-label">Tanggal Deadline Pendaftaran</label>
+                                                        <input class="input invitation-registration-deadline-input"
+                                                            type="date"
+                                                            name="followup_invitation_participants[{{ $participantIndex }}][registration_deadline]"
+                                                            value="{{ $participant['registration_deadline'] ?? '' }}">
+                                                    </div>
+                                                    <div class="flex flex-col lg:col-span-2">
+                                                        <label class="form-label">Catatan</label>
+                                                        <textarea class="textarea w-full" name="followup_invitation_participants[{{ $participantIndex }}][note]"
+                                                            rows="3" placeholder="Catatan peserta...">{{ $participant['note'] ?? '' }}</textarea>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        @endforeach
+                                    </div>
                                 </div>
 
                                 <div class="flex flex-col followup-field hidden" data-followup="review">
@@ -849,7 +1087,8 @@
                                 <label class="form-label">Upload Draft/Hasil (PDF/JPG/PNG)</label>
                                 <input class="file-input" type="file" name="evidence_files[]" multiple
                                     accept=".pdf,.jpg,.jpeg,.png">
-                                <small class="text-xs text-gray-500 mt-1" id="evidence-upload-note" style="display:none;">
+                                <small class="text-xs text-gray-500 mt-1" id="evidence-upload-note"
+                                    style="display:none;">
                                     Untuk tindak lanjut Surat Jawaban, final dokumen diselesaikan lewat form Surat Keluar.
                                 </small>
                             </div>
@@ -858,8 +1097,9 @@
                                 <button class="btn btn-light" type="submit" name="submit_for_approval" value="0">
                                     Simpan Draft
                                 </button>
-                                <button class="btn btn-primary" type="submit" name="submit_for_approval" value="1">
-                                    Submit Approval
+                                <button class="btn btn-primary" type="submit" name="submit_for_approval"
+                                    value="1">
+                                    Submit Approval Direktorat
                                 </button>
                             </div>
                         </form>
@@ -905,9 +1145,10 @@
                                                 'EO Direktorat Returned',
                                                 'DD Direktorat Approved',
                                                 'DD Direktorat Returned',
+                                                'Corporate Secretary Approved',
+                                                'Corporate Secretary Returned',
                                                 'EO Corp Affair Approved',
                                                 'EO Corp Affair Returned',
-                                                'Verifikasi EO Corp Affair',
                                             ];
 
                                             foreach ($knownLabels as $known) {
@@ -942,74 +1183,58 @@
             </div>
         @endif
 
-        @can('corsec.authorize')
+        @if ($canCheckerDirApproval || $canApproverApproval)
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Approval</h3>
                 </div>
                 <div class="card-body">
-                    @if (
-                        ($incomingLetter->authorized_status === 'pending' || $incomingLetter->status === 'on_approval') &&
-                            $canCheckerApproval)
-                        <form method="POST" action="{{ route('letter.incoming.approval.action', $incomingLetter) }}"
-                            class="grid gap-4 js-ajax-form" data-form-type="approval">
-                            @csrf
-                            <div class="flex flex-col">
-                                <label class="form-label">Catatan (opsional)</label>
-                                <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan..."></textarea>
-                            </div>
-                            <div class="flex flex-wrap gap-2 justify-end">
-                                <button class="btn btn-sm btn-danger" type="submit" name="action" value="reject">
-                                    <i class="ki-filled ki-cross"></i> Reject
-                                </button>
-                                <button class="btn btn-sm btn-success" type="submit" name="action" value="approve">
-                                    <i class="ki-filled ki-check"></i> Approve
-                                </button>
-                            </div>
-                        </form>
-                    @elseif ($incomingLetter->status === 'waiting_dir_approval' && ($canCheckerDirApproval || $canApproverApproval))
-                        <form method="POST" action="{{ route('letter.incoming.approval.action', $incomingLetter) }}"
-                            class="grid gap-4 js-ajax-form" data-form-type="approval">
-                            @csrf
-                            <div class="text-sm text-gray-500">
-                                {{ $canCheckerDirApproval ? 'Approval EO' : 'Approval DD' }}
-                            </div>
-                            <div class="flex flex-col">
-                                <label class="form-label">Catatan (opsional)</label>
-                                <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan..."></textarea>
-                            </div>
-                            <div class="flex flex-wrap gap-2 justify-end">
-                                <button class="btn btn-sm btn-danger" type="submit" name="action" value="reject">
-                                    <i class="ki-filled ki-cross"></i> Reject
-                                </button>
-                                <button class="btn btn-sm btn-success" type="submit" name="action" value="approve">
-                                    <i class="ki-filled ki-check"></i> Approve
-                                </button>
-                            </div>
-                        </form>
-                    @elseif ($incomingLetter->status === 'waiting_verification' && $canCheckerApproval)
-                        <form method="POST" action="{{ route('letter.incoming.verify.action', $incomingLetter) }}"
-                            class="grid gap-4 js-ajax-form" data-form-type="verify">
-                            @csrf
-                            <div class="flex flex-col">
-                                <label class="form-label">Catatan (opsional)</label>
-                                <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan..."></textarea>
-                            </div>
-                            <div class="flex flex-wrap gap-2 justify-end">
-                                <button class="btn btn-sm btn-danger" type="submit" name="action" value="reject">
-                                    <i class="ki-filled ki-cross"></i> Reject
-                                </button>
-                                <button class="btn btn-sm btn-success" type="submit" name="action" value="approve">
-                                    <i class="ki-filled ki-check"></i> Approve
-                                </button>
-                            </div>
-                        </form>
-                    @else
-                        <div class="text-gray-500 text-sm">Belum ada aksi approval untuk status ini.</div>
-                    @endif
+                    <form method="POST" action="{{ route('letter.incoming.approval.action', $incomingLetter) }}"
+                        class="grid gap-4 js-ajax-form" data-form-type="approval">
+                        @csrf
+                        <div class="text-sm text-gray-500">
+                            {{ $canCheckerDirApproval ? 'Approval EO' : 'Approval DD' }}
+                        </div>
+                        <div class="flex flex-col">
+                            <label class="form-label">Catatan (opsional)</label>
+                            <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan catatan..."></textarea>
+                        </div>
+                        <div class="flex flex-wrap gap-2 justify-end">
+                            <button class="btn btn-sm btn-danger" type="submit" name="action" value="reject">
+                                <i class="ki-filled ki-cross"></i> Reject
+                            </button>
+                            <button class="btn btn-sm btn-success" type="submit" name="action" value="approve">
+                                <i class="ki-filled ki-check"></i> Approve
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
-        @endcan
+        @endif
+
+        @if ($canCorsecValidation)
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Corporate Secretary</h3>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ route('letter.incoming.verify.action', $incomingLetter) }}"
+                        class="grid gap-4 js-ajax-form" data-form-type="verify">
+                        @csrf
+                        <div class="flex flex-col">
+                            <label class="form-label">Komentar Validasi <span class="text-danger">*</span></label>
+                            <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan komentar validasi..."
+                                required></textarea>
+                        </div>
+                        <div class="flex justify-end">
+                            <button class="btn btn-sm btn-success" type="submit" name="action" value="validate">
+                                <i class="ki-filled ki-check"></i> Simpan Validasi
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        @endif
     </div>
 @endsection
 
@@ -1032,6 +1257,10 @@
             const evidenceUploadNote = document.getElementById('evidence-upload-note');
             const evidenceFileInput = evidenceUploadWrapper ? evidenceUploadWrapper.querySelector(
                 'input[name="evidence_files[]"]') : null;
+            const invitationParticipantsContainer = document.getElementById('invitation-participants-container');
+            const addInvitationParticipantButton = document.getElementById('add-invitation-participant');
+            const invitationLookupUrl = @json(route('letter.incoming.lookup-user'));
+            let invitationLookupTimer = null;
 
             function toggleFollowupFields() {
                 const selected = followupSelect ? followupSelect.value : '';
@@ -1141,31 +1370,98 @@
                 updateSocialCoordinationLabel();
             }
 
-            const invitationNikInput = document.getElementById('followup-invitation-nik');
-            const invitationNameInput = document.getElementById('followup-invitation-name');
-            const invitationDirectorateInput = document.getElementById('followup-invitation-directorate');
-            const invitationPositionInput = document.getElementById('followup-invitation-position');
-            const invitationLookupUrl = @json(route('letter.incoming.lookup-user'));
-            let invitationLookupTimer = null;
+            function invitationParticipantTemplate(index) {
+                return `
+                    <div class="rounded border border-gray-200 p-4 invitation-participant-item" data-index="${index}">
+                        <div class="mb-3 flex items-center justify-between gap-3">
+                            <div class="font-semibold text-gray-800">Peserta ${index + 1}</div>
+                            <button class="btn btn-xs btn-light-danger remove-invitation-participant" type="button">Hapus</button>
+                        </div>
+                        <div class="grid gap-4 lg:grid-cols-2">
+                            <div class="flex flex-col">
+                                <label class="form-label">NIK</label>
+                                <input class="input invitation-nik-input" type="text" name="followup_invitation_participants[${index}][nik]" maxlength="16" inputmode="numeric" pattern="[0-9]*" placeholder="NIK peserta...">
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="form-label">Nama Peserta <span class="text-danger">*</span></label>
+                                <input class="input invitation-name-input" type="text" name="followup_invitation_participants[${index}][name]" placeholder="Nama peserta...">
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="form-label">Direktorat</label>
+                                <input class="input invitation-directorate-input" type="text" name="followup_invitation_participants[${index}][directorate]" placeholder="Direktorat peserta...">
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="form-label">Jabatan</label>
+                                <input class="input invitation-position-input" type="text" name="followup_invitation_participants[${index}][position]" placeholder="Jabatan peserta...">
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="form-label">Status Pendaftaran</label>
+                                <select class="select invitation-registration-status" name="followup_invitation_participants[${index}][registration_status]">
+                                    <option value="">- Pilih -</option>
+                                    <option value="sudah">Sudah</option>
+                                    <option value="belum">Belum</option>
+                                </select>
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="form-label">Nama PIC</label>
+                                <input class="input invitation-pic-name-input" type="text" name="followup_invitation_participants[${index}][pic_name]" placeholder="Nama PIC...">
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="form-label">Nomor Contact PIC</label>
+                                <input class="input invitation-pic-contact-input" type="text" name="followup_invitation_participants[${index}][pic_contact]" placeholder="Nomor contact PIC...">
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="form-label">Tanggal Deadline Pendaftaran</label>
+                                <input class="input invitation-registration-deadline-input" type="date" name="followup_invitation_participants[${index}][registration_deadline]">
+                            </div>
+                            <div class="flex flex-col lg:col-span-2">
+                                <label class="form-label">Catatan</label>
+                                <textarea class="textarea w-full" name="followup_invitation_participants[${index}][note]" rows="3" placeholder="Catatan peserta..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
 
-            function fillInvitationFields(data) {
-                if (!data) return;
-                if (invitationNameInput && data.name) {
-                    invitationNameInput.value = data.name;
+            function reindexInvitationParticipants() {
+                if (!invitationParticipantsContainer) return;
+                const items = invitationParticipantsContainer.querySelectorAll('.invitation-participant-item');
+                items.forEach((item, index) => {
+                    item.dataset.index = String(index);
+                    const title = item.querySelector('.font-semibold');
+                    if (title) {
+                        title.textContent = `Peserta ${index + 1}`;
+                    }
+                    item.querySelectorAll('input, select, textarea').forEach((field) => {
+                        if (!field.name) return;
+                        field.name = field.name.replace(/followup_invitation_participants\[\d+\]/,
+                            `followup_invitation_participants[${index}]`);
+                    });
+                });
+            }
+
+            function fillInvitationRow(row, data) {
+                if (!row || !data) return;
+                const nameInput = row.querySelector('.invitation-name-input');
+                const directorateInput = row.querySelector('.invitation-directorate-input');
+                const positionInput = row.querySelector('.invitation-position-input');
+
+                if (nameInput && data.name) {
+                    nameInput.value = data.name;
                 }
-                if (invitationDirectorateInput) {
+                if (directorateInput) {
                     if (data.directorate_name) {
-                        invitationDirectorateInput.value = data.directorate_name;
+                        directorateInput.value = data.directorate_name;
                     } else if (data.directorate_id) {
-                        invitationDirectorateInput.value = String(data.directorate_id);
+                        directorateInput.value = String(data.directorate_id);
                     }
                 }
-                if (invitationPositionInput && data.position) {
-                    invitationPositionInput.value = data.position;
+                if (positionInput && data.position) {
+                    positionInput.value = data.position;
                 }
             }
 
-            function lookupInvitationUser(nik) {
+            function lookupInvitationUser(row, nik) {
                 if (!invitationLookupUrl || !nik) return;
                 fetch(`${invitationLookupUrl}?nik=${encodeURIComponent(nik)}`, {
                         headers: {
@@ -1175,23 +1471,52 @@
                     .then((response) => (response.ok ? response.json() : null))
                     .then((payload) => {
                         if (payload && payload.success) {
-                            fillInvitationFields(payload.data);
+                            fillInvitationRow(row, payload.data);
                         }
                     })
                     .catch(() => {});
             }
 
-            if (invitationNikInput) {
-                invitationNikInput.addEventListener('input', function(event) {
-                    const nik = event.target.value.trim();
+            if (addInvitationParticipantButton && invitationParticipantsContainer) {
+                addInvitationParticipantButton.addEventListener('click', function() {
+                    const index = invitationParticipantsContainer.querySelectorAll(
+                        '.invitation-participant-item').length;
+                    invitationParticipantsContainer.insertAdjacentHTML('beforeend',
+                        invitationParticipantTemplate(index));
+                    reindexInvitationParticipants();
+                });
+            }
+
+            if (invitationParticipantsContainer) {
+                invitationParticipantsContainer.addEventListener('click', function(event) {
+                    const removeButton = event.target.closest('.remove-invitation-participant');
+                    if (!removeButton) return;
+
+                    const items = invitationParticipantsContainer.querySelectorAll(
+                        '.invitation-participant-item');
+                    if (items.length <= 1) {
+                        return;
+                    }
+
+                    removeButton.closest('.invitation-participant-item')?.remove();
+                    reindexInvitationParticipants();
+                });
+
+                invitationParticipantsContainer.addEventListener('input', function(event) {
+                    const nikInput = event.target.closest('.invitation-nik-input');
+                    if (!nikInput) return;
+
+                    const nik = nikInput.value.trim();
                     if (invitationLookupTimer) {
                         clearTimeout(invitationLookupTimer);
                     }
                     if (!nik) {
                         return;
                     }
+
+                    const row = nikInput.closest('.invitation-participant-item');
                     invitationLookupTimer = setTimeout(() => {
-                        lookupInvitationUser(nik);
+                        lookupInvitationUser(row, nik);
                     }, 400);
                 });
             }
@@ -1257,11 +1582,48 @@
                     }
 
                     if (action === 'invitation') {
-                        if (!$form.find('[name="followup_invitation_nik"]').val()) {
-                            errors.followup_invitation_nik = 'Field ini tidak boleh kosong.';
+                        const invitationRows = $form.find('.invitation-participant-item');
+                        if (invitationRows.length === 0) {
+                            errors.followup_invitation_participants = 'Silahkan tambahkan minimal 1 peserta.';
                         }
-                        if (!$form.find('[name="followup_invitation_name"]').val()) {
-                            errors.followup_invitation_name = 'Field ini tidak boleh kosong.';
+
+                        invitationRows.each(function(index) {
+                            const $row = window.jQuery(this);
+                            const name = ($row.find('.invitation-name-input').val() || '').trim();
+                            const status = ($row.find('.invitation-registration-status').val() || '')
+                                .trim();
+                            const picName = ($row.find('.invitation-pic-name-input').val() || '').trim();
+                            const picContact = ($row.find('.invitation-pic-contact-input').val() || '')
+                                .trim();
+                            const deadline = ($row.find('.invitation-registration-deadline-input').val() ||
+                                '').trim();
+
+                            if (!name) {
+                                errors[`followup_invitation_participants.${index}.name`] =
+                                    'Nama peserta wajib diisi.';
+                            }
+
+                            if (status === 'sudah') {
+                                if (!picName) {
+                                    errors[`followup_invitation_participants.${index}.pic_name`] =
+                                        'Nama PIC wajib diisi jika peserta sudah terdaftar.';
+                                }
+                                if (!picContact) {
+                                    errors[`followup_invitation_participants.${index}.pic_contact`] =
+                                        'Nomor contact PIC wajib diisi jika peserta sudah terdaftar.';
+                                }
+                                if (!deadline) {
+                                    errors[
+                                            `followup_invitation_participants.${index}.registration_deadline`
+                                        ] =
+                                        'Tanggal deadline pendaftaran wajib diisi jika peserta sudah terdaftar.';
+                                }
+                            }
+                        });
+
+                        if (Object.keys(errors).some((field) => field.startsWith(
+                                'followup_invitation_participants'))) {
+                            errors.followup_action = 'Lengkapi data peserta undangan terlebih dahulu.';
                         }
                     }
 
@@ -1339,7 +1701,8 @@
                         },
                         success: function(response) {
                             const reloadPage = () => window.location.reload();
-                            const successMessage = response && typeof response.message === 'string' &&
+                            const successMessage = response && typeof response.message ===
+                                'string' &&
                                 response.message.trim() !== '' ?
                                 response.message : 'Berhasil disimpan.';
                             if (window.toast && typeof window.toast.success === 'function') {
@@ -1347,8 +1710,7 @@
                                 setTimeout(reloadPage, 800);
                                 return;
                             }
-                            alert(successMessage);
-                            reloadPage();
+                            Swal.fire('Berhasil', successMessage, 'success').then(reloadPage);
                         },
                         error: function(xhr) {
                             if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON
@@ -1361,8 +1723,8 @@
                                 });
                                 return;
                             }
-                            // fallback
-                            alert('Gagal memproses. Coba lagi ya.');
+                            Swal.fire('Error!', window.corsecAjaxMessage(xhr,
+                                'Gagal memproses surat masuk.'), 'error');
                         }
                     });
                 });

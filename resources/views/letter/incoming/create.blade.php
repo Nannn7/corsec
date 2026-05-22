@@ -33,9 +33,8 @@
                     @csrf
                     @if (isset($incomingLetter))
                         @method('PUT')
-                    @else
-                        <input type="hidden" name="submit_for_approval" id="submit_for_approval" value="1">
                     @endif
+                    <input type="hidden" name="submit_for_approval" id="submit_for_approval" value="1">
 
                     {{-- INFO SURAT --}}
                     <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -241,12 +240,23 @@
                         </div>
 
                         <div class="flex flex-col">
-                            <label class="form-label">Due Date<span class="text-danger">*</span></label>
+                            <label class="form-label">Due Date Letter<span class="text-danger">*</span></label>
                             <input class="input @error('target_date') border-danger bg-danger-light @enderror"
-                                type="date" name="target_date"
-                                min="{{ now()->format('Y-m-d') }}"
+                                type="date" name="target_date" min="{{ now()->format('Y-m-d') }}"
                                 value="{{ old('target_date', $incomingLetter?->target_date?->format('Y-m-d')) }}">
                             @error('target_date')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+
+                        <div class="flex flex-col">
+                            <label class="form-label">Due Date Register<span class="text-danger">*</span></label>
+                            <input class="input @error('register_due_date') border-danger bg-danger-light @enderror"
+                                type="date" name="register_due_date" id="register_due_date"
+                                value="{{ old('register_due_date', $incomingLetter?->register_due_date?->format('Y-m-d')) }}">
+                            <div class="mt-1 text-xs text-gray-500">Wajib diisi jika surat yang diterima berupa undangan.
+                            </div>
+                            @error('register_due_date')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
                         </div>
@@ -300,7 +310,7 @@
                             @enderror
 
                             <div class="mt-1 text-xs text-gray-500">
-                                Bisa multiple file. Max 10MB per file.
+                                Bisa multiple file. Max {{ \Modules\Corsec\Support\UploadRule::label() }} per file.
                             </div>
                         </div>
                     </div>
@@ -312,8 +322,11 @@
                         @if (isset($incomingLetter))
                             @can('corsec.update')
                                 @if ($isEditableStatus)
-                                    <button type="submit" class="btn btn-primary">
-                                        <i class="ki-filled ki-check"></i> Update
+                                    <button type="button" id="save-draft" class="btn btn-light">
+                                        <i class="ki-filled ki-archive"></i> Update Draft
+                                    </button>
+                                    <button type="submit" id="submit-approval" class="btn btn-primary">
+                                        <i class="ki-filled ki-check"></i> Submit
                                     </button>
                                 @endif
                             @endcan
@@ -323,7 +336,7 @@
                                     <i class="ki-filled ki-archive"></i> Save Draft
                                 </button>
                                 <button type="submit" id="submit-approval" class="btn btn-primary">
-                                    <i class="ki-filled ki-check"></i> Request Approval
+                                    <i class="ki-filled ki-check"></i> Submit
                                 </button>
                             @endcan
                         @endif
@@ -359,6 +372,7 @@
             const letterTypeSelect = document.getElementById('letter_type_id');
             const letterTypeOtherWrapper = document.getElementById('letter-type-other-wrapper');
             const letterTypeOtherInput = document.getElementById('letter_type_other');
+            const registerDueDateInput = document.getElementById('register_due_date');
 
             if (saveDraftButton) {
                 saveDraftButton.addEventListener('click', function() {
@@ -418,6 +432,19 @@
                     letterTypeOtherInput.required = false;
                     letterTypeOtherInput.value = '';
                 }
+            }
+
+            function isInvitationLetter() {
+                const subjectValue = form ? (form.querySelector('[name="subject"]')?.value || '').toLowerCase() :
+                    '';
+                const letterTypeLabel = letterTypeSelect && letterTypeSelect.selectedIndex >= 0 ?
+                    (letterTypeSelect.options[letterTypeSelect.selectedIndex]?.text || '').toLowerCase() : '';
+                const letterTypeOtherValue = letterTypeOtherInput ? (letterTypeOtherInput.value || '')
+                    .toLowerCase() : '';
+
+                return subjectValue.includes('undangan') ||
+                    letterTypeLabel.includes('undangan') ||
+                    letterTypeOtherValue.includes('undangan');
             }
 
             if (letterTypeSelect) {
@@ -537,6 +564,9 @@
                         if (letterTypeValue === 'other' && !$form.find('[name="letter_type_other"]').val()) {
                             errors.letter_type_other = requiredMessage;
                         }
+                        if (isInvitationLetter() && !$form.find('[name="register_due_date"]').val()) {
+                            errors.register_due_date = 'Due date register wajib diisi untuk surat undangan.';
+                        }
                         const targetDateValue = $form.find('[name="target_date"]').val();
                         if (targetDateValue && targetDateValue < todayYmd) {
                             errors.target_date = 'Due date tidak boleh kurang dari hari ini.';
@@ -576,6 +606,10 @@
                     $document.on('submit', 'form.js-ajax-form', function(event) {
                         event.preventDefault();
                         const $form = window.jQuery(this);
+                        if ($form.data('submitting')) {
+                            return;
+                        }
+
                         clearValidation($form);
 
                         const errors = validateIncomingForm($form);
@@ -585,6 +619,10 @@
                             });
                             return;
                         }
+
+                        $form.data('submitting', true);
+                        const $submitButtons = $form.find('button[type="submit"], button[type="button"]');
+                        $submitButtons.prop('disabled', true).addClass('disabled');
 
                         const formData = new FormData(this);
                         window.jQuery.ajax({
@@ -615,12 +653,15 @@
                                     }, 600);
                                     return;
                                 }
-                                alert('Berhasil disimpan.');
-                                if (approvalInput && approvalInput.value === '1') {
-                                    window.location.href = indexUrl;
-                                    return;
-                                }
-                                window.location.reload();
+                                Swal.fire('Berhasil', 'Data berhasil disimpan.', 'success').then(
+                                    function() {
+                                        if (approvalInput && approvalInput.value === '1') {
+                                            window.location.href = indexUrl;
+                                            return;
+                                        }
+                                        window.location.reload();
+                                    });
+                                return;
                             },
                             error: function(xhr) {
                                 if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON
@@ -630,9 +671,12 @@
                                         showFieldError($form, field, serverErrors[field]
                                             [0]);
                                     });
-                                    return;
+                                } else {
+                                    Swal.fire('Error!', window.corsecAjaxMessage(xhr,
+                                        'Gagal memproses surat masuk.'), 'error');
                                 }
-                                alert('Gagal memproses. Coba lagi ya.');
+                                $form.data('submitting', false);
+                                $submitButtons.prop('disabled', false).removeClass('disabled');
                             }
                         });
                     });

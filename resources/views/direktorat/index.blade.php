@@ -116,7 +116,8 @@
                         });
                     }).catch((error) => {
                         console.error('Error:', error);
-                        Swal.fire('Error!', 'An error occurred while deleting the directorate.', 'error');
+                        Swal.fire('Error!', window.corsecAjaxMessage(error,
+                            'Gagal menghapus direktorat.'), 'error');
                     });
                 }
             })
@@ -159,7 +160,8 @@
                         });
                     }).catch((error) => {
                         console.error('Error:', error);
-                        Swal.fire('Error!', 'An error occurred while deleting the rows.', 'error');
+                        Swal.fire('Error!', window.corsecAjaxMessage(error,
+                            'Gagal menghapus direktorat terpilih.'), 'error');
                     });
                 }
             })

@@ -6,6 +6,8 @@ use Modules\Corsec\Models\Directorate;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Modules\Usermanagement\Models\User;
 
 class MeetingAgenda extends Model
@@ -17,6 +19,7 @@ class MeetingAgenda extends Model
         'order_no',
         'title',
         'description',
+        'minutes_discussion',
         'owner_directorate_id',
         'pic_user_id',
         'source_decision_id',
@@ -45,5 +48,15 @@ class MeetingAgenda extends Model
     public function materials(): HasMany
     {
         return $this->hasMany(MeetingMaterial::class, 'agenda_id');
+    }
+
+    public function minutesDecision(): HasOne
+    {
+        return $this->hasOne(MeetingDecision::class, 'agenda_id');
+    }
+
+    public function attachables(): MorphMany
+    {
+        return $this->morphMany(Attachable::class, 'attachable');
     }
 }

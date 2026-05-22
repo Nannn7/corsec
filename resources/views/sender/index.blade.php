@@ -109,7 +109,8 @@
                         });
                     }).catch((error) => {
                         console.error('Error:', error);
-                        Swal.fire('Error!', 'An error occurred while deleting the sender.', 'error');
+                        Swal.fire('Error!', window.corsecAjaxMessage(error, 'Gagal menghapus pengirim.'),
+                            'error');
                     });
                 }
             })
@@ -152,7 +153,8 @@
                         });
                     }).catch((error) => {
                         console.error('Error:', error);
-                        Swal.fire('Error!', 'An error occurred while deleting the rows.', 'error');
+                        Swal.fire('Error!', window.corsecAjaxMessage(error,
+                            'Gagal menghapus pengirim terpilih.'), 'error');
                     });
                 }
             })

@@ -8,7 +8,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -24,6 +23,7 @@ use Modules\Corsec\Models\OutgoingLetter;
 use Modules\Corsec\Models\Sender;
 use Modules\Corsec\Services\CorsecPermissionService;
 use Modules\Corsec\Services\OutgoingLetterWorkflowService;
+use Modules\Corsec\Support\UploadRule;
 
 class OutgoingLetterController extends Controller
 {
@@ -47,6 +47,7 @@ class OutgoingLetterController extends Controller
     public function datatables(Request $request)
     {
         $this->authorizeRead();
+        $user = Auth::user();
 
         $query = OutgoingLetter::query()
             ->select([
@@ -66,6 +67,10 @@ class OutgoingLetterController extends Controller
                 'created_at',
                 'created_by',
             ]);
+
+        $baseCountQuery = clone $query;
+        $this->scopeOutgoingVisibility($query, $user);
+        $this->scopeOutgoingVisibility($baseCountQuery, $user);
 
         if ($request->filled('status')) {
             $query->where('status', $request->string('status'));
@@ -95,7 +100,7 @@ class OutgoingLetterController extends Controller
         }
 
         $isFiltered = $search !== '' || $request->filled('status');
-        $totalRecords = OutgoingLetter::query()->count();
+        $totalRecords = $baseCountQuery->count();
         $filteredRecords = $isFiltered ? (clone $query)->count() : $totalRecords;
 
         $sortField = (string) $request->get('sortField', 'created_at');
@@ -137,7 +142,7 @@ class OutgoingLetterController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.export')) {
-            abort(403, 'Sorry! You are not allowed to export outgoing letters.');
+            abort(403, 'Anda tidak memiliki akses untuk export surat keluar.');
         }
 
         $search = trim((string) $request->get('search', ''));
@@ -155,7 +160,7 @@ class OutgoingLetterController extends Controller
         if (!$user || !$user->can('corsec.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete outgoing letters.'
+                'message' => 'Anda tidak memiliki akses untuk menghapus surat keluar.'
             ], 403);
         }
 
@@ -207,7 +212,7 @@ class OutgoingLetterController extends Controller
         if (!$user || !$user->can('corsec.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete outgoing letters.'
+                'message' => 'Anda tidak memiliki akses untuk menghapus surat keluar.'
             ], 403);
         }
 
@@ -345,7 +350,12 @@ class OutgoingLetterController extends Controller
     public function store(Request $request)
     {
         $this->authorizeCreate();
+        if ($request->boolean('is_bulk_number_request')) {
+            return $this->storeBulkNumberRequest($request);
+        }
+
         $this->normalizePerihalText($request);
+        $submitForApproval = $request->boolean('submit_for_approval', true);
 
         $request->validate([
             'order_date' => ['required', 'date'],
@@ -364,7 +374,7 @@ class OutgoingLetterController extends Controller
             'perihal_incoming_letter_id' => ['nullable', 'exists:corsec_incoming_letters,id'],
             'perihal_text' => ['nullable', 'string', 'max:255'],
             'note' => ['nullable', 'string'],
-            'draft_file' => ['required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
+            'draft_file' => [$submitForApproval ? 'required' : 'nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
         ]);
 
         $user = Auth::user();
@@ -420,6 +430,10 @@ class OutgoingLetterController extends Controller
             ]);
 
             if (!$letter->registration_no) {
+                $this->acquireOutgoingRegistrationLock(
+                    (int) $request->letter_type_id,
+                    $this->resolveRegistrationDate($request->order_date)->format('Y')
+                );
                 $generatedNumber = $this->generateRegistrationNoForPersist(
                     $letter->id,
                     (int) $request->letter_type_id,
@@ -433,36 +447,116 @@ class OutgoingLetterController extends Controller
             }
 
             $draft = $request->file('draft_file');
-            $path = $draft->store('corsec/outgoing/draft', 'public');
-            $attachment = Attachment::create([
-                'disk' => 'public',
-                'path' => $path,
-                'original_name' => $draft->getClientOriginalName(),
-                'file_name' => basename($path),
-                'mime' => $draft->getClientMimeType(),
-                'size' => $draft->getSize(),
-                'created_by' => $user->id,
-            ]);
+            if ($draft) {
+                $path = $draft->store('corsec/outgoing/draft', 'public');
+                $attachment = Attachment::create([
+                    'disk' => 'public',
+                    'path' => $path,
+                    'original_name' => $draft->getClientOriginalName(),
+                    'file_name' => basename($path),
+                    'mime' => $draft->getClientMimeType(),
+                    'size' => $draft->getSize(),
+                    'created_by' => $user->id,
+                ]);
 
-            $letter->update(['draft_attachment_id' => $attachment->id]);
+                $letter->update(['draft_attachment_id' => $attachment->id]);
+            }
 
             return $letter;
         });
 
-        if ($request->boolean('submit_for_approval', true)) {
-            $this->workflow->submit($letter, $user);
+        $submitResult = null;
+        if ($submitForApproval) {
+            $submitResult = $this->workflow->submit($letter, $user);
         }
 
-        return redirect()->route('letter.outgoing.show', $letter)->with('success', 'Surat keluar tersimpan.');
+        return redirect()
+            ->route('letter.outgoing.show', $letter)
+            ->with('success', (string) ($submitResult['success_message'] ?? 'Surat keluar tersimpan.'));
+    }
+
+    private function storeBulkNumberRequest(Request $request)
+    {
+        $validated = $request->validate([
+            'letter_type_id' => [
+                'required',
+                Rule::exists('corsec_letter_types', 'id')->where(function ($query) {
+                    $query->where('scope', LetterType::SCOPE_OUT);
+                }),
+            ],
+            'bulk_number_count' => ['required', 'integer', 'min:10'],
+        ]);
+
+        $user = Auth::user();
+        $count = (int) $validated['bulk_number_count'];
+        $letterTypeId = (int) $validated['letter_type_id'];
+        $orderDate = now()->toDateString();
+        $timestampTag = now()->format('YmdHis');
+
+        DB::transaction(function () use ($user, $count, $letterTypeId, $orderDate, $timestampTag) {
+            $this->acquireOutgoingRegistrationLock(
+                $letterTypeId,
+                $this->resolveRegistrationDate($orderDate)->format('Y')
+            );
+
+            for ($index = 1; $index <= $count; $index++) {
+                $letter = OutgoingLetter::create([
+                    'order_date' => $orderDate,
+                    'subject' => sprintf('[BULK REQUEST %s] Draft Surat #%02d', $timestampTag, $index),
+                    'letter_type_id' => $letterTypeId,
+                    'summary' => 'Draft hasil bulk request nomor surat. Lengkapi data melalui menu edit.',
+                    'note' => 'Auto generated dari bulk request nomor surat.',
+                    'need_compliance_review' => false,
+                    'requester_directorate_id' => $user?->directorate_id,
+                    'status' => OutgoingLetter::STATUS_DRAFT,
+                    'number_requested_at' => now(),
+                    'number_requested_by' => $user?->id,
+                    'number_request_note' => 'Bulk request ' . $count . ' nomor surat.',
+                    'created_by' => $user?->id,
+                    'updated_by' => $user?->id,
+                ]);
+
+                $generatedNumber = $this->generateRegistrationNoForPersist(
+                    $letter->id,
+                    $letterTypeId,
+                    $orderDate
+                );
+
+                $letter->update([
+                    'registration_no' => $generatedNumber,
+                    'letter_no' => $generatedNumber,
+                ]);
+            }
+        });
+
+        $message = 'Bulk request ' . $count . ' nomor surat berhasil dibuat sebagai draft.';
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'message' => $message,
+                'redirect_url' => route('letter.outgoing.index'),
+            ]);
+        }
+
+        return redirect()
+            ->route('letter.outgoing.index')
+            ->with('success', $message);
     }
 
     public function show(OutgoingLetter $outgoingLetter)
     {
         $this->authorizeRead();
+        $user = Auth::user();
+        if (!$this->canViewOutgoingLetter($outgoingLetter, $user)) {
+            abort(403, 'Anda tidak memiliki akses untuk melihat surat ini.');
+        }
 
         $outgoingLetter->load([
-            'comments.createdBy',
+            'recipient',
             'letterType',
+            'draftAttachment',
+            'complianceAttachment',
+            'finalAttachment',
             'cancelRequestedBy:id,name',
             'cancelledBy:id,name',
         ]);
@@ -475,12 +569,13 @@ class OutgoingLetterController extends Controller
             ->orderByDesc('created_at')
             ->get();
 
-        $senders = $this->getCachedSenders();
-        $incomingLetters = $this->getIncomingLettersForResponseLetter($outgoingLetter->perihal_incoming_letter_id);
-        $sortedComments = $outgoingLetter->comments->sortByDesc('created_at')->values();
-        $permissionFlags = $this->permissionService->outgoingDetailFlags($outgoingLetter, $approvals, Auth::user());
+        $sortedComments = $outgoingLetter->comments()
+            ->with('createdBy')
+            ->orderByDesc('created_at')
+            ->get();
+        $permissionFlags = $this->permissionService->outgoingDetailFlags($outgoingLetter, $approvals, $user);
 
-        return view('corsec::letter.outgoing.show', compact('outgoingLetter', 'approvals', 'senders', 'incomingLetters', 'permissionFlags', 'sortedComments'));
+        return view('corsec::letter.outgoing.show', compact('outgoingLetter', 'approvals', 'permissionFlags', 'sortedComments'));
     }
 
     public function edit(OutgoingLetter $outgoingLetter)
@@ -503,6 +598,9 @@ class OutgoingLetterController extends Controller
             abort(403, 'Surat keluar tidak dapat diubah pada status ini.');
         }
 
+        $submitForApproval = $request->boolean('submit_for_approval', false);
+        $draftFileRules = [$submitForApproval && !$outgoingLetter->draft_attachment_id ? 'required' : 'nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'];
+
         $request->validate([
             'order_date' => ['required', 'date'],
             'recipient_id' => ['required', 'string'],
@@ -520,7 +618,7 @@ class OutgoingLetterController extends Controller
             'perihal_incoming_letter_id' => ['nullable', 'exists:corsec_incoming_letters,id'],
             'perihal_text' => ['nullable', 'string', 'max:255'],
             'note' => ['nullable', 'string'],
-            'draft_file' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
+            'draft_file' => $draftFileRules,
         ]);
 
         $recipientId = $request->input('recipient_id');
@@ -551,6 +649,30 @@ class OutgoingLetterController extends Controller
         }
 
         $user = Auth::user();
+        $originalLetterTypeId = (int) $outgoingLetter->letter_type_id;
+        $originalOrderDate = $outgoingLetter->order_date?->format('Y-m-d');
+        $hasExistingNumber = $outgoingLetter->number_requested_at
+            || trim((string) $outgoingLetter->registration_no) !== ''
+            || trim((string) $outgoingLetter->letter_no) !== '';
+
+        if ($hasExistingNumber) {
+            if ((int) $request->input('letter_type_id') !== $originalLetterTypeId) {
+                throw ValidationException::withMessages([
+                    'letter_type_id' => 'Jenis surat tidak bisa diubah karena nomor surat sudah tersedia.',
+                ]);
+            }
+
+            if (
+                $request->filled('order_date') &&
+                $originalOrderDate &&
+                $request->input('order_date') !== $originalOrderDate
+            ) {
+                throw ValidationException::withMessages([
+                    'order_date' => 'Tanggal order tidak bisa diubah karena nomor surat sudah tersedia.',
+                ]);
+            }
+        }
+
         DB::transaction(function () use ($request, $outgoingLetter, $user, $recipientId) {
             $outgoingLetter->update([
                 'order_date' => $request->order_date,
@@ -583,14 +705,27 @@ class OutgoingLetterController extends Controller
             }
         });
 
-        return redirect()->route('letter.outgoing.show', $outgoingLetter)->with('success', 'Surat keluar diupdate.');
+        $submitResult = null;
+        if ($submitForApproval) {
+            $submitResult = $this->workflow->submit($outgoingLetter->refresh(), $user);
+        }
+
+        $message = (string) ($submitResult['success_message'] ?? 'Draft surat keluar tersimpan.');
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json([
+                'message' => $message,
+                'redirect_url' => route('letter.outgoing.show', $outgoingLetter),
+            ]);
+        }
+
+        return redirect()->route('letter.outgoing.show', $outgoingLetter)->with('success', $message);
     }
 
     public function submit(OutgoingLetter $outgoingLetter)
     {
         $this->authorizeUpdate();
-        $this->workflow->submit($outgoingLetter, Auth::user());
-        return back()->with('success', 'Surat keluar diajukan untuk approval direktorat.');
+        $submitResult = $this->workflow->submit($outgoingLetter, Auth::user());
+        return back()->with('success', (string) ($submitResult['success_message'] ?? 'Surat keluar diajukan untuk approval direktorat.'));
     }
 
     public function cancelRequest(Request $request, OutgoingLetter $outgoingLetter)
@@ -700,7 +835,7 @@ class OutgoingLetterController extends Controller
         }
 
         $request->validate([
-            'compliance_file' => ['required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
+            'compliance_file' => ['required', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
             'note' => ['nullable', 'string'],
         ]);
 
@@ -737,7 +872,7 @@ class OutgoingLetterController extends Controller
         $request->validate([
             'submit_action' => ['nullable', Rule::in(['draft', 'upload'])],
             'final_upload_date' => ['nullable', 'date'],
-            'final_file' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
+            'final_file' => ['nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
         ]);
 
         $submitAction = (string) $request->input('submit_action', 'upload');
@@ -755,7 +890,7 @@ class OutgoingLetterController extends Controller
         }
 
         $request->validate([
-            'final_file' => ['required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
+            'final_file' => ['required', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
         ]);
 
         $file = $request->file('final_file');
@@ -779,47 +914,17 @@ class OutgoingLetterController extends Controller
         return back()->with('success', 'Final surat diupload.');
     }
 
-    public function verifyAction(Request $request, OutgoingLetter $outgoingLetter)
-    {
-        $request->validate([
-            'action' => ['required', 'in:verify,return,approve,reject'],
-            'note' => [
-                'nullable',
-                'string',
-                Rule::requiredIf(function () use ($request) {
-                    return in_array((string) $request->input('action'), ['reject', 'return'], true);
-                }),
-            ],
-        ]);
-
-        if ($outgoingLetter->status !== OutgoingLetter::STATUS_WAITING_VERIFICATION) {
-            abort(403, 'Approval Corporate Secretary hanya untuk status waiting verification.');
-        }
-
-        $user = Auth::user();
-        if (!$user) {
-            abort(403, 'User tidak ditemukan.');
-        }
-
-        $this->workflow->verifyAction($outgoingLetter, $user, (string) $request->string('action'), $request->note);
-        return back()->with('success', 'Verifikasi diproses.');
-    }
-
     private function getOutgoingLetterTypes()
     {
-        return Cache::remember('corsec.letter_types.out.list', 300, function () {
-            return LetterType::query()
-                ->forScope(LetterType::SCOPE_OUT)
-                ->orderBy('name')
-                ->get(['id', 'name']);
-        });
+        return LetterType::query()
+            ->forScope(LetterType::SCOPE_OUT)
+            ->orderBy('name')
+            ->get(['id', 'name']);
     }
 
     private function getCachedSenders()
     {
-        return Cache::remember('corsec.senders.list', 300, function () {
-            return Sender::query()->orderBy('name')->get(['id', 'name']);
-        });
+        return Sender::query()->orderBy('name')->get(['id', 'name']);
     }
 
     private function getIncomingLettersForResponseLetter(?int $selectedIncomingLetterId = null)
@@ -1093,19 +1198,113 @@ class OutgoingLetterController extends Controller
         return $sequencePart;
     }
 
+    public function directorNote(Request $request, OutgoingLetter $outgoingLetter)
+    {
+        $user = Auth::user();
+        if (!$this->permissionService->canAddDirectorNote($user)) {
+            abort(403, 'Anda tidak memiliki akses untuk menambahkan catatan.');
+        }
+
+        $validated = $request->validate([
+            'note' => ['required', 'string'],
+        ]);
+
+        \Modules\Corsec\Models\Comment::create([
+            'commentable_type' => OutgoingLetter::class,
+            'commentable_id' => $outgoingLetter->id,
+            'body' => '[KOMENTAR VIEWER] ' . $validated['note'],
+            'created_by' => $user?->id,
+        ]);
+
+        return back()->with('success', 'Komentar viewer tersimpan.');
+    }
+
+    private function acquireOutgoingRegistrationLock(int $letterTypeId, string $year): void
+    {
+        $lockKey = abs(crc32(sprintf('corsec.outgoing.registration.%d.%s', $letterTypeId, $year)));
+        DB::statement('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+    }
+
     private function authorizeRead(): void
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.read')) {
-            abort(403, 'Sorry! You are not allowed to access this page.');
+            abort(403, 'Anda tidak memiliki akses ke halaman ini.');
         }
+    }
+
+    private function scopeOutgoingVisibility($query, $user): void
+    {
+        if (!$user || $this->permissionService->canViewAllCorsec($user)) {
+            return;
+        }
+
+        $directorateId = (int) ($user->directorate_id ?? $user->directorateid ?? 0);
+        $canAccessComplianceQueue = $this->canAccessComplianceQueue($user);
+
+        $query->where(function ($builder) use ($user, $directorateId, $canAccessComplianceQueue) {
+            $builder->where('created_by', $user->id);
+            if ($directorateId > 0) {
+                $builder->orWhere('requester_directorate_id', $directorateId);
+            }
+            if ($canAccessComplianceQueue) {
+                $builder->orWhere(function ($complianceQuery) {
+                    $complianceQuery
+                        ->whereIn('status', $this->complianceQueueStatuses())
+                        ->where('need_compliance_review', true);
+                });
+            }
+        });
+    }
+
+    private function canViewOutgoingLetter(OutgoingLetter $outgoingLetter, $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        if ($this->permissionService->canViewAllCorsec($user)) {
+            return true;
+        }
+
+        $directorateId = (int) ($user->directorate_id ?? $user->directorateid ?? 0);
+
+        if ((int) $outgoingLetter->created_by === (int) $user->id) {
+            return true;
+        }
+
+        if ($directorateId > 0 && (int) $outgoingLetter->requester_directorate_id === $directorateId) {
+            return true;
+        }
+
+        return $this->canAccessComplianceQueue($user)
+            && in_array((string) $outgoingLetter->status, $this->complianceQueueStatuses(), true)
+            && (bool) $outgoingLetter->need_compliance_review;
+    }
+
+    private function canAccessComplianceQueue($user): bool
+    {
+        if (!$user || !$user->hasRole('maker')) {
+            return false;
+        }
+
+        return $this->permissionService->isComplianceDirectorate($user)
+            && $this->permissionService->isStaffPosition($user);
+    }
+
+    private function complianceQueueStatuses(): array
+    {
+        return [
+            OutgoingLetter::STATUS_COMPLIANCE_REVIEW,
+            OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL,
+        ];
     }
 
     private function authorizeCreate(): void
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.create')) {
-            abort(403, 'Sorry! You are not allowed to create outgoing letters.');
+            abort(403, 'Anda tidak memiliki akses untuk menambah surat keluar.');
         }
         if ($this->permissionService->isCorpSecretaryDirectorate($user)) {
             abort(403, 'Direktorat Corporate Secretary tidak diperbolehkan membuat surat keluar.');
@@ -1116,7 +1315,7 @@ class OutgoingLetterController extends Controller
     {
         $user = Auth::user();
         if (!$user || !$user->can('corsec.update')) {
-            abort(403, 'Sorry! You are not allowed to update outgoing letters.');
+            abort(403, 'Anda tidak memiliki akses untuk mengubah surat keluar.');
         }
         if ($this->permissionService->isViewerRole($user)) {
             abort(403, 'Role viewer tidak memiliki akses untuk update surat keluar.');
@@ -1127,11 +1326,10 @@ class OutgoingLetterController extends Controller
     {
         $user = Auth::user();
         if (!$user || (!$user->can('corsec.create') && !$user->can('corsec.update'))) {
-            abort(403, 'Sorry! You are not allowed to access this action.');
+            abort(403, 'Anda tidak memiliki akses untuk menjalankan aksi ini.');
         }
         if ($this->permissionService->isViewerRole($user)) {
             abort(403, 'Role viewer tidak memiliki akses untuk aksi ini.');
         }
     }
-
 }

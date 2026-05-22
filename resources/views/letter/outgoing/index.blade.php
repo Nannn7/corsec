@@ -166,7 +166,8 @@
                         })
                         .catch((error) => {
                             console.error('Error:', error);
-                            Swal.fire('Error!', 'Terjadi kesalahan saat menghapus surat.', 'error');
+                            Swal.fire('Error!', window.corsecAjaxMessage(error,
+                                'Gagal menghapus surat keluar.'), 'error');
                         });
                 }
             })
@@ -209,7 +210,8 @@
                         });
                     }).catch((error) => {
                         console.error('Error:', error);
-                        Swal.fire('Error!', 'Terjadi kesalahan saat menghapus baris.', 'error');
+                        Swal.fire('Error!', window.corsecAjaxMessage(error,
+                            'Gagal menghapus surat keluar terpilih.'), 'error');
                     });
                 }
             })
@@ -271,8 +273,8 @@
                             'success')
                         .then(() => window.location.reload());
                 }).catch((error) => {
-                    const message = error?.responseJSON?.message ||
-                        'Terjadi kesalahan saat mengajukan pembatalan.';
+                    const message = window.corsecAjaxMessage(error,
+                        'Gagal mengajukan pembatalan surat.');
                     Swal.fire('Error!', message, 'error');
                 });
             });
@@ -304,8 +306,7 @@
             if (val === 'waiting_dir_approval') normalized = 'waiting_dir_approval';
             if (val === 'compliance_review') normalized = 'compliance_review';
             if (val === 'waiting_compliance_approval') normalized = 'waiting_compliance_approval';
-            if (val === 'waiting_verification') normalized = 'waiting_verification';
-            if (val === 'waiting_final_upload' || val === 'final_uploaded') normalized = 'waiting_final_upload';
+            if (val === 'waiting_final_upload' || val === 'final_uploaded' || val === 'waiting_verification') normalized = 'waiting_final_upload';
             if (val === 'waiting_cancel_approval') normalized = 'waiting_cancel_approval';
             if (val === 'verified') normalized = 'done';
             if (val === 'returned') normalized = 'revisi';
@@ -313,10 +314,9 @@
 
             const map = {
                 draft: ['badge-light', 'Draft'],
-                waiting_dir_approval: ['badge-warning', 'Approval EO dan DD Direktorat'],
+                waiting_dir_approval: ['badge-warning', 'Approval Direktorat'],
                 compliance_review: ['badge-info', 'Review Kepatuhan'],
                 waiting_compliance_approval: ['badge-warning', 'Approval EO dan DD Kepatuhan'],
-                waiting_verification: ['badge-warning', 'Verifikasi EO Corp Affair'],
                 waiting_final_upload: ['badge-primary', 'Final Upload'],
                 waiting_cancel_approval: ['badge-warning', 'Approval Pembatalan EO Direktorat'],
                 done: ['badge-success', 'Done'],
@@ -433,7 +433,6 @@
                             'waiting_dir_approval',
                             'compliance_review',
                             'waiting_compliance_approval',
-                            'waiting_verification',
                             'waiting_final_upload'
                         ];
                         const canEditStatus = editableStatuses.includes(status);
