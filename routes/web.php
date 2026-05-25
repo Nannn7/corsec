@@ -14,11 +14,17 @@ use Modules\Corsec\Http\Controllers\DirectorateController;
 use Modules\Corsec\Http\Controllers\SenderController;
 use Modules\Corsec\Http\Controllers\LetterTypeController;
 use Modules\Corsec\Http\Controllers\MeetingTypeController;
+use Modules\Corsec\Http\Controllers\SecureStorageController;
 use Modules\Corsec\Http\Middleware\LogCorsecRequestErrors;
 
 $datatablesThrottle = 'throttle:corsec-datatables';
 $previewThrottle = 'throttle:corsec-preview';
 $writeHeavyThrottle = 'throttle:corsec-write-heavy';
+
+Route::get('/storage/{path}', SecureStorageController::class)
+    ->middleware('auth')
+    ->where('path', '.*')
+    ->name('storage.secure');
 
 Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () use ($datatablesThrottle, $previewThrottle, $writeHeavyThrottle) {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
