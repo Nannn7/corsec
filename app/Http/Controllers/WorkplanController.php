@@ -135,6 +135,7 @@ class WorkplanController extends Controller
 
         $permissionFlags = [
             'is_deputy_director' => $this->workflow->isDeputyDirector($user),
+            'can_comment' => $this->permissionService->canAddDirectorNote($user),
         ];
 
         return view('corsec::workplan.index', compact('directorates', 'summary', 'pageInfo', 'permissionFlags'));
@@ -219,7 +220,7 @@ class WorkplanController extends Controller
             $filteredRecords = $isFiltered ? (clone $query)->count() : $totalRecords;
 
             $sortField = (string) $request->get('sortField', 'created_at');
-            $sortOrder = (string) $request->get('sortOrder', 'desc');
+            $sortOrder = strtolower((string) $request->get('sortOrder', 'desc'));
             $allowedSort = ['created_at', 'year', 'title', 'status'];
             if (!in_array($sortField, $allowedSort, true)) {
                 $sortField = 'created_at';
@@ -228,7 +229,12 @@ class WorkplanController extends Controller
                 $sortOrder = 'desc';
             }
 
-            $query->with(['directorate:id,code,name'])
+            $query->with([
+                    'directorate:id,code,name',
+                    'comments.createdBy:id,name',
+                    'attachables.attachment',
+                    'items.attachables.attachment',
+                ])
                 ->withCount([
                     'items',
                     'items as done_items_count' => function ($itemQuery) {
@@ -240,6 +246,9 @@ class WorkplanController extends Controller
                 ]);
 
             $query->orderBy($sortField, $sortOrder);
+            if ($sortField !== 'id') {
+                $query->orderBy('id', $sortOrder);
+            }
 
             $page = max((int) $request->get('page', 1), 1);
             $size = max((int) $request->get('size', 10), 1);
@@ -266,6 +275,10 @@ class WorkplanController extends Controller
                     'done_items' => $doneItems,
                     'pending_items' => max($totalItems - $doneItems, 0),
                     'created_at' => $program->created_at,
+                    'comment_url' => route('workplan.director.note', $program),
+                    'comments' => $this->formatCommentRows($program->comments),
+                    'attachments' => $this->formatWorkplanAttachmentRows($program),
+                    'circulation_items' => collect([$program->directorate?->name])->filter()->values()->all(),
                 ];
             });
 
@@ -955,6 +968,37 @@ class WorkplanController extends Controller
         }
 
         return redirect()->to($redirectUrl)->with('success', $message);
+    }
+
+    private function formatCommentRows($comments): array
+    {
+        return $comments
+            ->sortByDesc('created_at')
+            ->take(3)
+            ->map(function ($comment) {
+                return [
+                    'body' => (string) ($comment->body ?? ''),
+                    'created_at' => optional($comment->created_at)->toDateTimeString(),
+                    'created_by' => $comment->createdBy?->name,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function formatWorkplanAttachmentRows(WorkProgram $program): array
+    {
+        return collect()
+            ->merge($program->attachables->map(fn($attachable) => $attachable->attachment))
+            ->merge($program->items->flatMap(fn(WorkProgramItem $item) => $item->attachables->map(fn($attachable) => $attachable->attachment)))
+            ->filter()
+            ->unique('id')
+            ->map(fn(Attachment $attachment) => [
+                'name' => (string) ($attachment->original_name ?: $attachment->file_name ?: 'Attachment'),
+                'view_url' => route('attachment.view', $attachment),
+            ])
+            ->values()
+            ->all();
     }
 
     private function programNumber(WorkProgram $program): string

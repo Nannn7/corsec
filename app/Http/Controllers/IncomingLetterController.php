@@ -684,7 +684,7 @@ class IncomingLetterController extends Controller
 
             // sorting (KTDataTable biasanya kirim sortField/sortOrder)
             $sortField = (string) $request->get('sortField', 'created_at');
-            $sortOrder = (string) $request->get('sortOrder', 'desc');
+            $sortOrder = strtolower((string) $request->get('sortOrder', 'desc'));
 
             $allowedSort = [
                 'external_letter_no',
@@ -712,15 +712,22 @@ class IncomingLetterController extends Controller
                 'sender:id,code,name',
                 'letterType:id,code,name',
                 'circulationDirectorates:id,code,name',
+                'comments.createdBy:id,name',
+                'attachables.attachment',
             ]);
 
             $query->orderBy($sortField, $sortOrder);
+            if ($sortField !== 'id') {
+                $query->orderBy('id', $sortOrder);
+            }
 
             // paging (KTDataTable: page & size)
             $page = max((int) $request->get('page', 1), 1);
             $size = max((int) $request->get('size', 10), 1);
 
-            $data = $query->forPage($page, $size)->get();
+            $data = $query->forPage($page, $size)->get()->map(function (IncomingLetter $letter) {
+                return $this->formatIncomingTableRow($letter);
+            });
 
             $pageCount = (int) ceil($filteredRecords / $size);
 
@@ -1141,7 +1148,57 @@ class IncomingLetterController extends Controller
             'created_by' => auth()->id(),
         ]);
 
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Komentar viewer tersimpan.',
+            ]);
+        }
+
         return back()->with('success', 'Komentar viewer tersimpan.');
+    }
+
+    private function formatIncomingTableRow(IncomingLetter $letter): array
+    {
+        return array_merge($letter->toArray(), [
+            'comment_url' => route('letter.incoming.director.note', $letter),
+            'comments' => $this->formatCommentRows($letter->comments),
+            'attachments' => $this->formatAttachableRows($letter->attachables),
+        ]);
+    }
+
+    private function formatCommentRows($comments): array
+    {
+        return $comments
+            ->sortByDesc('created_at')
+            ->take(3)
+            ->map(function (Comment $comment) {
+                return [
+                    'body' => (string) ($comment->body ?? ''),
+                    'created_at' => optional($comment->created_at)->toDateTimeString(),
+                    'created_by' => $comment->createdBy?->name,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function formatAttachableRows($attachables): array
+    {
+        return $attachables
+            ->map(fn($attachable) => $attachable->attachment)
+            ->filter()
+            ->map(fn(Attachment $attachment) => $this->formatAttachmentRow($attachment))
+            ->values()
+            ->all();
+    }
+
+    private function formatAttachmentRow(Attachment $attachment): array
+    {
+        return [
+            'name' => (string) ($attachment->original_name ?: $attachment->file_name ?: 'Attachment'),
+            'view_url' => route('attachment.view', $attachment),
+        ];
     }
 
     public function addMonitoringDirectorates(Request $request, IncomingLetter $incomingLetter)

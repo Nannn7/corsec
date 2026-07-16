@@ -161,8 +161,18 @@ class MeetingController extends Controller
                 $sortOrder = 'desc';
             }
 
-            $query->withCount(['participants', 'agendas']);
-            $query->orderBy($sortField, $sortOrder)->orderBy('id', 'desc');
+            $query->with([
+                'comments.createdBy:id,name',
+                'attachables.attachment',
+                'materials.attachment',
+                'minutes.minutesAttachment',
+                'minutes.finalMinutesAttachment',
+                'participants.directorate:id,name',
+            ])->withCount(['participants', 'agendas']);
+            $query->orderBy($sortField, $sortOrder);
+            if ($sortField !== 'id') {
+                $query->orderBy('id', $sortOrder);
+            }
 
             $page = max((int) $request->get('page', 1), 1);
             $size = max((int) $request->get('size', 10), 1);
@@ -185,6 +195,15 @@ class MeetingController extends Controller
                         'participants_count' => (int) ($meeting->participants_count ?? 0),
                         'agendas_count' => (int) ($meeting->agendas_count ?? 0),
                         'created_by' => (int) ($meeting->created_by ?? 0),
+                        'comment_url' => route('meeting.director.note', $meeting),
+                        'comments' => $this->formatCommentRows($meeting->comments),
+                        'attachments' => $this->formatMeetingAttachmentRows($meeting),
+                        'circulation_items' => $meeting->participants
+                            ->map(fn($participant) => $participant->directorate?->name)
+                            ->filter()
+                            ->unique()
+                            ->values()
+                            ->all(),
                     ];
                 }
             );
@@ -3707,6 +3726,39 @@ class MeetingController extends Controller
         if (!$this->permissionService->canCreateMeeting($user)) {
             abort(403, 'Tambah meeting hanya untuk maker staff Corporate Secretary.');
         }
+    }
+
+    private function formatCommentRows($comments): array
+    {
+        return $comments
+            ->sortByDesc('created_at')
+            ->take(3)
+            ->map(function ($comment) {
+                return [
+                    'body' => (string) ($comment->body ?? ''),
+                    'created_at' => optional($comment->created_at)->toDateTimeString(),
+                    'created_by' => $comment->createdBy?->name,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function formatMeetingAttachmentRows(Meeting $meeting): array
+    {
+        return collect()
+            ->merge($meeting->attachables->map(fn($attachable) => $attachable->attachment))
+            ->merge($meeting->materials->map(fn(MeetingMaterial $material) => $material->attachment))
+            ->push($meeting->minutes?->minutesAttachment)
+            ->push($meeting->minutes?->finalMinutesAttachment)
+            ->filter()
+            ->unique('id')
+            ->map(fn(Attachment $attachment) => [
+                'name' => (string) ($attachment->original_name ?: $attachment->file_name ?: 'Attachment'),
+                'view_url' => route('attachment.view', $attachment),
+            ])
+            ->values()
+            ->all();
     }
 
     private function authorizeUpdate(): void

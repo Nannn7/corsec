@@ -63,6 +63,9 @@ class OutgoingLetterController extends Controller
                 'letter_type_id',
                 'perihal_type',
                 'requester_directorate_id',
+                'draft_attachment_id',
+                'compliance_attachment_id',
+                'final_attachment_id',
                 'status',
                 'created_at',
                 'created_by',
@@ -104,7 +107,7 @@ class OutgoingLetterController extends Controller
         $filteredRecords = $isFiltered ? (clone $query)->count() : $totalRecords;
 
         $sortField = (string) $request->get('sortField', 'created_at');
-        $sortOrder = (string) $request->get('sortOrder', 'desc');
+        $sortOrder = strtolower((string) $request->get('sortOrder', 'desc'));
         $allowedSort = ['created_at', 'registration_no', 'order_date', 'status', 'letter_no', 'subject', 'authorized_at'];
         if (!in_array($sortField, $allowedSort, true)) {
             $sortField = 'created_at';
@@ -117,14 +120,24 @@ class OutgoingLetterController extends Controller
             'requesterDirectorate:id,code,name',
             'recipient:id,name,code',
             'letterType:id,name,code',
+            'draftAttachment',
+            'complianceAttachment',
+            'finalAttachment',
+            'attachables.attachment',
+            'comments.createdBy:id,name',
         ]);
 
         $query->orderBy($sortField, $sortOrder);
+        if ($sortField !== 'id') {
+            $query->orderBy('id', $sortOrder);
+        }
 
         $page = max((int) $request->get('page', 1), 1);
         $size = max((int) $request->get('size', 10), 1);
 
-        $data = $query->forPage($page, $size)->get();
+        $data = $query->forPage($page, $size)->get()->map(function (OutgoingLetter $letter) {
+            return $this->formatOutgoingTableRow($letter);
+        });
         $pageCount = (int) ceil($filteredRecords / $size);
 
         return response()->json([
@@ -267,8 +280,9 @@ class OutgoingLetterController extends Controller
     public function create(Request $request)
     {
         $this->authorizeCreate();
+        $user = Auth::user();
         $senders = $this->getCachedSenders();
-        $letterTypes = $this->getOutgoingLetterTypes();
+        $letterTypes = $this->getOutgoingLetterTypes($user);
         $incomingLetters = $this->getIncomingLettersForResponseLetter();
         $prefillIncomingLetterId = null;
         if ($request->filled('incoming_letter_id')) {
@@ -585,7 +599,7 @@ class OutgoingLetterController extends Controller
             abort(403, 'Surat keluar tidak dapat diubah pada status ini.');
         }
         $senders = $this->getCachedSenders();
-        $letterTypes = $this->getOutgoingLetterTypes();
+        $letterTypes = $this->getOutgoingLetterTypes(Auth::user());
         $incomingLetters = $this->getIncomingLettersForResponseLetter($outgoingLetter->perihal_incoming_letter_id);
         return view('corsec::letter.outgoing.create', compact('outgoingLetter', 'senders', 'letterTypes', 'incomingLetters'));
     }
@@ -914,12 +928,29 @@ class OutgoingLetterController extends Controller
         return back()->with('success', 'Final surat diupload.');
     }
 
-    private function getOutgoingLetterTypes()
+    private function getOutgoingLetterTypes($user = null)
     {
-        return LetterType::query()
-            ->forScope(LetterType::SCOPE_OUT)
-            ->orderBy('name')
-            ->get(['id', 'name']);
+        $query = LetterType::query()
+            ->forScope(LetterType::SCOPE_OUT);
+
+        if (!$this->permissionService->isCorpSecretaryDirectorate($user)) {
+            $allowedNames = [
+                'KEPUTUSAN DIREKTUR',
+                'KEPUTUSAN DIREKSI',
+                'NDA',
+                'PKS',
+                'SURAT KELUAR DIRUT',
+                'SURAT KUASA',
+            ];
+
+            $query->where(function ($builder) use ($allowedNames) {
+                foreach ($allowedNames as $name) {
+                    $builder->orWhereRaw('UPPER(name) = ?', [$name]);
+                }
+            });
+        }
+
+        return $query->orderBy('name')->get(['id', 'name']);
     }
 
     private function getCachedSenders()
@@ -1216,7 +1247,60 @@ class OutgoingLetterController extends Controller
             'created_by' => $user?->id,
         ]);
 
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Komentar viewer tersimpan.',
+            ]);
+        }
+
         return back()->with('success', 'Komentar viewer tersimpan.');
+    }
+
+    private function formatOutgoingTableRow(OutgoingLetter $letter): array
+    {
+        $attachments = collect([
+            $letter->draftAttachment,
+            $letter->complianceAttachment,
+            $letter->finalAttachment,
+        ])
+            ->merge($letter->attachables->map(fn($attachable) => $attachable->attachment))
+            ->filter()
+            ->unique('id')
+            ->map(fn(Attachment $attachment) => $this->formatAttachmentRow($attachment))
+            ->values()
+            ->all();
+
+        return array_merge($letter->toArray(), [
+            'comment_url' => route('letter.outgoing.director.note', $letter),
+            'comments' => $this->formatCommentRows($letter->comments),
+            'attachments' => $attachments,
+            'circulation_items' => collect([$letter->requesterDirectorate?->name])->filter()->values()->all(),
+        ]);
+    }
+
+    private function formatCommentRows($comments): array
+    {
+        return $comments
+            ->sortByDesc('created_at')
+            ->take(3)
+            ->map(function ($comment) {
+                return [
+                    'body' => (string) ($comment->body ?? ''),
+                    'created_at' => optional($comment->created_at)->toDateTimeString(),
+                    'created_by' => $comment->createdBy?->name,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function formatAttachmentRow(Attachment $attachment): array
+    {
+        return [
+            'name' => (string) ($attachment->original_name ?: $attachment->file_name ?: 'Attachment'),
+            'view_url' => route('attachment.view', $attachment),
+        ];
     }
 
     private function acquireOutgoingRegistrationLock(int $letterTypeId, string $year): void
@@ -1306,8 +1390,8 @@ class OutgoingLetterController extends Controller
         if (!$user || !$user->can('corsec.create')) {
             abort(403, 'Anda tidak memiliki akses untuk menambah surat keluar.');
         }
-        if ($this->permissionService->isCorpSecretaryDirectorate($user)) {
-            abort(403, 'Direktorat Corporate Secretary tidak diperbolehkan membuat surat keluar.');
+        if (!$this->permissionService->canCreateOutgoing($user)) {
+            abort(403, 'Anda tidak memiliki akses untuk menambah surat keluar.');
         }
     }
 

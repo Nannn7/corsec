@@ -326,9 +326,8 @@ class WorkplanWorkflowService
     public function canViewAllPrograms(User $user): bool
     {
         return $user->hasRole('administrator')
-            || $user->hasRole('checker')
-            || $user->hasRole('approver')
-            || $this->isAssistantDirectorOrAbove($user)
+            || $this->isComplianceDirectorate($user)
+            || $this->isSkaiDirectorate($user)
             || $this->isCorpSecretaryDirectorate($user);
     }
 
@@ -649,6 +648,34 @@ class WorkplanWorkflowService
         }
 
         return $directorateName !== '' && Str::contains($directorateName, 'corporate secretary');
+    }
+
+    private function isComplianceDirectorate(User $user): bool
+    {
+        $complianceCode = (string) config('corsec.compliance_directorate_code', '');
+        $user->loadMissing('directorate');
+
+        $directorateCode = (string) ($user->directorate?->code ?? '');
+        $directorateName = Str::lower(trim((string) ($user->directorate?->name ?? '')));
+
+        if ($directorateCode !== '' && $complianceCode !== '' && $directorateCode === $complianceCode) {
+            return true;
+        }
+
+        return $directorateName !== ''
+            && (
+                Str::contains($directorateName, 'kepatuhan')
+                || Str::contains($directorateName, 'compliance')
+                || Str::contains($directorateName, 'complience')
+            );
+    }
+
+    private function isSkaiDirectorate(User $user): bool
+    {
+        $user->loadMissing('directorate');
+        $directorateName = Str::lower(trim((string) ($user->directorate?->name ?? '')));
+
+        return $directorateName !== '' && Str::contains($directorateName, 'skai');
     }
 
     private function resolvedPositionLevel(User $user): int

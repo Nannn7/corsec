@@ -114,8 +114,8 @@ class LibraryController extends Controller
             'updated_by' => $user?->id,
         ];
 
-        $oldDisk = null;
-        $oldPath = null;
+        $oldDisk = 'public';
+        $oldPath = '';
 
         if ($request->hasFile('file')) {
             $file = $request->file('file');

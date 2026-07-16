@@ -520,8 +520,14 @@
                     const {
                         clearValidation,
                         showFieldError,
+                        validateFileSizes,
+                        uploadFailureMessage,
                     } = window.CorsecIncomingValidation;
                     const indexUrl = @json(route('letter.incoming.index'));
+                    const uploadSizeOptions = {
+                        maxBytes: @json(\Modules\Corsec\Support\UploadRule::maxFileSizeKb() * 1024),
+                        label: @json(\Modules\Corsec\Support\UploadRule::label()),
+                    };
                     const now = new Date();
                     const todayYmd = [
                         now.getFullYear(),
@@ -600,6 +606,8 @@
                             errors.files = 'Harap upload file.';
                         }
 
+                        Object.assign(errors, validateFileSizes($form, uploadSizeOptions));
+
                         return errors;
                     }
 
@@ -672,8 +680,8 @@
                                             [0]);
                                     });
                                 } else {
-                                    Swal.fire('Error!', window.corsecAjaxMessage(xhr,
-                                        'Gagal memproses surat masuk.'), 'error');
+                                    Swal.fire('Error!', uploadFailureMessage(xhr,
+                                        'Gagal memproses surat masuk.', uploadSizeOptions), 'error');
                                 }
                                 $form.data('submitting', false);
                                 $submitButtons.prop('disabled', false).removeClass('disabled');

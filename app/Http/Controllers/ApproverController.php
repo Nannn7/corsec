@@ -51,8 +51,7 @@ class ApproverController extends Controller
 
         try {
             $query = ApprovalRequest::query()
-                ->with(['createdBy', 'authorizedBy'])
-                ->latest();
+                ->with(['createdBy', 'authorizedBy']);
 
             $search = trim((string) $request->get('search', ''));
             if ($search !== '') {
@@ -93,7 +92,7 @@ class ApproverController extends Controller
             $filteredRecords = (clone $query)->count();
 
             $sortField = (string) $request->get('sortField', 'id');
-            $sortOrder = (string) $request->get('sortOrder', 'desc');
+            $sortOrder = strtolower((string) $request->get('sortOrder', 'desc'));
 
             $allowedSort = [
                 'id',
@@ -113,6 +112,9 @@ class ApproverController extends Controller
             }
 
             $query->orderBy($sortField, $sortOrder);
+            if ($sortField !== 'id') {
+                $query->orderBy('id', $sortOrder);
+            }
 
             $page = max((int) $request->get('page', 1), 1);
             $size = max((int) $request->get('size', 10), 1);

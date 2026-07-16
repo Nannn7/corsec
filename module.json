@@ -19,6 +19,7 @@
                 "permission": "",
                 "roles": [
                     "administrator",
+                    "admin siskon",
                     "maker",
                     "checker",
                     "approver",
@@ -33,6 +34,7 @@
                         "permission": "",
                         "roles": [
                             "administrator",
+                            "admin siskon",
                             "maker",
                             "checker",
                             "approver",
@@ -47,6 +49,7 @@
                         "permission": "",
                         "roles": [
                             "administrator",
+                            "admin siskon",
                             "maker",
                             "checker",
                             "approver",
@@ -64,6 +67,7 @@
                 "permission": "",
                 "roles": [
                     "administrator",
+                    "admin siskon",
                     "maker",
                     "checker",
                     "approver",
@@ -79,6 +83,7 @@
                 "permission": "",
                 "roles": [
                     "administrator",
+                    "admin siskon",
                     "maker",
                     "checker",
                     "approver",
@@ -95,7 +100,8 @@
                 "attributes": [],
                 "permission": "",
                 "roles": [
-                    "administrator"
+                    "administrator",
+                    "admin siskon"
                 ]
             },
             {
@@ -106,7 +112,8 @@
                 "attributes": [],
                 "permission": "",
                 "roles": [
-                    "administrator"
+                    "administrator",
+                    "admin siskon"
                 ]
             },
             {
@@ -117,7 +124,8 @@
                 "attributes": [],
                 "permission": "",
                 "roles": [
-                    "administrator"
+                    "administrator",
+                    "admin siskon"
                 ],
                 "sub": [
                     {
@@ -127,7 +135,8 @@
                         "attributes": [],
                         "permission": "",
                         "roles": [
-                            "administrator"
+                            "administrator",
+                            "admin siskon"
                         ]
                     },
                     {
@@ -137,7 +146,8 @@
                         "attributes": [],
                         "permission": "",
                         "roles": [
-                            "administrator"
+                            "administrator",
+                            "admin siskon"
                         ]
                     }
                 ]
@@ -150,7 +160,8 @@
                 "attributes": [],
                 "permission": "",
                 "roles": [
-                    "administrator"
+                    "administrator",
+                    "admin siskon"
                 ]
             }
         ],
@@ -163,7 +174,8 @@
                 "attributes": [],
                 "permission": "",
                 "roles": [
-                    "administrator"
+                    "administrator",
+                    "admin siskon"
                 ]
             }
         ],
@@ -177,6 +189,7 @@
                 "permission": "",
                 "roles": [
                     "administrator",
+                    "admin siskon",
                     "maker",
                     "checker",
                     "approver",
@@ -192,6 +205,7 @@
                 "permission": "",
                 "roles": [
                     "administrator",
+                    "admin siskon",
                     "maker",
                     "checker",
                     "approver",

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Modules\Corsec\Models\Attachment;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class SecureStorageController extends Controller
@@ -49,6 +50,38 @@ class SecureStorageController extends Controller
             'Pragma' => 'no-cache',
             'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    public function viewAttachment(Request $request, Attachment $attachment)
+    {
+        $path = $this->normalizePath((string) $attachment->path);
+        $diskName = (string) ($attachment->disk ?: 'public');
+        $disk = Storage::disk($diskName);
+
+        if (!$disk->exists($path)) {
+            abort(404, 'File tidak ditemukan.');
+        }
+
+        $fileName = $this->safeFilename((string) ($attachment->original_name ?: $attachment->file_name ?: basename($path)));
+        $inlineUrl = route('storage.secure', ['path' => $path]);
+        $downloadUrl = route('attachment.download', $attachment);
+
+        return view('corsec::attachment.viewer', compact('attachment', 'fileName', 'inlineUrl', 'downloadUrl'));
+    }
+
+    public function downloadAttachment(Request $request, Attachment $attachment)
+    {
+        $path = $this->normalizePath((string) $attachment->path);
+        $diskName = (string) ($attachment->disk ?: 'public');
+        $disk = Storage::disk($diskName);
+
+        if (!$disk->exists($path)) {
+            abort(404, 'File tidak ditemukan.');
+        }
+
+        $fileName = $this->safeFilename((string) ($attachment->original_name ?: $attachment->file_name ?: basename($path)));
+
+        return $disk->download($path, $fileName);
     }
 
     private function normalizePath(string $path): string
