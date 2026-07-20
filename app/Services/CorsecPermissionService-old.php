@@ -162,15 +162,12 @@ class CorsecPermissionService
         }
 
         return $user->hasRole('administrator')
-            || $user->hasRole('checker')
-            || $user->hasRole('approver')
-            || $this->isAssistantDirectorOrAbove($user)
             || $this->isAllCorsecDataDirectorate($user);
     }
 
-    public function canAddDirectorNote(?User $user, string $abilityPrefix = 'corsec'): bool
+    public function canAddDirectorNote(?User $user): bool
     {
-        if (!$user || !(bool) ($user?->can($abilityPrefix . '.read') ?? false)) {
+        if (!$user || !(bool) ($user?->can('corsec.read') ?? false)) {
             return false;
         }
 
@@ -180,24 +177,24 @@ class CorsecPermissionService
             || $this->isCorpSecretaryDirectorate($user);
     }
 
-    public function canCorsecUpdateAction(?User $user, string $abilityPrefix = 'corsec'): bool
+    public function canCorsecUpdateAction(?User $user): bool
     {
-        return (bool) ($user?->can($abilityPrefix . '.update') ?? false) && !$this->isViewerRole($user);
+        return (bool) ($user?->can('corsec.update') ?? false) && !$this->isViewerRole($user);
     }
 
-    public function canCorsecCreateOrUpdateAction(?User $user, string $abilityPrefix = 'corsec'): bool
+    public function canCorsecCreateOrUpdateAction(?User $user): bool
     {
-        return ((bool) ($user?->can($abilityPrefix . '.create') ?? false) || (bool) ($user?->can($abilityPrefix . '.update') ?? false))
+        return ((bool) ($user?->can('corsec.create') ?? false) || (bool) ($user?->can('corsec.update') ?? false))
             && !$this->isViewerRole($user);
     }
 
     public function canCreateOutgoing(?User $user): bool
     {
-        if (!$user || !$user->can('letter.create')) {
+        if (!$user || !$user->can('corsec.create')) {
             return false;
         }
 
-        if ($this->isCorpSecretaryDirectorate($user)) {
+	if ($this->isCorpSecretaryDirectorate($user)) {
             return $user->hasRole('maker');
         }
 
@@ -206,7 +203,7 @@ class CorsecPermissionService
 
     public function canCreateIncoming(?User $user): bool
     {
-        if (!$user || !$user->can('letter.create')) {
+        if (!$user || !$user->can('corsec.create')) {
             return false;
         }
 
@@ -221,7 +218,7 @@ class CorsecPermissionService
 
     public function canCreateMeeting(?User $user): bool
     {
-        if (!$user || !$user->can('meeting.create')) {
+        if (!$user || !$user->can('corsec.create')) {
             return false;
         }
 
@@ -253,11 +250,12 @@ class CorsecPermissionService
 
         return [
             'is_admin' => (bool) ($user?->hasRole('administrator') ?? false),
-            'can_read' => (bool) ($user?->can('letter.read') ?? false),
+            'can_read' => (bool) ($user?->can('corsec.read') ?? false),
             'can_create' => $canCreateIncoming,
-            'can_export' => (bool) ($user?->can('letter.export') ?? false),
-            'can_delete' => (bool) ($user?->can('letter.delete') ?? false),
+            'can_export' => (bool) ($user?->can('corsec.export') ?? false),
+            'can_delete' => (bool) ($user?->can('corsec.delete') ?? false),
             'can_edit_action' => (bool) (($user?->hasRole('administrator') ?? false) || $canCreateIncoming),
+            'can_comment' => $this->canAddDirectorNote($user),
         ];
     }
 
@@ -297,11 +295,11 @@ class CorsecPermissionService
 
         $checkerApproved = $currentRoundStartedAt && $requiresCheckerApproval
             ? $approvals
-            ->where('status', 'approved')
-            ->contains(function ($approval) use ($currentRoundStartedAt) {
-                return $this->approvalInRound($approval, $currentRoundStartedAt)
-                    && Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
-            })
+                ->where('status', 'approved')
+                ->contains(function ($approval) use ($currentRoundStartedAt) {
+                    return $this->approvalInRound($approval, $currentRoundStartedAt)
+                        && Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
+                })
             : false;
 
         $userHasEoDirApproval = $this->userHasApprovalPrefix($approvals, $user, [
@@ -346,12 +344,11 @@ class CorsecPermissionService
             (string) ($incomingLetter->followup_action ?? '') === 'response_letter'
             && $status === IncomingLetter::STATUS_WAITING_RESPONSE_LETTER
             && !$responseOutgoingLetter
-            && (bool) ($user?->can('letter.create') ?? false)
-            && !$isEoCorpAffairDirectorate;
+            && $this->canCreateOutgoing($user);
 
         return [
-            'can_viewer_note' => $this->canAddDirectorNote($user, 'letter'),
-            'can_corsec_update_action' => $this->canCorsecUpdateAction($user, 'letter'),
+            'can_viewer_note' => $this->canAddDirectorNote($user),
+            'can_corsec_update_action' => $this->canCorsecUpdateAction($user),
             'can_directorate_update' => $canDirectorateUpdate,
             'can_checker_dir_approval' => $canCheckerDirApproval,
             'can_approver_approval' => $canApproverApproval,
@@ -359,7 +356,7 @@ class CorsecPermissionService
             'can_corsec_validation' => $canCheckerApproval,
             'can_add_monitoring' => (bool) ($isAdmin || $isTargetDirectorate || $isEoCorpSecretaryChecker || $isSekretariatDireksi),
             'can_create_outgoing_from_incoming' => $canCreateOutgoingFromIncoming,
-        ];
+        ];    
     }
 
     public function outgoingIndexFlags(?User $user): array
@@ -375,14 +372,15 @@ class CorsecPermissionService
             'is_staff_position' => $this->isStaffPosition($user),
             'current_user_id' => (int) ($user?->id ?? 0),
             'current_user_directorate_id' => (int) ($user?->directorate_id ?? 0),
-            'can_read' => (bool) ($user?->can('letter.read') ?? false),
-            'can_create' => (bool) ($user?->can('letter.create') ?? false),
-            'can_update' => (bool) ($user?->can('letter.update') ?? false),
-            'can_delete' => (bool) ($user?->can('letter.delete') ?? false),
-            'can_export' => (bool) ($user?->can('letter.export') ?? false),
+            'can_read' => (bool) ($user?->can('corsec.read') ?? false),
+            'can_create' => (bool) ($user?->can('corsec.create') ?? false),
+            'can_update' => (bool) ($user?->can('corsec.update') ?? false),
+            'can_delete' => (bool) ($user?->can('corsec.delete') ?? false),
+            'can_export' => (bool) ($user?->can('corsec.export') ?? false),
             'can_create_outgoing' => $this->canCreateOutgoing($user),
-            'can_create_or_update' => $this->canCorsecCreateOrUpdateAction($user, 'letter'),
-            'can_edit_action' => (bool) ($isAdmin || $this->canCorsecUpdateAction($user, 'letter')),
+            'can_create_or_update' => $this->canCorsecCreateOrUpdateAction($user),
+            'can_edit_action' => (bool) ($isAdmin || $this->canCorsecUpdateAction($user)),
+            'can_comment' => $this->canAddDirectorNote($user),
         ];
     }
 
@@ -417,11 +415,11 @@ class CorsecPermissionService
 
         $checkerApprovedDir = $currentDirectorateRoundStartedAt && $requiresCheckerApprovalDir
             ? $approvals
-            ->where('status', 'approved')
-            ->contains(function ($approval) use ($currentDirectorateRoundStartedAt) {
-                return $this->approvalInRound($approval, $currentDirectorateRoundStartedAt)
-                    && Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
-            })
+                ->where('status', 'approved')
+                ->contains(function ($approval) use ($currentDirectorateRoundStartedAt) {
+                    return $this->approvalInRound($approval, $currentDirectorateRoundStartedAt)
+                        && Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
+                })
             : false;
         $checkerApprovedCompliance = $approvals
             ->where('status', 'approved')
@@ -464,9 +462,9 @@ class CorsecPermissionService
         $isRequesterCreator = $user && (int) ($outgoingLetter->created_by ?? 0) === (int) $user->id;
 
         return [
-            'can_corsec_update_action' => $this->canCorsecUpdateAction($user, 'letter'),
-            'can_corsec_create_or_update_action' => $this->canCorsecCreateOrUpdateAction($user, 'letter'),
-            'can_director_note' => $this->canAddDirectorNote($user, 'letter'),
+            'can_corsec_update_action' => $this->canCorsecUpdateAction($user),
+            'can_corsec_create_or_update_action' => $this->canCorsecCreateOrUpdateAction($user),
+            'can_director_note' => $this->canAddDirectorNote($user),
             'can_edit' => in_array($status, [OutgoingLetter::STATUS_DRAFT, OutgoingLetter::STATUS_RETURNED], true)
                 && ($isAdmin || $isRequesterDirectorate),
             'can_dir_checker_approval' => $status === OutgoingLetter::STATUS_WAITING_DIR_APPROVAL
@@ -512,8 +510,8 @@ class CorsecPermissionService
             'actor_id' => (int) ($user?->id ?? 0),
             'can_read' => (bool) ($user?->can('corsec.read') ?? false),
             'can_create' => $this->canCreateMeeting($user),
-            'can_export' => (bool) ($user?->can('meeting.export') ?? false),
-            'can_delete' => (bool) ($user?->can('meeting.delete') ?? false),
+            'can_export' => (bool) ($user?->can('corsec.export') ?? false),
+            'can_delete' => (bool) ($user?->can('corsec.delete') ?? false),
             'can_edit_action' => $this->canCorsecUpdateAction($user),
             'can_comment' => $this->canAddDirectorNote($user),
         ];
@@ -617,11 +615,11 @@ class CorsecPermissionService
             $requiresCheckerApproval = $this->meetingApprovalRequiresChecker($latestPendingDirectorateApproval);
             $checkerApprovedInRound = $requiresCheckerApproval
                 ? $approvals
-                ->where('status', 'approved')
-                ->contains(function ($approval) use ($currentRoundStartedAt) {
-                    return $this->approvalInRound($approval, $currentRoundStartedAt)
-                        && Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
-                })
+                    ->where('status', 'approved')
+                    ->contains(function ($approval) use ($currentRoundStartedAt) {
+                        return $this->approvalInRound($approval, $currentRoundStartedAt)
+                            && Str::startsWith((string) $approval->note, 'EO Direktorat Approved');
+                    })
                 : false;
 
             if ($actorUserId > 0) {
@@ -674,12 +672,12 @@ class CorsecPermissionService
         $hasUpdatableDecision = !empty($updatableDecisionIds);
 
         $allDecisionsDone = $meeting->decisions->every(function ($decision) {
-            return in_array((string) ($decision->status ?? ''), [
-                MeetingDecision::STATUS_CONTINUOUS,
-                MeetingDecision::STATUS_DONE,
-                MeetingDecision::STATUS_DROPPED,
-            ], true);
-        });
+                return in_array((string) ($decision->status ?? ''), [
+                    MeetingDecision::STATUS_CONTINUOUS,
+                    MeetingDecision::STATUS_DONE,
+                    MeetingDecision::STATUS_DROPPED,
+                ], true);
+            });
 
         return [
             'can_corsec_update_action' => $this->canCorsecUpdateAction($user),

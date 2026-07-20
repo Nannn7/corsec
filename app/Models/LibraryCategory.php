@@ -7,28 +7,29 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Corsec\Models\Concerns\HasAuditUsers;
 
-class Workflow extends Model
+class LibraryCategory extends Model
 {
     use SoftDeletes, HasAuditUsers;
 
-    protected $table = 'corsec_workflows';
+    protected $table = 'corsec_library_categories';
 
     protected $fillable = [
-        'code',
+        'type',
         'name',
-        'is_active',
+        'slug',
+        'status',
         'created_by',
         'updated_by',
         'deleted_by',
     ];
 
     protected $casts = [
-        'is_active' => 'boolean',
+        'status' => 'boolean',
         'deleted_at' => 'datetime',
     ];
 
-    public function steps(): HasMany
+    public function items(): HasMany
     {
-        return $this->hasMany(WorkflowStep::class, 'workflow_id')->orderBy('step_order');
+        return $this->hasMany(LibraryItem::class, 'category_id');
     }
 }

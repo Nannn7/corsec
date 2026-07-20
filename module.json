@@ -16,9 +16,10 @@
                 "icon": "ki-filled ki-document text-lg text-primary",
                 "classes": "",
                 "attributes": [],
-                "permission": "",
+                "permission": "letter.read",
                 "roles": [
                     "administrator",
+                    "admin siskon",
                     "maker",
                     "checker",
                     "approver",
@@ -30,9 +31,10 @@
                         "path": "letter.incoming",
                         "classes": "",
                         "attributes": [],
-                        "permission": "",
+                        "permission": "letter.read",
                         "roles": [
                             "administrator",
+                            "admin siskon",
                             "maker",
                             "checker",
                             "approver",
@@ -44,9 +46,10 @@
                         "path": "letter.outgoing",
                         "classes": "",
                         "attributes": [],
-                        "permission": "",
+                        "permission": "letter.read",
                         "roles": [
                             "administrator",
+                            "admin siskon",
                             "maker",
                             "checker",
                             "approver",
@@ -61,9 +64,10 @@
                 "icon": "ki-filled ki-calendar-tick text-lg text-primary",
                 "classes": "",
                 "attributes": [],
-                "permission": "",
+                "permission": "meeting.read",
                 "roles": [
                     "administrator",
+                    "admin siskon",
                     "maker",
                     "checker",
                     "approver",
@@ -76,9 +80,42 @@
                 "icon": "ki-filled ki-clipboard text-lg text-primary",
                 "classes": "",
                 "attributes": [],
-                "permission": "",
+                "permission": "workplan.read",
                 "roles": [
                     "administrator",
+                    "admin siskon",
+                    "maker",
+                    "checker",
+                    "approver",
+                    "viewer"
+                ]
+            },
+            {
+                "title": "Reporting",
+                "path": "report",
+                "icon": "ki-filled ki-chart-line-up text-lg text-primary",
+                "classes": "",
+                "attributes": [],
+                "permission": "report.read",
+                "roles": [
+                    "administrator",
+                    "admin siskon",
+                    "maker",
+                    "checker",
+                    "approver",
+                    "viewer"
+                ]
+            },
+            {
+                "title": "Library",
+                "path": "library",
+                "icon": "ki-filled ki-book-open text-lg text-primary",
+                "classes": "",
+                "attributes": [],
+                "permission": "library.read",
+                "roles": [
+                    "administrator",
+                    "admin siskon",
                     "maker",
                     "checker",
                     "approver",
@@ -93,9 +130,10 @@
                 "icon": "ki-filled ki-office-bag text-lg text-primary",
                 "classes": "",
                 "attributes": [],
-                "permission": "",
+                "permission": "directorate.read",
                 "roles": [
-                    "administrator"
+                    "administrator",
+                    "admin siskon"
                 ]
             },
             {
@@ -104,9 +142,10 @@
                 "icon": "ki-filled ki-address-book text-lg text-primary",
                 "classes": "",
                 "attributes": [],
-                "permission": "",
+                "permission": "sender.read",
                 "roles": [
-                    "administrator"
+                    "administrator",
+                    "admin siskon"
                 ]
             },
             {
@@ -115,9 +154,10 @@
                 "icon": "ki-filled ki-note text-lg text-primary",
                 "classes": "",
                 "attributes": [],
-                "permission": "",
+                "permission": "letter-type.read",
                 "roles": [
-                    "administrator"
+                    "administrator",
+                    "admin siskon"
                 ],
                 "sub": [
                     {
@@ -125,9 +165,10 @@
                         "path": "letter-type.in",
                         "classes": "",
                         "attributes": [],
-                        "permission": "",
+                        "permission": "letter-type.read",
                         "roles": [
-                            "administrator"
+                            "administrator",
+                            "admin siskon"
                         ]
                     },
                     {
@@ -135,9 +176,10 @@
                         "path": "letter-type.out",
                         "classes": "",
                         "attributes": [],
-                        "permission": "",
+                        "permission": "letter-type.read",
                         "roles": [
-                            "administrator"
+                            "administrator",
+                            "admin siskon"
                         ]
                     }
                 ]
@@ -148,9 +190,10 @@
                 "icon": "ki-filled ki-bookmark text-lg text-primary",
                 "classes": "",
                 "attributes": [],
-                "permission": "",
+                "permission": "meeting-type.read",
                 "roles": [
-                    "administrator"
+                    "administrator",
+                    "admin siskon"
                 ]
             }
         ],
@@ -161,41 +204,10 @@
                 "icon": "ki-filled ki-shield-tick text-lg text-primary",
                 "classes": "",
                 "attributes": [],
-                "permission": "",
-                "roles": [
-                    "administrator"
-                ]
-            }
-        ],
-        "systems": [
-            {
-                "title": "Reporting",
-                "path": "report",
-                "icon": "ki-filled ki-chart-line-up text-lg text-primary",
-                "classes": "",
-                "attributes": [],
-                "permission": "",
+                "permission": "corsec.authorize",
                 "roles": [
                     "administrator",
-                    "maker",
-                    "checker",
-                    "approver",
-                    "viewer"
-                ]
-            },
-            {
-                "title": "Library",
-                "path": "library",
-                "icon": "ki-filled ki-book-open text-lg text-primary",
-                "classes": "",
-                "attributes": [],
-                "permission": "",
-                "roles": [
-                    "administrator",
-                    "maker",
-                    "checker",
-                    "approver",
-                    "viewer"
+                    "admin siskon"
                 ]
             }
         ]

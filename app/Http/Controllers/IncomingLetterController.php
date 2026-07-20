@@ -234,18 +234,19 @@ class IncomingLetterController extends Controller
 
     private function generateIncomingRegistrationNo(): string
     {
+        $date = now()->format('d');
         $month = now()->format('m');
         $year = now()->format('Y');
-        $nextSequence = $this->nextIncomingRegistrationSequence($month, $year);
+        $nextSequence = $this->nextIncomingRegistrationSequence($date, $month, $year);
 
-        return $this->formatIncomingRegistrationNo($nextSequence, $month, $year);
+        return $this->formatIncomingRegistrationNo($nextSequence, $date, $month, $year);
     }
 
-    private function nextIncomingRegistrationSequence(string $month, string $year): int
+    private function nextIncomingRegistrationSequence(string $date, string $month, string $year): int
     {
         $registrationNos = IncomingLetter::withTrashed()
             ->whereNotNull('registration_no')
-            ->where('registration_no', 'like', "%/{$month}/{$year}")
+            ->where('registration_no', 'like', "%/{$date}/{$month}/{$year}")
             ->pluck('registration_no');
 
         $maxSequence = 0;
@@ -254,11 +255,12 @@ class IncomingLetterController extends Controller
                 continue;
             }
 
-            if (preg_match('/^(\d{4})\/(\d{2})\/(\d{4})$/', $registrationNo, $matches) !== 1) {
+            if (preg_match('/^(\d{4})\/(\d{2})\/(\d{2})\/(\d{4})$/', $registrationNo, $matches) !== 1) {
                 continue;
             }
 
-            if ($matches[2] !== $month || $matches[3] !== $year) {
+            // $matches[1] = sequence, [2] = date, [3] = month, [4] = year
+            if ($matches[2] !== $date || $matches[3] !== $month || $matches[4] !== $year) {
                 continue;
             }
 
@@ -271,9 +273,9 @@ class IncomingLetterController extends Controller
         return $maxSequence + 1;
     }
 
-    private function formatIncomingRegistrationNo(int $sequence, string $month, string $year): string
+    private function formatIncomingRegistrationNo(int $sequence, string $date, string $month, string $year): string
     {
-        return str_pad((string) $sequence, 4, '0', STR_PAD_LEFT) . '/' . $month . '/' . $year;
+        return str_pad((string) $sequence, 4, '0', STR_PAD_LEFT) . '/' . $date . '/' . $month . '/' . $year;
     }
 
     /**
@@ -600,7 +602,7 @@ class IncomingLetterController extends Controller
     public function datatables(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.read')) {
+        if (!$user || !$user->can('letter.read')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Anda tidak memiliki akses untuk melihat surat masuk.'
@@ -684,7 +686,7 @@ class IncomingLetterController extends Controller
 
             // sorting (KTDataTable biasanya kirim sortField/sortOrder)
             $sortField = (string) $request->get('sortField', 'created_at');
-            $sortOrder = (string) $request->get('sortOrder', 'desc');
+            $sortOrder = strtolower((string) $request->get('sortOrder', 'desc'));
 
             $allowedSort = [
                 'external_letter_no',
@@ -712,15 +714,22 @@ class IncomingLetterController extends Controller
                 'sender:id,code,name',
                 'letterType:id,code,name',
                 'circulationDirectorates:id,code,name',
+                'comments.createdBy:id,name',
+                'attachables.attachment',
             ]);
 
             $query->orderBy($sortField, $sortOrder);
+            if ($sortField !== 'id') {
+                $query->orderBy('id', $sortOrder);
+            }
 
             // paging (KTDataTable: page & size)
             $page = max((int) $request->get('page', 1), 1);
             $size = max((int) $request->get('size', 10), 1);
 
-            $data = $query->forPage($page, $size)->get();
+            $data = $query->forPage($page, $size)->get()->map(function (IncomingLetter $letter) {
+                return $this->formatIncomingTableRow($letter);
+            });
 
             $pageCount = (int) ceil($filteredRecords / $size);
 
@@ -747,7 +756,7 @@ class IncomingLetterController extends Controller
     public function export(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.export')) {
+        if (!$user || !$user->can('letter.export')) {
             abort(403, 'Anda tidak memiliki akses untuk export surat masuk.');
         }
 
@@ -762,7 +771,7 @@ class IncomingLetterController extends Controller
     public function destroy(IncomingLetter $incomingLetter)
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.delete')) {
+        if (!$user || !$user->can('letter.delete')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Anda tidak memiliki akses untuk menghapus surat masuk.'
@@ -814,7 +823,7 @@ class IncomingLetterController extends Controller
     public function deleteMultiple(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.delete')) {
+        if (!$user || !$user->can('letter.delete')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Anda tidak memiliki akses untuk menghapus surat masuk.'
@@ -1126,7 +1135,7 @@ class IncomingLetterController extends Controller
     // Direksi catatan
     public function directorNote(Request $request, IncomingLetter $incomingLetter)
     {
-        if (!$this->permissionService->canAddDirectorNote(Auth::user())) {
+        if (!$this->permissionService->canAddDirectorNote(Auth::user(), 'letter')) {
             abort(403, 'Anda tidak memiliki akses untuk menambahkan catatan.');
         }
 
@@ -1141,7 +1150,57 @@ class IncomingLetterController extends Controller
             'created_by' => auth()->id(),
         ]);
 
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Komentar viewer tersimpan.',
+            ]);
+        }
+
         return back()->with('success', 'Komentar viewer tersimpan.');
+    }
+
+    private function formatIncomingTableRow(IncomingLetter $letter): array
+    {
+        return array_merge($letter->toArray(), [
+            'comment_url' => route('letter.incoming.director.note', $letter),
+            'comments' => $this->formatCommentRows($letter->comments),
+            'attachments' => $this->formatAttachableRows($letter->attachables),
+        ]);
+    }
+
+    private function formatCommentRows($comments): array
+    {
+        return $comments
+            ->sortByDesc('created_at')
+            ->take(3)
+            ->map(function (Comment $comment) {
+                return [
+                    'body' => (string) ($comment->body ?? ''),
+                    'created_at' => optional($comment->created_at)->toDateTimeString(),
+                    'created_by' => $comment->createdBy?->name,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function formatAttachableRows($attachables): array
+    {
+        return $attachables
+            ->map(fn($attachable) => $attachable->attachment)
+            ->filter()
+            ->map(fn(Attachment $attachment) => $this->formatAttachmentRow($attachment))
+            ->values()
+            ->all();
+    }
+
+    private function formatAttachmentRow(Attachment $attachment): array
+    {
+        return [
+            'name' => (string) ($attachment->original_name ?: $attachment->file_name ?: 'Attachment'),
+            'view_url' => route('attachment.view', $attachment),
+        ];
     }
 
     public function addMonitoringDirectorates(Request $request, IncomingLetter $incomingLetter)
@@ -1302,7 +1361,7 @@ class IncomingLetterController extends Controller
     private function authorizeNonViewerUpdate(): void
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.update')) {
+        if (!$user || !$user->can('letter.update')) {
             abort(403, 'Anda tidak memiliki akses untuk mengubah surat masuk.');
         }
         if ($this->permissionService->isViewerRole($user)) {

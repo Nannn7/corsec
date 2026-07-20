@@ -26,6 +26,11 @@ Route::get('/storage/{path}', SecureStorageController::class)
     ->where('path', '.*')
     ->name('storage.secure');
 
+Route::middleware(['auth', 'permission:corsec.read'])->group(function () {
+    Route::get('/attachment/{attachment}/view', [SecureStorageController::class, 'viewAttachment'])->name('attachment.view');
+    Route::get('/attachment/{attachment}/download', [SecureStorageController::class, 'downloadAttachment'])->name('attachment.download');
+});
+
 Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () use ($datatablesThrottle, $previewThrottle, $writeHeavyThrottle) {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 

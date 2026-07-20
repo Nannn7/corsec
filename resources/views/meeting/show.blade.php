@@ -69,7 +69,7 @@
 
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">Detail Meeting #{{ $meeting->id }}</h3>
+                <h3 class="card-title">Detail Meeting {{ $meeting->title }}</h3>
                 <div class="flex gap-2">
                     <a href="{{ route('meeting.index') }}" class="btn btn-sm btn-light">
                         <i class="ki-filled ki-arrow-left"></i> Kembali

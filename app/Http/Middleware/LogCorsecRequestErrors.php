@@ -17,29 +17,29 @@ class LogCorsecRequestErrors
     public function handle(Request $request, Closure $next): Response
     {
         try {
-            return $next($request);
-        } catch (Throwable $exception) {
-            $input = Arr::except($request->all(), [
-                '_token',
-                '_method',
-                'password',
-                'password_confirmation',
-                'current_password',
-                'new_password',
-                'new_password_confirmation',
-            ]);
+            $response = $next($request);
 
-            if (count($input) > 30) {
-                $input = array_slice($input, 0, 30, true);
-                $input['_truncated'] = true;
+            if ($response->getStatusCode() >= 400) {
+                Log::warning('Corsec request returned error response', [
+                    'route' => $request->route()?->getName(),
+                    'method' => $request->method(),
+                    'path' => $request->path(),
+                    'query' => $request->query(),
+                    'input' => $this->safeInput($request),
+                    'user_id' => $request->user()?->id,
+                    'status' => $response->getStatusCode(),
+                    'response' => $this->responseSummary($response),
+                ]);
             }
 
+            return $response;
+        } catch (Throwable $exception) {
             Log::error('Corsec request failed', [
                 'route' => $request->route()?->getName(),
                 'method' => $request->method(),
                 'path' => $request->path(),
                 'query' => $request->query(),
-                'input' => $input,
+                'input' => $this->safeInput($request),
                 'user_id' => $request->user()?->id,
                 'exception' => $exception::class,
                 'message' => $exception->getMessage(),
@@ -60,6 +60,46 @@ class LogCorsecRequestErrors
 
             throw $exception;
         }
+    }
+
+    private function safeInput(Request $request): array
+    {
+        $input = Arr::except($request->all(), [
+            '_token',
+            '_method',
+            'password',
+            'password_confirmation',
+            'current_password',
+            'new_password',
+            'new_password_confirmation',
+        ]);
+
+        if (count($input) > 30) {
+            $input = array_slice($input, 0, 30, true);
+            $input['_truncated'] = true;
+        }
+
+        return $input;
+    }
+
+    private function responseSummary(Response $response): ?array
+    {
+        $contentType = (string) $response->headers->get('Content-Type', '');
+        if (!str_contains($contentType, 'application/json')) {
+            return null;
+        }
+
+        $content = (string) $response->getContent();
+        if ($content === '') {
+            return null;
+        }
+
+        $decoded = json_decode($content, true);
+        if (!is_array($decoded)) {
+            return null;
+        }
+
+        return Arr::only($decoded, ['success', 'message', 'errors']);
     }
 
     private function statusCode(Throwable $exception): int

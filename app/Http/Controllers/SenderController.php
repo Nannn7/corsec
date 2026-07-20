@@ -289,7 +289,7 @@ class SenderController extends Controller
             $filteredRecords = (clone $query)->count();
 
             $sortField = (string) $request->get('sortField', 'id');
-            $sortOrder = (string) $request->get('sortOrder', 'desc');
+            $sortOrder = strtolower((string) $request->get('sortOrder', 'desc'));
 
             $allowedSort = [
                 'id',
@@ -308,6 +308,9 @@ class SenderController extends Controller
             }
 
             $query->orderBy($sortField, $sortOrder);
+            if ($sortField !== 'id') {
+                $query->orderBy('id', $sortOrder);
+            }
 
             $page = max((int) $request->get('page', 1), 1);
             $size = max((int) $request->get('size', 10), 1);

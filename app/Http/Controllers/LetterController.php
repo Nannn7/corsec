@@ -23,7 +23,7 @@ class LetterController extends Controller
 
     private function authorizeRead()
     {
-        if (!$this->user || !$this->user->can('corsec.read')) {
+        if (!$this->user || !$this->user->can('letter.read')) {
             abort(403, 'Anda tidak memiliki akses ke halaman ini.');
         }
     }
@@ -46,7 +46,7 @@ class LetterController extends Controller
 
     private function canCreateOutgoing(?User $user): bool
     {
-        if (!$user || !$user->can('corsec.create')) {
+        if (!$user || !$user->can('letter.create')) {
             return false;
         }
 

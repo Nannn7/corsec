@@ -331,7 +331,7 @@ class DirectorateController extends Controller
 
             // Apply sorting if provided
             $sortField = (string) $request->get('sortField', 'id');
-            $sortOrder = (string) $request->get('sortOrder', 'desc');
+            $sortOrder = strtolower((string) $request->get('sortOrder', 'desc'));
 
             $allowedSort = [
                 'id',
@@ -352,6 +352,9 @@ class DirectorateController extends Controller
             }
 
             $query->orderBy($sortField, $sortOrder);
+            if ($sortField !== 'id') {
+                $query->orderBy('id', $sortOrder);
+            }
 
             // Apply pagination if provided
             $page = max((int) $request->get('page', 1), 1);

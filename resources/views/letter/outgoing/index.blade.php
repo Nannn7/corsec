@@ -61,10 +61,12 @@
                                     <th class="min-w-[220px]" data-datatable-column="summary">Ringkasan</th>
                                     <th class="min-w-[180px]" data-datatable-column="recipient">Penerima</th>
                                     <th class="min-w-[180px]" data-datatable-column="letter_type">Jenis Surat</th>
-                                    <th class="min-w-[170px]" data-datatable-column="perihal_type">Jenis Perihal</th>
+                                    <th class="min-w-[120px]" data-datatable-column="perihal_type">Jenis Perihal</th>
                                     <th class="min-w-[170px]" data-datatable-column="requester_directorate">Direktorat</th>
+                                    <th class="min-w-[220px]" data-datatable-column="circulation">Sirkulasi</th>
+                                    <th class="min-w-[260px]" data-datatable-column="comments">Komentar</th>
+                                    <th class="min-w-[220px]" data-datatable-column="attachments">Attachment</th>
                                     <th class="min-w-[140px]" data-datatable-column="status">Status</th>
-                                    <th class="min-w-[180px]" data-datatable-column="created_at">Dibuat</th>
                                     <th class="min-w-[70px] text-center" data-datatable-column="actions">Action</th>
                                 </tr>
                             </thead>
@@ -299,6 +301,47 @@
         const canRead = @json((bool) ($permissionFlags['can_read'] ?? false));
         const canDelete = @json((bool) ($permissionFlags['can_delete'] ?? false));
         const canEditAction = @json((bool) ($permissionFlags['can_edit_action'] ?? false));
+        const canComment = @json((bool) ($permissionFlags['can_comment'] ?? false));
+
+        const escapeHtml = (value) => {
+            const div = document.createElement('div');
+            div.textContent = value ?? '';
+            return div.innerHTML;
+        };
+
+        const renderBulletList = (items) => {
+            const list = Array.isArray(items) ? items.filter(Boolean) : [];
+            if (list.length === 0) return '-';
+            return `<ul class="list-disc ps-4 space-y-1">${list.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+        };
+
+        const renderAttachments = (attachments) => {
+            const list = Array.isArray(attachments) ? attachments : [];
+            if (list.length === 0) return '-';
+            return `<div class="flex flex-col gap-1">${list.map((attachment) => {
+                if (!attachment?.view_url) return '';
+                return `<a class="btn btn-xs btn-light justify-start" target="_blank" href="${attachment.view_url}">
+                    <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
+                </a>`;
+            }).join('')}</div>`;
+        };
+
+        const renderComments = (data) => {
+            const comments = Array.isArray(data.comments) ? data.comments : [];
+            const commentList = comments.length > 0
+                ? `<div class="mb-2 space-y-1">${comments.map((comment) => `<div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs">
+                    <div>${escapeHtml(comment.body || '-')}</div>
+                    <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
+                </div>`).join('')}</div>`
+                : '<div class="mb-2 text-xs text-gray-500">Belum ada komentar.</div>';
+
+            if (!canComment || !data.comment_url) return commentList;
+
+            return `${commentList}<div class="flex flex-col gap-1">
+                <textarea class="textarea textarea-sm min-h-16" data-table-comment-input placeholder="Tulis komentar..."></textarea>
+                <button type="button" class="btn btn-xs btn-primary self-start" data-table-comment-submit data-comment-url="${data.comment_url}">Simpan</button>
+            </div>`;
+        };
 
         const statusBadge = (status) => {
             const val = (status ?? '').toString().toLowerCase();
@@ -413,13 +456,21 @@
                         return data.requester_directorate?.name || data.requesterDirectorate?.name || '-';
                     },
                 },
+                circulation: {
+                    title: 'Sirkulasi',
+                    render: (item, data) => renderBulletList(data.circulation_items),
+                },
+                comments: {
+                    title: 'Komentar',
+                    render: (item, data) => renderComments(data),
+                },
+                attachments: {
+                    title: 'Attachment',
+                    render: (item, data) => renderAttachments(data.attachments),
+                },
                 status: {
                     title: 'Status',
                     render: (item, data) => statusBadge(data.status),
-                },
-                created_at: {
-                    title: 'Dibuat',
-                    render: (item, data) => data.created_at ? window.formatTanggalWaktuIndonesia(data.created_at) : '-',
                 },
                 actions: {
                     title: 'Action',
@@ -484,6 +535,40 @@
         };
 
         let dataTable = new KTDataTable(element, dataTableOptions);
+
+        document.addEventListener('click', async (event) => {
+            const button = event.target.closest('[data-table-comment-submit]');
+            if (!button) return;
+
+            const wrapper = button.closest('td') || button.parentElement;
+            const input = wrapper?.querySelector('[data-table-comment-input]');
+            const note = input?.value?.trim() ?? '';
+            const url = button.getAttribute('data-comment-url');
+            if (!note || !url) {
+                Swal.fire('Peringatan', 'Komentar wajib diisi.', 'warning');
+                return;
+            }
+
+            button.disabled = true;
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ note })
+                });
+                if (!response.ok) throw response;
+                if (typeof dataTable.reload === 'function') dataTable.reload();
+                else window.location.reload();
+            } catch (error) {
+                Swal.fire('Error!', window.corsecAjaxMessage(error, 'Gagal menyimpan komentar.'), 'error');
+            } finally {
+                button.disabled = false;
+            }
+        });
 
         function updateExportUrl() {
             if (!exportBtn) return;

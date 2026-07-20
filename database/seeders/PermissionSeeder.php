@@ -25,6 +25,11 @@ class PermissionSeeder extends Seeder
     {
         return [
             ['name' => 'corsec', 'slug' => 'corsec'],
+            ['name' => 'letter', 'slug' => 'letter'],
+            ['name' => 'meeting', 'slug' => 'meeting'],
+            ['name' => 'workplan', 'slug' => 'workplan'],
+            ['name' => 'report', 'slug' => 'report'],
+            ['name' => 'library', 'slug' => 'library'],
             ['name' => 'directorate', 'slug' => 'directorate'],
             ['name' => 'letter-type', 'slug' => 'letter-type'],
             ['name' => 'sender', 'slug' => 'sender'],

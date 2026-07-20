@@ -161,8 +161,18 @@ class MeetingController extends Controller
                 $sortOrder = 'desc';
             }
 
-            $query->withCount(['participants', 'agendas']);
-            $query->orderBy($sortField, $sortOrder)->orderBy('id', 'desc');
+            $query->with([
+                'comments.createdBy:id,name',
+                'attachables.attachment',
+                'materials.attachment',
+                'minutes.minutesAttachment',
+                'minutes.finalMinutesAttachment',
+                'participants.directorate:id,name',
+            ])->withCount(['participants', 'agendas']);
+            $query->orderBy($sortField, $sortOrder);
+            if ($sortField !== 'id') {
+                $query->orderBy('id', $sortOrder);
+            }
 
             $page = max((int) $request->get('page', 1), 1);
             $size = max((int) $request->get('size', 10), 1);
@@ -185,6 +195,15 @@ class MeetingController extends Controller
                         'participants_count' => (int) ($meeting->participants_count ?? 0),
                         'agendas_count' => (int) ($meeting->agendas_count ?? 0),
                         'created_by' => (int) ($meeting->created_by ?? 0),
+                        'comment_url' => route('meeting.director.note', $meeting),
+                        'comments' => $this->formatCommentRows($meeting->comments),
+                        'attachments' => $this->formatMeetingAttachmentRows($meeting),
+                        'circulation_items' => $meeting->participants
+                            ->map(fn($participant) => $participant->directorate?->name)
+                            ->filter()
+                            ->unique()
+                            ->values()
+                            ->all(),
                     ];
                 }
             );
@@ -3696,7 +3715,7 @@ class MeetingController extends Controller
     private function authorizeRead(): void
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.read')) {
+        if (!$user || !$user->can('meeting.read')) {
             abort(403, 'Anda tidak memiliki akses ke halaman ini.');
         }
     }
@@ -3709,10 +3728,43 @@ class MeetingController extends Controller
         }
     }
 
+    private function formatCommentRows($comments): array
+    {
+        return $comments
+            ->sortByDesc('created_at')
+            ->take(3)
+            ->map(function ($comment) {
+                return [
+                    'body' => (string) ($comment->body ?? ''),
+                    'created_at' => optional($comment->created_at)->toDateTimeString(),
+                    'created_by' => $comment->createdBy?->name,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function formatMeetingAttachmentRows(Meeting $meeting): array
+    {
+        return collect()
+            ->merge($meeting->attachables->map(fn($attachable) => $attachable->attachment))
+            ->merge($meeting->materials->map(fn(MeetingMaterial $material) => $material->attachment))
+            ->push($meeting->minutes?->minutesAttachment)
+            ->push($meeting->minutes?->finalMinutesAttachment)
+            ->filter()
+            ->unique('id')
+            ->map(fn(Attachment $attachment) => [
+                'name' => (string) ($attachment->original_name ?: $attachment->file_name ?: 'Attachment'),
+                'view_url' => route('attachment.view', $attachment),
+            ])
+            ->values()
+            ->all();
+    }
+
     private function authorizeUpdate(): void
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.update')) {
+        if (!$user || !$user->can('meeting.update')) {
             abort(403, 'Anda tidak memiliki akses untuk mengubah meeting.');
         }
         if ($this->permissionService->isViewerRole($user)) {
@@ -3723,7 +3775,7 @@ class MeetingController extends Controller
     private function authorizeDelete(): void
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.delete')) {
+        if (!$user || !$user->can('meeting.delete')) {
             abort(403, 'Anda tidak memiliki akses untuk menghapus meeting.');
         }
     }
@@ -3731,7 +3783,7 @@ class MeetingController extends Controller
     private function authorizeAuthorize(): void
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.authorize')) {
+        if (!$user || !$user->can('meeting.authorize')) {
             abort(403, 'Anda tidak memiliki akses untuk memproses persetujuan meeting.');
         }
     }
@@ -3828,7 +3880,7 @@ class MeetingController extends Controller
         $roleSignature = md5($user->roles->pluck('name')->sort()->implode('|'));
 
         return sprintf(
-            'corsec.meeting.index.summary.%d.%d.%s',
+            'meeting.meeting.index.summary.%d.%d.%s',
             (int) $user->id,
             (int) ($user->directorate_id ?? 0),
             $roleSignature

@@ -67,7 +67,7 @@ class ReportController extends Controller
     private function authorizeRead(): void
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.read')) {
+        if (!$user || !$user->can('report.read')) {
             abort(403, 'Anda tidak memiliki akses ke halaman ini.');
         }
     }
@@ -415,7 +415,7 @@ class ReportController extends Controller
                     ->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
                         $circulationQuery->where('directorate_id', $directorateId);
                     });
-                }
+            }
         });
     }
 

@@ -684,8 +684,14 @@
                 const {
                     clearValidation,
                     showFieldError,
+                    validateFileSizes,
+                    uploadFailureMessage,
                 } = window.CorsecIncomingValidation;
                 const indexUrl = @json(route('letter.outgoing.index'));
+                const uploadSizeOptions = {
+                    maxBytes: @json(\Modules\Corsec\Support\UploadRule::maxFileSizeKb() * 1024),
+                    label: @json(\Modules\Corsec\Support\UploadRule::label()),
+                };
 
                 function validateOutgoingForm($form) {
                     const errors = {};
@@ -763,6 +769,8 @@
                     if (submitForApproval && !hasDraftAttachment && filesInput && filesInput.files.length === 0) {
                         errors.draft_file = 'Harap upload file.';
                     }
+
+                    Object.assign(errors, validateFileSizes($form, uploadSizeOptions));
 
                     return errors;
                 }
@@ -864,8 +872,8 @@
                                 });
                                 return;
                             }
-                            Swal.fire('Error!', window.corsecAjaxMessage(xhr,
-                                'Gagal memproses surat keluar.'), 'error');
+                            Swal.fire('Error!', uploadFailureMessage(xhr,
+                                'Gagal memproses surat keluar.', uploadSizeOptions), 'error');
                         }
                     });
                 });

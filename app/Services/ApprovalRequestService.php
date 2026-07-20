@@ -7,6 +7,9 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Modules\Corsec\Models\ApprovalRequest;
 use Modules\Corsec\Models\LetterType;
+use Modules\Usermanagement\Models\Permission;
+use Modules\Usermanagement\Models\PermissionGroup;
+use Modules\Usermanagement\Models\Role;
 use Modules\Usermanagement\Models\User;
 
 class ApprovalRequestService
@@ -45,6 +48,11 @@ class ApprovalRequestService
             $modelClass = $approvalRequest->model;
             $requestNew = $approvalRequest->request_new ?? [];
 
+            if ($modelClass === PermissionGroup::class) {
+                $this->approvePermissionGroupRequest($approvalRequest, $actor, $requestNew);
+                return;
+            }
+
             if ($approvalRequest->action === ApprovalRequest::ACTION_CREATE) {
                 if (isset($requestNew['items']) && is_array($requestNew['items'])) {
                     foreach ($requestNew['items'] as $item) {
@@ -53,18 +61,22 @@ class ApprovalRequestService
                         }
                         $payload = $this->filterFillable($modelClass, $item);
                         if (!empty($payload)) {
-                            $modelClass::create($payload);
+                            $model = $modelClass::create($payload);
+                            $this->applyApprovedRelations($model, $item);
                         }
                     }
                 } else {
                     $payload = $this->filterFillable($modelClass, $requestNew);
-                    $modelClass::create($payload);
+                    $model = $modelClass::create($payload);
+                    $this->applyApprovedRelations($model, $requestNew);
                 }
             } elseif ($approvalRequest->action === ApprovalRequest::ACTION_UPDATE) {
                 $payload = $this->filterFillable($modelClass, $requestNew);
-                $modelClass::query()
+                $model = $modelClass::query()
                     ->where('id', $approvalRequest->target_id)
-                    ->update($payload);
+                    ->firstOrFail();
+                $model->update($payload);
+                $this->applyApprovedRelations($model, $requestNew);
             } elseif ($approvalRequest->action === ApprovalRequest::ACTION_DELETE) {
                 $modelClass::query()
                     ->where('id', $approvalRequest->target_id)
@@ -104,5 +116,81 @@ class ApprovalRequestService
         }
 
         return array_intersect_key($payload, array_flip($fillable));
+    }
+
+    private function applyApprovedRelations(object $model, array $payload): void
+    {
+        if ($model instanceof User && array_key_exists('_role_names', $payload)) {
+            $model->syncRoles($payload['_role_names'] ?? []);
+        }
+
+        if ($model instanceof Role && array_key_exists('_permission_names', $payload)) {
+            $model->syncPermissions($payload['_permission_names'] ?? []);
+        }
+    }
+
+    private function approvePermissionGroupRequest(ApprovalRequest $approvalRequest, User $actor, array $requestNew): void
+    {
+        $payload = $this->filterFillable(PermissionGroup::class, $requestNew);
+        $permissionNames = $requestNew['_permission_names'] ?? [];
+
+        if ($approvalRequest->action === ApprovalRequest::ACTION_CREATE) {
+            $group = PermissionGroup::create($payload);
+            $this->syncPermissionGroupPermissions($group, $permissionNames);
+        } elseif ($approvalRequest->action === ApprovalRequest::ACTION_UPDATE) {
+            $group = PermissionGroup::query()
+                ->where('id', $approvalRequest->target_id)
+                ->firstOrFail();
+            $group->update($payload);
+            $this->syncPermissionGroupPermissions($group, $permissionNames);
+        } elseif ($approvalRequest->action === ApprovalRequest::ACTION_DELETE) {
+            PermissionGroup::query()
+                ->where('id', $approvalRequest->target_id)
+                ->delete();
+            Permission::query()
+                ->where('permission_group_id', $approvalRequest->target_id)
+                ->delete();
+        }
+
+        $approvalRequest->update([
+            'status' => ApprovalRequest::STATUS_APPROVED,
+            'authorized_at' => now(),
+            'authorized_by' => $actor->id,
+        ]);
+    }
+
+    private function syncPermissionGroupPermissions(PermissionGroup $group, array $permissionNames): void
+    {
+        $permissionNames = array_values(array_filter($permissionNames));
+        $existingPermissions = Permission::query()
+            ->where('permission_group_id', $group->id)
+            ->orderBy('id')
+            ->get();
+
+        foreach ($permissionNames as $index => $permissionName) {
+            $permission = $existingPermissions->get($index);
+            if ($permission) {
+                $permission->update([
+                    'name' => $permissionName,
+                    'guard_name' => 'web',
+                    'permission_group_id' => $group->id,
+                ]);
+                continue;
+            }
+
+            Permission::create([
+                'name' => $permissionName,
+                'guard_name' => 'web',
+                'permission_group_id' => $group->id,
+            ]);
+        }
+
+        $excessPermissionIds = $existingPermissions
+            ->slice(count($permissionNames))
+            ->pluck('id');
+
+        if ($excessPermissionIds->isNotEmpty()) {
+            Permission::query()->whereIn('id', $excessPermissionIds)->delete();
+        }
     }
 }

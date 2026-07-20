@@ -37,7 +37,7 @@
     <div class="grid gap-5 lg:gap-7.5">
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">Detail Surat Keluar #{{ $outgoingLetter->id }}</h3>
+                <h3 class="card-title">Detail Surat Keluar {{ $outgoingLetter->letter_no }}</h3>
                 <div class="flex gap-2">
                     <a href="{{ route('letter.outgoing.index') }}" class="btn btn-sm btn-light">
                         <i class="ki-filled ki-arrow-left"></i> Kembali

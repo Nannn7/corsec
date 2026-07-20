@@ -192,7 +192,24 @@ class MeetingExport implements FromCollection, WithHeadings, WithMapping
 
     private function canViewAllMeetings(User $user): bool
     {
-        return $user->hasRole('administrator') || $user->hasRole('checker') || $user->hasRole('approver');
+        return $user->hasRole('administrator') || $this->isAllDataDirectorate($user);
+    }
+
+    private function isAllDataDirectorate(User $user): bool
+    {
+        $user->loadMissing('directorate');
+        $name = strtolower((string) ($user->directorate?->name ?? ''));
+        $code = (string) ($user->directorate?->code ?? '');
+        $complianceCode = (string) config('corsec.compliance_directorate_code', '');
+        $corpCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+
+        return ($code !== '' && $complianceCode !== '' && $code === $complianceCode)
+            || ($code !== '' && $corpCode !== '' && $code === $corpCode)
+            || str_contains($name, 'kepatuhan')
+            || str_contains($name, 'compliance')
+            || str_contains($name, 'complience')
+            || str_contains($name, 'corporate secretary')
+            || str_contains($name, 'skai');
     }
 
     private function participantDetails(Collection $participants): string

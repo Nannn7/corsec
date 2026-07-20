@@ -178,7 +178,7 @@ class LibraryController extends Controller
     public function download(LibraryItem $libraryItem): StreamedResponse
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.read')) {
+        if (!$user || !$user->can('library.read')) {
             abort(403, 'Anda tidak memiliki akses untuk mengunduh dokumen pustaka.');
         }
 
@@ -200,7 +200,7 @@ class LibraryController extends Controller
         string $description
     ): View {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.read')) {
+        if (!$user || !$user->can('library.read')) {
             abort(403, 'Anda tidak memiliki akses untuk melihat daftar pustaka.');
         }
 
@@ -254,17 +254,17 @@ class LibraryController extends Controller
         }
 
         if ($user->hasRole('administrator')) {
-            return (bool) ($user->can('corsec.create') ?? true);
+            return (bool) ($user->can('library.create') ?? true);
         }
 
-        return (bool) ($user->can('corsec.create') ?? false)
+        return (bool) ($user->can('library.create') ?? false)
             && $this->permissionService->isCorpSecretaryDirectorate($user);
     }
 
     private function ensureCanManageLibrary(?User $user): void
     {
         if (!$this->canManageLibrary($user)) {
-            abort(403, 'Hanya user Corporate Secretary dengan akses corsec.create yang dapat mengelola daftar pustaka.');
+            abort(403, 'Hanya user Corporate Secretary dengan akses library.create yang dapat mengelola daftar pustaka.');
         }
     }
 

@@ -317,8 +317,10 @@ class IncomingLetterWorkflowService
         bool $submitForApproval
     ): array {
         return DB::transaction(function () use ($incomingLetter, $actor, $targetDate, $followupAction, $followupDetail, $followupNote, $evidenceFiles, $socialMaterialFile, $submitForApproval) {
-            // pastiin yang update itu direktorat yang sama
-            if ($incomingLetter->target_directorate_id && $actor->directorate_id !== $incomingLetter->target_directorate_id) {
+            $isAdmin = $actor->hasRole('administrator');
+
+            // User direktorat biasa hanya boleh update surat untuk direktorat tujuannya.
+            if (!$isAdmin && $incomingLetter->target_directorate_id && $actor->directorate_id !== $incomingLetter->target_directorate_id) {
                 abort(403, 'Bukan direktorat tujuan surat ini.');
             }
             if ($incomingLetter->authorized_status !== 'authorized') {

@@ -72,7 +72,7 @@
     <div class="grid gap-5 lg:gap-7.5">
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">Detail Surat Masuk #{{ $incomingLetter->id }}</h3>
+                <h3 class="card-title">Detail Surat Masuk {{ $incomingLetter->external_letter_no }}</h3>
                 <div class="flex gap-2">
                     <a href="{{ route('letter.incoming.index') }}" class="btn btn-sm btn-light">
                         <i class="ki-filled ki-arrow-left"></i> Kembali
@@ -1526,7 +1526,13 @@
                 const {
                     clearValidation,
                     showFieldError,
+                    validateFileSizes,
+                    uploadFailureMessage,
                 } = window.CorsecIncomingValidation;
+                const uploadSizeOptions = {
+                    maxBytes: @json(\Modules\Corsec\Support\UploadRule::maxFileSizeKb() * 1024),
+                    label: @json(\Modules\Corsec\Support\UploadRule::label()),
+                };
 
                 function validateMonitoringForm($form) {
                     const errors = {};
@@ -1647,6 +1653,8 @@
                         }
                     }
 
+                    Object.assign(errors, validateFileSizes($form, uploadSizeOptions));
+
                     return errors;
                 }
 
@@ -1723,8 +1731,8 @@
                                 });
                                 return;
                             }
-                            Swal.fire('Error!', window.corsecAjaxMessage(xhr,
-                                'Gagal memproses surat masuk.'), 'error');
+                            Swal.fire('Error!', uploadFailureMessage(xhr,
+                                'Gagal memproses surat masuk.', uploadSizeOptions), 'error');
                         }
                     });
                 });

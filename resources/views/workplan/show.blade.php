@@ -71,7 +71,7 @@
     <div class="grid gap-5 lg:gap-7.5">
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">Detail Program Kerja #{{ $workplan->id }}</h3>
+                <h3 class="card-title">Detail Program Kerja {{ $workplan->program_no }}</h3>
                 <div class="flex gap-2">
                     <a href="{{ route('workplan.index') }}" class="btn btn-sm btn-light">
                         <i class="ki-filled ki-arrow-left"></i> Kembali
