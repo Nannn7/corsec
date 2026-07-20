@@ -6,17 +6,30 @@ use Modules\Corsec\Http\Controllers\LetterController;
 use Modules\Corsec\Http\Controllers\IncomingLetterController;
 use Modules\Corsec\Http\Controllers\OutgoingLetterController;
 use Modules\Corsec\Http\Controllers\MeetingController;
+use Modules\Corsec\Http\Controllers\ReportController;
+use Modules\Corsec\Http\Controllers\LibraryController;
 use Modules\Corsec\Http\Controllers\WorkplanController;
 use Modules\Corsec\Http\Controllers\ApproverController;
 use Modules\Corsec\Http\Controllers\DirectorateController;
 use Modules\Corsec\Http\Controllers\SenderController;
 use Modules\Corsec\Http\Controllers\LetterTypeController;
 use Modules\Corsec\Http\Controllers\MeetingTypeController;
+use Modules\Corsec\Http\Controllers\SecureStorageController;
 use Modules\Corsec\Http\Middleware\LogCorsecRequestErrors;
 
 $datatablesThrottle = 'throttle:corsec-datatables';
 $previewThrottle = 'throttle:corsec-preview';
 $writeHeavyThrottle = 'throttle:corsec-write-heavy';
+
+Route::get('/storage/{path}', SecureStorageController::class)
+    ->middleware('auth')
+    ->where('path', '.*')
+    ->name('storage.secure');
+
+Route::middleware(['auth', 'permission:corsec.read'])->group(function () {
+    Route::get('/attachment/{attachment}/view', [SecureStorageController::class, 'viewAttachment'])->name('attachment.view');
+    Route::get('/attachment/{attachment}/download', [SecureStorageController::class, 'downloadAttachment'])->name('attachment.download');
+});
 
 Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () use ($datatablesThrottle, $previewThrottle, $writeHeavyThrottle) {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
@@ -41,13 +54,13 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () us
             Route::get('/{incomingLetter}/edit', [IncomingLetterController::class, 'edit'])->middleware('permission:corsec.update')->name('edit');
             Route::put('/{incomingLetter}', [IncomingLetterController::class, 'update'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('update');
             // ACTIONS
-            Route::post('/{incomingLetter}/submit', [IncomingLetterController::class, 'submit'])->middleware(['permission:corsec.authorize', $writeHeavyThrottle])->name('submit');
+            Route::post('/{incomingLetter}/submit', [IncomingLetterController::class, 'submit'])->middleware(['permission:corsec.create|corsec.update', $writeHeavyThrottle])->name('submit');
             Route::post('/{incomingLetter}/circulate', [IncomingLetterController::class, 'circulate'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('circulate');
             Route::post('/{incomingLetter}/approval', [IncomingLetterController::class, 'approvalAction'])->middleware(['permission:corsec.authorize', $writeHeavyThrottle])->name('approval.action');
             Route::post('/{incomingLetter}/directorate-update', [IncomingLetterController::class, 'directorateUpdate'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('directorate.update');
             Route::post('/{incomingLetter}/monitoring', [IncomingLetterController::class, 'addMonitoringDirectorates'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('monitoring.add');
-            Route::post('/{incomingLetter}/verify', [IncomingLetterController::class, 'verifyAction'])->middleware(['permission:corsec.authorize', $writeHeavyThrottle])->name('verify.action');
-            Route::post('/{incomingLetter}/note', [IncomingLetterController::class, 'directorNote'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('director.note');
+            Route::post('/{incomingLetter}/verify', [IncomingLetterController::class, 'verifyAction'])->middleware(['permission:corsec.read|corsec.authorize|corsec.update', $writeHeavyThrottle])->name('verify.action');
+            Route::post('/{incomingLetter}/note', [IncomingLetterController::class, 'directorNote'])->middleware(['permission:corsec.read', $writeHeavyThrottle])->name('director.note');
             // DELETE (pakai model binding biar ga tabrakan)
             Route::delete('/{incomingLetter}', [IncomingLetterController::class, 'destroy'])->middleware(['permission:corsec.delete', $writeHeavyThrottle])->name('destroy');
         });
@@ -72,8 +85,23 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () us
         Route::post('/{outgoingLetter}/approval', [OutgoingLetterController::class, 'approvalAction'])->middleware(['permission:corsec.authorize', $writeHeavyThrottle])->name('approval.action');
         Route::post('/{outgoingLetter}/compliance-review', [OutgoingLetterController::class, 'complianceReview'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('compliance.review');
         Route::post('/{outgoingLetter}/upload-final', [OutgoingLetterController::class, 'uploadFinal'])->middleware(['permission:corsec.create|corsec.update', $writeHeavyThrottle])->name('upload_final');
-        Route::post('/{outgoingLetter}/verify', [OutgoingLetterController::class, 'verifyAction'])->middleware(['permission:corsec.authorize', $writeHeavyThrottle])->name('verify.action');
+        Route::post('/{outgoingLetter}/note', [OutgoingLetterController::class, 'directorNote'])->middleware(['permission:corsec.read', $writeHeavyThrottle])->name('director.note');
         Route::delete('/{outgoingLetter}', [OutgoingLetterController::class, 'destroy'])->middleware(['permission:corsec.delete', $writeHeavyThrottle])->name('destroy');
+    });
+
+    Route::prefix('report')->name('report.')->group(function () {
+        Route::get('/', [ReportController::class, 'index'])->middleware('permission:corsec.read')->name('index');
+    });
+
+    Route::prefix('library')->name('library.')->group(function () use ($writeHeavyThrottle) {
+        Route::get('/', [LibraryController::class, 'index'])->middleware('permission:corsec.read')->name('index');
+        Route::get('/guideline', [LibraryController::class, 'guidelineIndex'])->middleware('permission:corsec.read')->name('guideline.index');
+        Route::get('/create', [LibraryController::class, 'create'])->middleware('permission:corsec.create')->name('create');
+        Route::post('/', [LibraryController::class, 'store'])->middleware(['permission:corsec.create', $writeHeavyThrottle])->name('store');
+        Route::get('/{libraryItem}/download', [LibraryController::class, 'download'])->middleware('permission:corsec.read')->name('download');
+        Route::get('/{libraryItem}/edit', [LibraryController::class, 'edit'])->middleware('permission:corsec.create')->name('edit');
+        Route::put('/{libraryItem}', [LibraryController::class, 'update'])->middleware(['permission:corsec.create', $writeHeavyThrottle])->name('update');
+        Route::delete('/{libraryItem}', [LibraryController::class, 'destroy'])->middleware(['permission:corsec.create', $writeHeavyThrottle])->name('destroy');
     });
 
     // Meeting Routes
@@ -85,18 +113,21 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () us
         Route::get('/create', [MeetingController::class, 'create'])->middleware('permission:corsec.create')->name('create');
         Route::post('/store', [MeetingController::class, 'store'])->middleware(['permission:corsec.create', $writeHeavyThrottle])->name('store');
         Route::get('/{meeting}', [MeetingController::class, 'show'])->middleware('permission:corsec.read')->name('show');
+        Route::get('/{meeting}/persentation', [MeetingController::class, 'presentation'])->middleware('permission:corsec.read')->name('presentation');
+        Route::get('/{meeting}/materials/{material}/file', [MeetingController::class, 'materialFile'])->middleware('permission:corsec.read')->name('material.file');
         Route::get('/{meeting}/edit', [MeetingController::class, 'edit'])->middleware('permission:corsec.update')->name('edit');
         Route::put('/{meeting}', [MeetingController::class, 'update'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('update');
         Route::delete('/{meeting}', [MeetingController::class, 'destroy'])->middleware(['permission:corsec.delete', $writeHeavyThrottle])->name('destroy');
-
         Route::post('/{meeting}/submit', [MeetingController::class, 'submit'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('submit');
         Route::post('/{meeting}/corsec-approval', [MeetingController::class, 'corsecApproval'])->middleware(['permission:corsec.authorize', $writeHeavyThrottle])->name('corsec.approval');
         Route::post('/{meeting}/directorate-response', [MeetingController::class, 'directorateResponse'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('directorate.response');
         Route::post('/{meeting}/mark-pending-directorate', [MeetingController::class, 'markPendingDirectorate'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('mark.pending.directorate');
         Route::post('/{meeting}/directorate-submit', [MeetingController::class, 'directorateSubmit'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('directorate.submit');
         Route::post('/{meeting}/directorate-approval', [MeetingController::class, 'directorateApproval'])->middleware(['permission:corsec.authorize', $writeHeavyThrottle])->name('directorate.approval');
+        Route::post('/{meeting}/note', [MeetingController::class, 'directorNote'])->middleware(['permission:corsec.read', $writeHeavyThrottle])->name('director.note');
         Route::post('/{meeting}/minutes', [MeetingController::class, 'saveMinutes'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('minutes.save');
         Route::post('/{meeting}/minutes/finalize', [MeetingController::class, 'finalizeMinutes'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('minutes.finalize');
+        Route::get('/{meeting}/minutes/template', [MeetingController::class, 'downloadDirectorateMinutesTemplate'])->middleware('permission:corsec.read')->name('minutes.template');
         Route::post('/{meeting}/decisions/{decision}/updates', [MeetingController::class, 'submitDecisionUpdate'])->middleware(['permission:corsec.read|corsec.update', $writeHeavyThrottle])->name('decision.update');
         Route::post('/{meeting}/followup/complete', [MeetingController::class, 'completeFollowup'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('followup.complete');
     });
@@ -111,6 +142,7 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () us
         Route::post('/{workplan}/submit', [WorkplanController::class, 'submit'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('submit');
         Route::post('/{workplan}/approval', [WorkplanController::class, 'approvalAction'])->middleware(['permission:corsec.authorize', $writeHeavyThrottle])->name('approval.action');
         Route::post('/{workplan}/items/{item}/progress', [WorkplanController::class, 'submitProgress'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('items.progress');
+        Route::post('/{workplan}/note', [WorkplanController::class, 'directorNote'])->middleware(['permission:corsec.read', $writeHeavyThrottle])->name('director.note');
         Route::get('/{workplan}', [WorkplanController::class, 'show'])->middleware('permission:corsec.read')->name('show');
         Route::get('/{workplan}/edit', [WorkplanController::class, 'edit'])->middleware('permission:corsec.update')->name('edit');
         Route::put('/{workplan}', [WorkplanController::class, 'update'])->middleware(['permission:corsec.update', $writeHeavyThrottle])->name('update');
@@ -240,5 +272,4 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () us
         Route::put('/{letterType}', [LetterTypeController::class, 'update'])->name('update');
         Route::delete('/{letterType}', [LetterTypeController::class, 'destroy'])->name('destroy');
     });
-
 });

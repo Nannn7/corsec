@@ -43,7 +43,7 @@ class DirectorateController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('directorate.read')) {
-            abort(403, 'Sorry! You are not allowed to view directorate.');
+            abort(403, 'Anda tidak memiliki akses untuk melihat direktorat.');
         }
 
         Log::info('User accessed directorate index', ['user_id' => $user->id]);
@@ -58,27 +58,11 @@ class DirectorateController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('directorate.create')) {
-            abort(403, 'Sorry! You are not allowed to create directorate.');
+            abort(403, 'Anda tidak memiliki akses untuk menambah direktorat.');
         }
 
         Log::info('User accessed directorate create form', ['user_id' => $user->id]);
-        $codes = Directorate::query()->pluck('code');
-        $numericCodes = $codes
-            ->filter(function ($code) {
-                return is_string($code) && preg_match('/^\d+$/', $code);
-            })
-            ->values();
-        $maxNumber = $numericCodes
-            ->map(function ($code) {
-                return (int) $code;
-            })
-            ->max();
-        $padLength = $numericCodes
-            ->map(function ($code) {
-                return strlen($code);
-            })
-            ->max() ?? 3;
-        $nextCode = $maxNumber !== null ? str_pad((string) ($maxNumber + 1), $padLength, '0', STR_PAD_LEFT) : null;
+        $nextCode = $this->resolveNextNumericCode(Directorate::query());
 
         return view('corsec::direktorat.create', compact('nextCode'));
     }
@@ -90,7 +74,7 @@ class DirectorateController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('directorate.create')) {
-            abort(403, 'Sorry! You are not allowed to create directorate.');
+            abort(403, 'Anda tidak memiliki akses untuk menambah direktorat.');
         }
 
         try {
@@ -119,13 +103,13 @@ class DirectorateController extends Controller
 
             return redirect()
                 ->route('directorate.index')
-                ->with('success', 'Directorate submitted for approval.');
+                ->with('success', 'Pengajuan direktorat berhasil dikirim untuk persetujuan.');
         } catch (Exception $e) {
             Log::error('Failed to create directorate: ' . $e->getMessage(), ['user_id' => $user->id]);
 
             return redirect()
                 ->route('directorate.create')
-                ->with('error', 'Failed to create directorate: ' . $e->getMessage())
+                ->with('error', 'Gagal mengajukan direktorat: ' . $e->getMessage())
                 ->withInput();
         }
     }
@@ -145,7 +129,7 @@ class DirectorateController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('directorate.update')) {
-            abort(403, 'Sorry! You are not allowed to update directorate.');
+            abort(403, 'Anda tidak memiliki akses untuk mengubah direktorat.');
         }
 
         Log::info('User accessed directorate edit form', ['directorate_id' => $directorate->id, 'user_id' => $user->id]);
@@ -159,7 +143,7 @@ class DirectorateController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('directorate.update')) {
-            abort(403, 'Sorry! You are not allowed to update directorate.');
+            abort(403, 'Anda tidak memiliki akses untuk mengubah direktorat.');
         }
 
         try {
@@ -190,13 +174,13 @@ class DirectorateController extends Controller
 
             return redirect()
                 ->route('directorate.index')
-                ->with('success', 'Directorate update submitted for approval.');
+                ->with('success', 'Pengajuan perubahan direktorat berhasil dikirim untuk persetujuan.');
         } catch (Exception $e) {
             Log::error('Failed to update directorate: ' . $e->getMessage(), ['directorate_id' => $directorate->id, 'user_id' => $user->id]);
 
             return redirect()
                 ->route('directorate.edit', $directorate)
-                ->with('error', 'Failed to update directorate: ' . $e->getMessage())
+                ->with('error', 'Gagal mengajukan perubahan direktorat: ' . $e->getMessage())
                 ->withInput();
         }
     }
@@ -210,7 +194,7 @@ class DirectorateController extends Controller
         if (!$user || !$user->can('directorate.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete directorate.'
+                'message' => 'Anda tidak memiliki akses untuk menghapus direktorat.'
             ], 403);
         }
 
@@ -227,18 +211,18 @@ class DirectorateController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Directorate deleted successfully.'
+                'message' => 'Direktorat berhasil dihapus.'
             ]);
         } catch (Exception $e) {
             Log::error('Failed to delete directorate: ' . $e->getMessage(), [
-                'directorate_id' => $id,
+                'directorate_id' => $directorate->id,
                 'user_id' => $user->id,
                 'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit delete request. Please try again later.'
+                'message' => 'Gagal menghapus direktorat. Silakan coba lagi.'
             ], 500);
         }
     }
@@ -252,7 +236,7 @@ class DirectorateController extends Controller
         if (!$user || !$user->can('directorate.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete directorate.'
+                'message' => 'Anda tidak memiliki akses untuk menghapus direktorat.'
             ], 403);
         }
 
@@ -261,7 +245,7 @@ class DirectorateController extends Controller
             if (empty($ids)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No directorate selected for deletion'
+                    'message' => 'Pilih minimal satu direktorat untuk dihapus.'
                 ], 400);
             }
 
@@ -278,7 +262,7 @@ class DirectorateController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Some selected directorate were not found.',
+                    'message' => 'Sebagian direktorat yang dipilih tidak ditemukan.',
                     'missing_ids' => $missingIds,
                     'existing_ids' => $existingdirectorate
                 ], 404);
@@ -296,7 +280,7 @@ class DirectorateController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Multiple directorate deleted successfully.'
+                'message' => 'Direktorat terpilih berhasil dihapus.'
             ]);
         } catch (Exception $e) {
             Log::error('Failed to delete multiple directorate: ' . $e->getMessage(), [
@@ -307,7 +291,7 @@ class DirectorateController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit delete request. Please try again later.',
+                'message' => 'Gagal menghapus direktorat terpilih. Silakan coba lagi.',
                 'error_details' => $e->getMessage()
             ], 500);
         }
@@ -322,7 +306,7 @@ class DirectorateController extends Controller
         if (!$user || !$user->can('directorate.read')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to view directorate.'
+                'message' => 'Anda tidak memiliki akses untuk melihat direktorat.'
             ], 403);
         }
 
@@ -347,7 +331,7 @@ class DirectorateController extends Controller
 
             // Apply sorting if provided
             $sortField = (string) $request->get('sortField', 'id');
-            $sortOrder = (string) $request->get('sortOrder', 'desc');
+            $sortOrder = strtolower((string) $request->get('sortOrder', 'desc'));
 
             $allowedSort = [
                 'id',
@@ -368,6 +352,9 @@ class DirectorateController extends Controller
             }
 
             $query->orderBy($sortField, $sortOrder);
+            if ($sortField !== 'id') {
+                $query->orderBy('id', $sortOrder);
+            }
 
             // Apply pagination if provided
             $page = max((int) $request->get('page', 1), 1);
@@ -394,7 +381,7 @@ class DirectorateController extends Controller
             Log::error('Failed to get datatables data: ' . $e->getMessage(), ['user_id' => $user->id]);
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load data'
+                'message' => 'Gagal memuat data direktorat.'
             ], 500);
         }
     }
@@ -406,7 +393,7 @@ class DirectorateController extends Controller
     {
         $user = Auth::user();
         if (is_null($user) || !$user->can('directorate.export')) {
-            abort(403, 'Sorry! You are not allowed to export directorate.');
+            abort(403, 'Anda tidak memiliki akses untuk export direktorat.');
         }
 
         try {
@@ -417,7 +404,26 @@ class DirectorateController extends Controller
             Log::error('Failed to export directorate: ' . $e->getMessage(), ['user_id' => $user->id]);
             return redirect()
                 ->route('directorate.index')
-                ->with('error', 'Failed to export directorate.');
+                ->with('error', 'Gagal export direktorat.');
         }
+    }
+
+    private function resolveNextNumericCode($query): ?string
+    {
+        $summary = (clone $query)
+            ->whereNotNull('code')
+            ->whereRaw("code ~ '^[0-9]+$'")
+            ->selectRaw('MAX(code::bigint) AS max_number')
+            ->selectRaw('MAX(char_length(code)) AS pad_length')
+            ->first();
+
+        $maxNumber = $summary?->max_number;
+        if ($maxNumber === null) {
+            return null;
+        }
+
+        $padLength = max((int) ($summary->pad_length ?? 3), 1);
+
+        return str_pad((string) ((int) $maxNumber + 1), $padLength, '0', STR_PAD_LEFT);
     }
 }

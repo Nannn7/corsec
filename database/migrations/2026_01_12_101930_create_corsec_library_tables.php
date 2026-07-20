@@ -7,40 +7,23 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
-        Schema::create('corsec_library_categories', function (Blueprint $table) {
-            $table->id();
-
-            $table->string('type')->index(); // internal/eksternal/reference/media
-            $table->string('name');
-            $table->string('slug')->unique();
-            $table->boolean('status')->default(true)->index();
-
-            $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
-            $table->foreignId('updated_by')->nullable()->constrained('users')->nullOnDelete();
-            $table->foreignId('deleted_by')->nullable()->constrained('users')->nullOnDelete();
-            $table->softDeletes();
-            $table->timestamps();
-        });
-
         Schema::create('corsec_library_items', function (Blueprint $table) {
             $table->id();
-
-            $table->foreignId('category_id')->constrained('corsec_library_categories')->cascadeOnDelete();
-
+            $table->uuid('uuid')->unique();
+            $table->string('category_code', 50)->index();
             $table->string('title')->index();
             $table->text('description')->nullable();
-
-            $table->string('item_type')->default('link')->index(); // link/file
-            $table->string('url')->nullable();
-
-            $table->foreignId('attachment_id')->nullable()->constrained('corsec_attachments')->nullOnDelete();
-
-            $table->timestamp('published_at')->nullable()->index();
+            $table->string('file_disk', 50)->default('public');
+            $table->string('file_path');
+            $table->string('original_name');
+            $table->string('file_name');
+            $table->string('file_mime', 150)->nullable();
+            $table->string('file_extension', 20)->nullable();
+            $table->unsignedBigInteger('file_size')->nullable();
             $table->boolean('status')->default(true)->index();
-
-            $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
-            $table->foreignId('updated_by')->nullable()->constrained('users')->nullOnDelete();
-            $table->foreignId('deleted_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
+            $table->unsignedBigInteger('deleted_by')->nullable();
             $table->softDeletes();
             $table->timestamps();
         });
@@ -49,6 +32,5 @@ return new class extends Migration {
     public function down(): void
     {
         Schema::dropIfExists('corsec_library_items');
-        Schema::dropIfExists('corsec_library_categories');
     }
 };

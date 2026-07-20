@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
@@ -28,6 +27,8 @@ use Modules\Corsec\Models\Sender;
 use Modules\Corsec\Models\LetterType;
 use Modules\Basicdata\Models\Branch;
 use Modules\Corsec\Notifications\CorsecFlowNotification;
+use Modules\Corsec\Support\UploadRule;
+use Modules\Usermanagement\Models\Position;
 use Modules\Usermanagement\Models\User;
 
 class IncomingLetterController extends Controller
@@ -39,58 +40,9 @@ class IncomingLetterController extends Controller
         $this->middleware('auth');
     }
 
-    public function index(Request $request)
+    public function index()
     {
-        $q = IncomingLetter::query()
-            ->with(['targetDirectorate', 'sender', 'letterType'])
-            ->latest();
-
-        // filter
-        if ($request->filled('status')) {
-            $q->where('status', $request->string('status'));
-        }
-        if ($request->filled('directorateid')) {
-            $q->where('target_directorateid', $request->integer('directorateid'));
-        }
-        if ($request->filled('keyword')) {
-            $kw = $request->string('keyword')->toString();
-            $q->where(function ($w) use ($kw) {
-                $w->where('subject', 'ilike', "%{$kw}%")
-                    ->orWhere('external_letter_no', 'ilike', "%{$kw}%")
-                    ->orWhereHas('sender', function ($senderQuery) use ($kw) {
-                        $senderQuery->where('name', 'ilike', "%{$kw}%")
-                            ->orWhere('code', 'ilike', "%{$kw}%");
-                    })
-                    ->orWhereHas('letterType', function ($letterTypeQuery) use ($kw) {
-                        $letterTypeQuery->where('name', 'ilike', "%{$kw}%")
-                            ->orWhere('code', 'ilike', "%{$kw}%");
-                    });
-            });
-        }
-
-        // scope akses: selain admin/corsec, direktorat cuma liat yg ditargetkan ke directoratedia
         $user = Auth::user();
-        if (!$user->hasRole('administrator')) {
-            $directorateId = $user->directorate_id ?? $user->directorateid;
-            $isEoCorpAffairActor = $this->permissionService->isEoCorpAffairActor($user);
-            // kalau user bukan corsec directorate (asumsi corsec = directoratetertentu -> nanti bisa refine)
-            // simple rule: user boleh lihat kalau:
-            // - dia creator
-            // - atau target directorate= directorateuser
-            $q->where(function ($w) use ($user, $directorateId, $isEoCorpAffairActor) {
-                $w->where('created_by', $user->id)
-                    ->orWhere('target_directorate_id', $user->directorate_id ?? $user->directorateid);
-                if (!empty($directorateId)) {
-                    $w->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
-                        $circulationQuery->where('directorate_id', $directorateId);
-                    });
-                }
-                if ($isEoCorpAffairActor) {
-                    $w->orWhereNotNull('id');
-                }
-            });
-        }
-
         $directorates = $this->getCachedDirectorates();
         $senders = $this->getCachedSenders();
         $letterTypes = $this->getCachedLetterTypes();
@@ -104,6 +56,8 @@ class IncomingLetterController extends Controller
      */
     public function create()
     {
+        $this->authorizeIncomingCreate();
+
         $directorates = $this->getCachedDirectorates();
         $senders = $this->getCachedSenders();
         $letterTypes = $this->getCachedLetterTypes();
@@ -117,6 +71,8 @@ class IncomingLetterController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorizeIncomingCreate();
+
         $request->validate([
             'external_letter_no' => ['required', 'string', 'max:255'],
             'letter_date' => ['required', 'date'],
@@ -132,10 +88,11 @@ class IncomingLetterController extends Controller
             'description' => ['nullable', 'string'],
             'target_directorate_id' => ['required', 'exists:corsec_directorates,id'],
             'target_date' => ['nullable', 'date', 'after_or_equal:today'],
+            'register_due_date' => ['nullable', 'date'],
             'circulation_directorate_ids' => ['required', 'array'],
             'circulation_directorate_ids.*' => ['required', 'exists:corsec_directorates,id'],
             'files' => ['required', 'array'],
-            'files.*' => ['file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,xls,xlsx'], // 10MB
+            'files.*' => ['file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png,xls,xlsx'],
         ]);
 
         $user = auth()->user();
@@ -183,13 +140,23 @@ class IncomingLetterController extends Controller
             ]);
         }
 
+        $isInvitationLetter = $this->isInvitationLetterPayload($request, $letterTypeId);
+        if ($isInvitationLetter) {
+            $request->validate([
+                'register_due_date' => ['required', 'date'],
+            ]);
+        }
+
         if (!in_array((int) $request->target_directorate_id, array_map('intval', $circulationDirectorateIds), true)) {
             throw ValidationException::withMessages([
                 'target_directorate_id' => 'Leader tindak lanjut harus termasuk di daftar sirkulasi.',
             ]);
         }
 
-        $letter = DB::transaction(function () use ($request, $user, $circulationDirectorateIds, $senderId, $senderName, $isCustomerSender, $letterTypeId) {
+        $letter = DB::transaction(function () use ($request, $user, $circulationDirectorateIds, $senderId, $senderName, $isCustomerSender, $letterTypeId, $isInvitationLetter) {
+            $this->lockIncomingLetterDuplicateCheck($request, $senderId);
+            $this->ensureIncomingLetterIsNotDuplicate($request, $senderId);
+
             $letter = IncomingLetter::create([
                 'external_letter_no' => $request->external_letter_no,
                 'letter_date' => $request->letter_date,
@@ -206,6 +173,7 @@ class IncomingLetterController extends Controller
                 'description' => $request->description,
                 'target_directorate_id' => $request->target_directorate_id,
                 'target_date' => $request->target_date,
+                'register_due_date' => $isInvitationLetter ? $request->register_due_date : null,
                 'status' => IncomingLetter::STATUS_DRAFT,
                 'created_by' => $user->id,
                 'updated_by' => $user->id,
@@ -253,31 +221,32 @@ class IncomingLetterController extends Controller
             $this->workflow->submitToEoCorpAffair($letter, $user);
         }
 
-        if (!empty($circulationDirectorateIds)) {
+        if ($submitForApproval && !empty($circulationDirectorateIds)) {
             $this->notifyIncomingDirectorates($circulationDirectorateIds, $letter, $user);
         }
 
         return redirect()
             ->route('letter.incoming.show', $letter)
             ->with('success', $submitForApproval
-                ? 'Surat masuk berhasil dibuat dan diajukan untuk approval.'
+                ? 'Surat masuk berhasil dibuat dan disirkulasikan.'
                 : 'Surat masuk berhasil dibuat.');
     }
 
     private function generateIncomingRegistrationNo(): string
     {
+        $date = now()->format('d');
         $month = now()->format('m');
         $year = now()->format('Y');
-        $nextSequence = $this->nextIncomingRegistrationSequence($month, $year);
+        $nextSequence = $this->nextIncomingRegistrationSequence($date, $month, $year);
 
-        return $this->formatIncomingRegistrationNo($nextSequence, $month, $year);
+        return $this->formatIncomingRegistrationNo($nextSequence, $date, $month, $year);
     }
 
-    private function nextIncomingRegistrationSequence(string $month, string $year): int
+    private function nextIncomingRegistrationSequence(string $date, string $month, string $year): int
     {
         $registrationNos = IncomingLetter::withTrashed()
             ->whereNotNull('registration_no')
-            ->where('registration_no', 'like', "%/{$month}/{$year}")
+            ->where('registration_no', 'like', "%/{$date}/{$month}/{$year}")
             ->pluck('registration_no');
 
         $maxSequence = 0;
@@ -286,11 +255,12 @@ class IncomingLetterController extends Controller
                 continue;
             }
 
-            if (preg_match('/^(\d{4})\/(\d{2})\/(\d{4})$/', $registrationNo, $matches) !== 1) {
+            if (preg_match('/^(\d{4})\/(\d{2})\/(\d{2})\/(\d{4})$/', $registrationNo, $matches) !== 1) {
                 continue;
             }
 
-            if ($matches[2] !== $month || $matches[3] !== $year) {
+            // $matches[1] = sequence, [2] = date, [3] = month, [4] = year
+            if ($matches[2] !== $date || $matches[3] !== $month || $matches[4] !== $year) {
                 continue;
             }
 
@@ -303,9 +273,9 @@ class IncomingLetterController extends Controller
         return $maxSequence + 1;
     }
 
-    private function formatIncomingRegistrationNo(int $sequence, string $month, string $year): string
+    private function formatIncomingRegistrationNo(int $sequence, string $date, string $month, string $year): string
     {
-        return str_pad((string) $sequence, 4, '0', STR_PAD_LEFT) . '/' . $month . '/' . $year;
+        return str_pad((string) $sequence, 4, '0', STR_PAD_LEFT) . '/' . $date . '/' . $month . '/' . $year;
     }
 
     /**
@@ -324,7 +294,7 @@ class IncomingLetterController extends Controller
             'lastRoutedFromUser',
             'lastRoutedToUser',
             'attachables.attachment',
-            'comments.createdBy',
+            'corpSecretaryValidatedBy',
         ]);
         $responseOutgoingLetter = $incomingLetter
             ->responseOutgoingLetters()
@@ -334,7 +304,7 @@ class IncomingLetterController extends Controller
             ->first();
 
         $user = Auth::user();
-        if ($user && !$user->hasRole('administrator')) {
+        if ($user && !$this->permissionService->canViewAllCorsec($user)) {
             $directorateId = $user->directorate_id ?? $user->directorateid;
             $isCreator = (int) $incomingLetter->created_by === (int) $user->id;
             $isTargetDirectorate = $directorateId && (int) $incomingLetter->target_directorate_id === (int) $directorateId;
@@ -357,6 +327,10 @@ class IncomingLetterController extends Controller
             ->get();
 
         $directorates = $this->getCachedDirectorates();
+        $sortedComments = $incomingLetter->comments()
+            ->with('createdBy')
+            ->orderByDesc('created_at')
+            ->get();
         $permissionFlags = $this->permissionService->incomingDetailFlags(
             $incomingLetter,
             $approvals,
@@ -364,7 +338,7 @@ class IncomingLetterController extends Controller
             $responseOutgoingLetter
         );
 
-        return view('corsec::letter.incoming.show', compact('incomingLetter', 'approvals', 'directorates', 'responseOutgoingLetter', 'permissionFlags'));
+        return view('corsec::letter.incoming.show', compact('incomingLetter', 'approvals', 'directorates', 'responseOutgoingLetter', 'permissionFlags', 'sortedComments'));
     }
 
     /**
@@ -404,12 +378,21 @@ class IncomingLetterController extends Controller
             'description' => ['nullable', 'string'],
             'target_directorate_id' => ['required', 'exists:corsec_directorates,id'],
             'target_date' => ['nullable', 'date', 'after_or_equal:today'],
+            'register_due_date' => ['nullable', 'date'],
             'circulation_directorate_ids' => ['required', 'array'],
             'circulation_directorate_ids.*' => ['required', 'exists:corsec_directorates,id'],
-            'files.*' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,xls,xlsx'],
+            'files.*' => ['nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png,xls,xlsx'],
         ]);
 
         $user = auth()->user();
+        $submitForApproval = $request->boolean('submit_for_approval', false);
+        if ($submitForApproval && !in_array((string) $incomingLetter->status, [
+            IncomingLetter::STATUS_DRAFT,
+            IncomingLetter::STATUS_RETURNED,
+        ], true)) {
+            abort(422, 'Surat masuk hanya bisa disubmit dari status Draft atau Returned.');
+        }
+
         $circulationDirectorateIds = array_values(array_filter(
             (array) $request->input('circulation_directorate_ids', [])
         ));
@@ -453,13 +436,23 @@ class IncomingLetterController extends Controller
             ]);
         }
 
+        $isInvitationLetter = $this->isInvitationLetterPayload($request, $letterTypeId, $incomingLetter);
+        if ($isInvitationLetter) {
+            $request->validate([
+                'register_due_date' => ['required', 'date'],
+            ]);
+        }
+
         if (!in_array((int) $request->target_directorate_id, array_map('intval', $circulationDirectorateIds), true)) {
             throw ValidationException::withMessages([
                 'target_directorate_id' => 'Leader tindak lanjut harus termasuk di daftar sirkulasi.',
             ]);
         }
 
-        DB::transaction(function () use ($request, $incomingLetter, $user, $circulationDirectorateIds, $senderName, $senderId, $isCustomerSender, $letterTypeId) {
+        DB::transaction(function () use ($request, $incomingLetter, $user, $circulationDirectorateIds, $senderName, $senderId, $isCustomerSender, $letterTypeId, $isInvitationLetter) {
+            $this->lockIncomingLetterDuplicateCheck($request, $senderId);
+            $this->ensureIncomingLetterIsNotDuplicate($request, $senderId, $incomingLetter);
+
             $incomingLetter->update([
                 'external_letter_no' => $request->external_letter_no,
                 'letter_date' => $request->letter_date,
@@ -476,6 +469,7 @@ class IncomingLetterController extends Controller
                 'description' => $request->description,
                 'target_directorate_id' => $request->target_directorate_id,
                 'target_date' => $request->target_date,
+                'register_due_date' => $isInvitationLetter ? $request->register_due_date : null,
                 'updated_by' => $user->id,
             ]);
 
@@ -505,40 +499,90 @@ class IncomingLetterController extends Controller
             }
         });
 
+        if ($submitForApproval) {
+            $this->workflow->submitToEoCorpAffair($incomingLetter, $user);
+        }
+
+        if ($submitForApproval && !empty($circulationDirectorateIds)) {
+            $this->notifyIncomingDirectorates($circulationDirectorateIds, $incomingLetter, $user);
+        }
+
+        if ($submitForApproval) {
+            return redirect()
+                ->route('letter.incoming.show', $incomingLetter)
+                ->with('success', 'Surat masuk berhasil diupdate dan disirkulasikan.');
+        }
+
         return redirect()
             ->route('letter.incoming.index')
             ->with('success', 'Surat masuk berhasil diupdate.');
     }
 
+    private function lockIncomingLetterDuplicateCheck(Request $request, string|int|null $senderId): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
+        $lockKey = abs(crc32(implode('|', [
+            'incoming-letter',
+            trim((string) $request->input('external_letter_no')),
+            (string) $request->input('letter_date'),
+            (string) $senderId,
+            Str::lower(trim((string) $request->input('sender_other'))),
+        ])));
+
+        DB::statement('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+    }
+
+    private function ensureIncomingLetterIsNotDuplicate(
+        Request $request,
+        string|int|null $senderId,
+        ?IncomingLetter $ignoreIncomingLetter = null
+    ): void {
+        $query = IncomingLetter::query()
+            ->where('external_letter_no', trim((string) $request->input('external_letter_no')))
+            ->whereDate('letter_date', $request->input('letter_date'));
+
+        if ($senderId === 'other') {
+            $query->whereNull('sender_id')
+                ->whereRaw('LOWER(sender_other) = ?', [Str::lower(trim((string) $request->input('sender_other')))]);
+        } else {
+            $query->where('sender_id', $senderId);
+        }
+
+        if ($ignoreIncomingLetter) {
+            $query->whereKeyNot($ignoreIncomingLetter->getKey());
+        }
+
+        if ($query->exists()) {
+            throw ValidationException::withMessages([
+                'external_letter_no' => 'Nomor surat dengan pengirim dan tanggal surat yang sama sudah pernah diinput.',
+            ]);
+        }
+    }
+
     private function getCachedDirectorates()
     {
-        return Cache::remember('corsec.directorates.list', 300, function () {
-            return Directorate::query()->orderBy('name')->get(['id', 'name', 'code']);
-        });
+        return Directorate::query()->orderBy('name')->get(['id', 'name', 'code']);
     }
 
     private function getCachedSenders()
     {
-        return Cache::remember('corsec.senders.list', 300, function () {
-            return Sender::query()->orderBy('name')->get(['id', 'name']);
-        });
+        return Sender::query()->orderBy('name')->get(['id', 'name']);
     }
 
     private function getCachedLetterTypes()
     {
-        return Cache::remember('corsec.letter_types.in.list', 300, function () {
-            return LetterType::query()
-                ->forScope(LetterType::SCOPE_IN)
-                ->orderBy('name')
-                ->get(['id', 'name']);
-        });
+        return LetterType::query()
+            ->forScope(LetterType::SCOPE_IN)
+            ->orderBy('name')
+            ->get(['id', 'name']);
     }
 
     private function getCachedBranches()
     {
-        return Cache::remember('corsec.branches.list', 300, function () {
-            return Branch::query()->orderBy('name')->get(['id', 'code', 'name']);
-        });
+        return Branch::query()->orderBy('name')->get(['id', 'code', 'name']);
     }
 
     private function getCustomerSenderId($senders): ?int
@@ -558,10 +602,10 @@ class IncomingLetterController extends Controller
     public function datatables(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.read')) {
+        if (!$user || !$user->can('letter.read')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to view incoming letters.'
+                'message' => 'Anda tidak memiliki akses untuk melihat surat masuk.'
             ], 403);
         }
 
@@ -581,13 +625,15 @@ class IncomingLetterController extends Controller
                     'letter_type_other',
                     'target_directorate_id',
                     'status',
+                    'corp_secretary_validation_requested_at',
+                    'corp_secretary_validated_at',
                     'received_date',
                     'created_at',
                     'created_by',
                 ]);
 
             // scope akses (copy dari index lo, biar konsisten)
-            if (!$user->hasRole('administrator')) {
+            if (!$this->permissionService->canViewAllCorsec($user)) {
                 $directorateId = $user->directorate_id ?? $user->directorateid;
                 $isEoCorpAffairActor = $this->permissionService->isEoCorpAffairActor($user);
                 $query->where(function ($w) use ($user, $directorateId, $isEoCorpAffairActor) {
@@ -640,7 +686,7 @@ class IncomingLetterController extends Controller
 
             // sorting (KTDataTable biasanya kirim sortField/sortOrder)
             $sortField = (string) $request->get('sortField', 'created_at');
-            $sortOrder = (string) $request->get('sortOrder', 'desc');
+            $sortOrder = strtolower((string) $request->get('sortOrder', 'desc'));
 
             $allowedSort = [
                 'external_letter_no',
@@ -668,15 +714,22 @@ class IncomingLetterController extends Controller
                 'sender:id,code,name',
                 'letterType:id,code,name',
                 'circulationDirectorates:id,code,name',
+                'comments.createdBy:id,name',
+                'attachables.attachment',
             ]);
 
             $query->orderBy($sortField, $sortOrder);
+            if ($sortField !== 'id') {
+                $query->orderBy('id', $sortOrder);
+            }
 
             // paging (KTDataTable: page & size)
             $page = max((int) $request->get('page', 1), 1);
             $size = max((int) $request->get('size', 10), 1);
 
-            $data = $query->forPage($page, $size)->get();
+            $data = $query->forPage($page, $size)->get()->map(function (IncomingLetter $letter) {
+                return $this->formatIncomingTableRow($letter);
+            });
 
             $pageCount = (int) ceil($filteredRecords / $size);
 
@@ -703,8 +756,8 @@ class IncomingLetterController extends Controller
     public function export(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.export')) {
-            abort(403, 'Sorry! You are not allowed to export incoming letters.');
+        if (!$user || !$user->can('letter.export')) {
+            abort(403, 'Anda tidak memiliki akses untuk export surat masuk.');
         }
 
         $search = trim((string) $request->get('search', ''));
@@ -718,10 +771,10 @@ class IncomingLetterController extends Controller
     public function destroy(IncomingLetter $incomingLetter)
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.delete')) {
+        if (!$user || !$user->can('letter.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete incoming letters.'
+                'message' => 'Anda tidak memiliki akses untuk menghapus surat masuk.'
             ], 403);
         }
 
@@ -770,10 +823,10 @@ class IncomingLetterController extends Controller
     public function deleteMultiple(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.delete')) {
+        if (!$user || !$user->can('letter.delete')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to delete incoming letters.'
+                'message' => 'Anda tidak memiliki akses untuk menghapus surat masuk.'
             ], 403);
         }
 
@@ -828,9 +881,12 @@ class IncomingLetterController extends Controller
     // Staff Corsec submit untuk approval EO Corp Affair
     public function submit(IncomingLetter $incomingLetter)
     {
-        $this->workflow->submitToEoCorpAffair($incomingLetter, auth()->user());
+        $user = auth()->user();
+        $this->workflow->submitToEoCorpAffair($incomingLetter, $user);
+        $directorateIds = $incomingLetter->circulationDirectorates()->pluck('directorate_id');
+        $this->notifyIncomingDirectorates($directorateIds, $incomingLetter, $user);
 
-        return back()->with('success', 'Surat masuk berhasil disubmit untuk approval.');
+        return back()->with('success', 'Surat masuk berhasil disirkulasikan.');
     }
 
     // Staff Corsec set sirkulasi/directorate target
@@ -896,7 +952,7 @@ class IncomingLetterController extends Controller
             'followup_meeting_date' => ['nullable', 'date'],
             'followup_meeting_location' => ['nullable', 'string'],
             'followup_response_target_date' => ['nullable', 'date'],
-            'followup_social_material' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
+            'followup_social_material' => ['nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
             'followup_social_note' => ['nullable', 'string'],
             'followup_social_participants' => ['nullable', 'array'],
             'followup_social_participants.*' => ['nullable', 'exists:corsec_directorates,id'],
@@ -904,12 +960,16 @@ class IncomingLetterController extends Controller
             'followup_social_location' => ['nullable', 'string'],
             'followup_social_directorate' => ['nullable', 'array'],
             'followup_social_directorate.*' => ['nullable', 'exists:corsec_directorates,id'],
-            'followup_invitation_nik' => ['nullable', 'string', 'max:50'],
-            'followup_invitation_name' => ['nullable', 'string', 'max:150'],
-            'followup_invitation_directorate' => ['nullable', 'string', 'max:150'],
-            'followup_invitation_position' => ['nullable', 'string', 'max:150'],
-            'followup_invitation_registration' => ['nullable', 'in:sudah,belum'],
-            'followup_invitation_note' => ['nullable', 'string'],
+            'followup_invitation_participants' => ['nullable', 'array'],
+            'followup_invitation_participants.*.nik' => ['nullable', 'string', 'max:50'],
+            'followup_invitation_participants.*.name' => ['nullable', 'string', 'max:150'],
+            'followup_invitation_participants.*.directorate' => ['nullable', 'string', 'max:150'],
+            'followup_invitation_participants.*.position' => ['nullable', 'string', 'max:150'],
+            'followup_invitation_participants.*.registration_status' => ['nullable', 'in:sudah,belum'],
+            'followup_invitation_participants.*.pic_name' => ['nullable', 'string', 'max:150'],
+            'followup_invitation_participants.*.pic_contact' => ['nullable', 'string', 'max:100'],
+            'followup_invitation_participants.*.registration_deadline' => ['nullable', 'date'],
+            'followup_invitation_participants.*.note' => ['nullable', 'string'],
             'followup_review_regulation_number' => ['nullable', 'string', 'max:150'],
             'followup_review_regulation_title' => ['nullable', 'string', 'max:255'],
             'followup_review_upload_date' => ['nullable', 'date'],
@@ -919,9 +979,9 @@ class IncomingLetterController extends Controller
 
         if ($submitForApproval && $followupActionInput !== 'response_letter') {
             $rules['evidence_files'] = ['required', 'array', 'min:1'];
-            $rules['evidence_files.*'] = ['file', 'max:10240'];
+            $rules['evidence_files.*'] = ['file', UploadRule::maxRule()];
         } else {
-            $rules['evidence_files.*'] = ['nullable', 'file', 'max:10240'];
+            $rules['evidence_files.*'] = ['nullable', 'file', UploadRule::maxRule()];
         }
 
         $request->validate($rules);
@@ -947,12 +1007,7 @@ class IncomingLetterController extends Controller
                 'note' => $request->followup_social_note,
             ],
             'invitation' => [
-                'nik' => $request->followup_invitation_nik,
-                'name' => $request->followup_invitation_name,
-                'directorate' => $request->followup_invitation_directorate,
-                'position' => $request->followup_invitation_position,
-                'registration' => $request->followup_invitation_registration,
-                'note' => $request->followup_invitation_note,
+                'participants' => $this->normalizeInvitationParticipants($request),
             ],
             'review' => [
                 'regulation_number' => $request->followup_review_regulation_number,
@@ -981,14 +1036,14 @@ class IncomingLetterController extends Controller
         )) {
             return back()->withErrors(['followup_action' => 'Detail sosialisasi wajib diisi.'])->withInput();
         }
-        if ($followupAction === 'invitation' && (!$request->followup_invitation_nik || !$request->followup_invitation_name)) {
+        if ($followupAction === 'invitation' && count($followupDetail['participants'] ?? []) === 0) {
             return back()->withErrors(['followup_action' => 'Detail peserta undangan wajib diisi.'])->withInput();
         }
         if ($followupAction === 'review' && (!$request->followup_review_regulation_number || !$request->followup_review_regulation_title || !$request->followup_review_upload_date)) {
             return back()->withErrors(['followup_action' => 'Detail review/new ketentuan wajib diisi.'])->withInput();
         }
 
-        $this->workflow->directorateUpdate(
+        $submitResult = $this->workflow->directorateUpdate(
             incomingLetter: $incomingLetter,
             actor: auth()->user(),
             targetDate: $request->target_date,
@@ -1000,7 +1055,7 @@ class IncomingLetterController extends Controller
             submitForApproval: $submitForApproval
         );
 
-        return back()->with('success', 'Update tindak lanjut berhasil disimpan.');
+        return back()->with('success', (string) ($submitResult['success_message'] ?? 'Update tindak lanjut berhasil disimpan.'));
     }
 
     public function lookupUserByNik(Request $request)
@@ -1059,12 +1114,12 @@ class IncomingLetterController extends Controller
         ]);
     }
 
-    // EO Corp Affair verifikasi selesai
+    // EO Corporate Secretary validasi selesai
     public function verifyAction(Request $request, IncomingLetter $incomingLetter)
     {
         $request->validate([
-            'action' => ['required', 'in:verify,return,approve,reject'],
-            'note' => ['nullable', 'string'],
+            'action' => ['required', 'in:validate,verify'],
+            'note' => ['required', 'string'],
         ]);
 
         $this->workflow->verifyAction(
@@ -1074,12 +1129,16 @@ class IncomingLetterController extends Controller
             note: $request->note
         );
 
-        return back()->with('success', 'Verifikasi berhasil diproses.');
+        return back()->with('success', 'Validasi Corporate Secretary berhasil diproses.');
     }
 
     // Direksi catatan
     public function directorNote(Request $request, IncomingLetter $incomingLetter)
     {
+        if (!$this->permissionService->canAddDirectorNote(Auth::user(), 'letter')) {
+            abort(403, 'Anda tidak memiliki akses untuk menambahkan catatan.');
+        }
+
         $request->validate([
             'note' => ['required', 'string'],
         ]);
@@ -1087,11 +1146,61 @@ class IncomingLetterController extends Controller
         Comment::create([
             'commentable_type' => IncomingLetter::class,
             'commentable_id' => $incomingLetter->id,
-            'body' => '[CATATAN DIREKSI] ' . $request->note,
+            'body' => '[KOMENTAR VIEWER] ' . $request->note,
             'created_by' => auth()->id(),
         ]);
 
-        return back()->with('success', 'Catatan direksi tersimpan.');
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Komentar viewer tersimpan.',
+            ]);
+        }
+
+        return back()->with('success', 'Komentar viewer tersimpan.');
+    }
+
+    private function formatIncomingTableRow(IncomingLetter $letter): array
+    {
+        return array_merge($letter->toArray(), [
+            'comment_url' => route('letter.incoming.director.note', $letter),
+            'comments' => $this->formatCommentRows($letter->comments),
+            'attachments' => $this->formatAttachableRows($letter->attachables),
+        ]);
+    }
+
+    private function formatCommentRows($comments): array
+    {
+        return $comments
+            ->sortByDesc('created_at')
+            ->take(3)
+            ->map(function (Comment $comment) {
+                return [
+                    'body' => (string) ($comment->body ?? ''),
+                    'created_at' => optional($comment->created_at)->toDateTimeString(),
+                    'created_by' => $comment->createdBy?->name,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function formatAttachableRows($attachables): array
+    {
+        return $attachables
+            ->map(fn($attachable) => $attachable->attachment)
+            ->filter()
+            ->map(fn(Attachment $attachment) => $this->formatAttachmentRow($attachment))
+            ->values()
+            ->all();
+    }
+
+    private function formatAttachmentRow(Attachment $attachment): array
+    {
+        return [
+            'name' => (string) ($attachment->original_name ?: $attachment->file_name ?: 'Attachment'),
+            'view_url' => route('attachment.view', $attachment),
+        ];
     }
 
     public function addMonitoringDirectorates(Request $request, IncomingLetter $incomingLetter)
@@ -1165,14 +1274,106 @@ class IncomingLetterController extends Controller
         ]);
     }
 
+    private function isInvitationLetterPayload(Request $request, mixed $letterTypeId, ?IncomingLetter $incomingLetter = null): bool
+    {
+        $candidates = [
+            (string) $request->input('subject', ''),
+            (string) $request->input('letter_type_other', ''),
+        ];
+
+        if ($letterTypeId !== 'other' && $letterTypeId) {
+            $candidates[] = (string) LetterType::query()->whereKey($letterTypeId)->value('name');
+        }
+
+        if ($incomingLetter) {
+            $incomingLetter->loadMissing('letterType');
+            $candidates[] = (string) ($incomingLetter->subject ?? '');
+            $candidates[] = (string) ($incomingLetter->letterType?->name ?? '');
+            $candidates[] = (string) ($incomingLetter->letter_type_other ?? '');
+        }
+
+        foreach ($candidates as $candidate) {
+            $normalized = Str::lower(trim($candidate));
+            if ($normalized !== '' && Str::contains($normalized, 'undangan')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function normalizeInvitationParticipants(Request $request): array
+    {
+        $rows = collect((array) $request->input('followup_invitation_participants', []))
+            ->map(function ($row) {
+                $row = is_array($row) ? $row : [];
+
+                return [
+                    'nik' => trim((string) ($row['nik'] ?? '')),
+                    'name' => trim((string) ($row['name'] ?? '')),
+                    'directorate' => trim((string) ($row['directorate'] ?? '')),
+                    'position' => trim((string) ($row['position'] ?? '')),
+                    'registration_status' => trim((string) ($row['registration_status'] ?? 'belum')),
+                    'pic_name' => trim((string) ($row['pic_name'] ?? '')),
+                    'pic_contact' => trim((string) ($row['pic_contact'] ?? '')),
+                    'registration_deadline' => trim((string) ($row['registration_deadline'] ?? '')),
+                    'note' => trim((string) ($row['note'] ?? '')),
+                ];
+            })
+            ->filter(function (array $row) {
+                return collect($row)
+                    ->except(['registration_status'])
+                    ->contains(fn($value) => $value !== '');
+            })
+            ->values();
+
+        foreach ($rows as $index => $row) {
+            if ($row['name'] === '') {
+                throw ValidationException::withMessages([
+                    "followup_invitation_participants.{$index}.name" => 'Nama peserta undangan wajib diisi.',
+                ]);
+            }
+
+            if ($row['registration_status'] === 'sudah') {
+                if ($row['pic_name'] === '') {
+                    throw ValidationException::withMessages([
+                        "followup_invitation_participants.{$index}.pic_name" => 'Nama PIC wajib diisi jika peserta sudah terdaftar.',
+                    ]);
+                }
+
+                if ($row['pic_contact'] === '') {
+                    throw ValidationException::withMessages([
+                        "followup_invitation_participants.{$index}.pic_contact" => 'Nomor contact PIC wajib diisi jika peserta sudah terdaftar.',
+                    ]);
+                }
+
+                if ($row['registration_deadline'] === '') {
+                    throw ValidationException::withMessages([
+                        "followup_invitation_participants.{$index}.registration_deadline" => 'Tanggal deadline pendaftaran wajib diisi jika peserta sudah terdaftar.',
+                    ]);
+                }
+            }
+        }
+
+        return $rows->all();
+    }
+
     private function authorizeNonViewerUpdate(): void
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.update')) {
-            abort(403, 'Sorry! You are not allowed to update incoming letters.');
+        if (!$user || !$user->can('letter.update')) {
+            abort(403, 'Anda tidak memiliki akses untuk mengubah surat masuk.');
         }
         if ($this->permissionService->isViewerRole($user)) {
             abort(403, 'Role viewer tidak memiliki akses untuk aksi update ini.');
+        }
+    }
+
+    private function authorizeIncomingCreate(): void
+    {
+        $user = Auth::user();
+        if (!$this->permissionService->canCreateIncoming($user)) {
+            abort(403, 'Tambah surat masuk hanya untuk maker staff Corporate Secretary.');
         }
     }
 }

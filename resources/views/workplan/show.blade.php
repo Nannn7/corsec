@@ -64,12 +64,14 @@
             '-' .
             str_pad((string) $workplan->id, 6, '0', STR_PAD_LEFT);
         $allUpdates = $allUpdates ?? collect();
+        $workplanComments = $workplanComments ?? collect();
+        $canDirectorNote = (bool) ($canDirectorNote ?? false);
     @endphp
 
     <div class="grid gap-5 lg:gap-7.5">
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">Detail Program Kerja #{{ $workplan->id }}</h3>
+                <h3 class="card-title">Detail Program Kerja {{ $workplan->program_no }}</h3>
                 <div class="flex gap-2">
                     <a href="{{ route('workplan.index') }}" class="btn btn-sm btn-light">
                         <i class="ki-filled ki-arrow-left"></i> Kembali
@@ -79,12 +81,12 @@
                             Edit
                         </a>
                     @endif
-                    @if ($canDelete)
+                    @can('corsec.delete')
                         <button type="button" class="btn btn-sm btn-danger"
                             onclick="deleteWorkplanDetail('{{ $workplan->uuid }}')">
                             Hapus
                         </button>
-                    @endif
+                    @endcan
                 </div>
             </div>
         </div>
@@ -419,6 +421,60 @@
             </div>
         @endif
 
+        @if ($canDirectorNote)
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Komentar Viewer</h3>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ route('workplan.director.note', $workplan) }}" class="grid gap-4">
+                        @csrf
+                        <div class="flex flex-col">
+                            <label class="form-label">Komentar Viewer (Direksi / Sekdir / Corporate Secretary) <span
+                                    class="text-danger">*</span></label>
+                            <textarea class="textarea w-full" name="note" rows="3"
+                                placeholder="Tambahkan komentar viewer..." required></textarea>
+                        </div>
+                        <div class="flex justify-end">
+                            <button class="btn btn-primary" type="submit">Simpan Komentar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        @endif
+
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Riwayat Komentar</h3>
+            </div>
+            <div class="card-body">
+                @if ($workplanComments->count() > 0)
+                    <div class="overflow-x-auto">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th class="min-w-[280px]">Catatan</th>
+                                    <th class="min-w-[200px]">Oleh</th>
+                                    <th class="min-w-[180px]">Waktu</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($workplanComments as $comment)
+                                    <tr>
+                                        <td>{{ $comment->body ?? '-' }}</td>
+                                        <td>{{ $comment->createdBy?->name ?? '-' }}</td>
+                                        <td>{{ $comment->created_at ? $comment->created_at->format('Y-m-d H:i:s') : '-' }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @else
+                    <div class="text-sm text-gray-500">Belum ada catatan untuk program kerja ini.</div>
+                @endif
+            </div>
+        </div>
+
         @can('corsec.authorize')
             <div class="card">
                 <div class="card-header">
@@ -455,6 +511,34 @@
 
 @push('scripts')
     <script type="text/javascript">
+        function workplanDeleteErrorMessage(error, fallback = 'Gagal menghapus program kerja.') {
+            if (typeof window.corsecAjaxMessage === 'function') {
+                return window.corsecAjaxMessage(error, fallback);
+            }
+
+            if (error?.responseJSON?.message) {
+                return error.responseJSON.message;
+            }
+
+            if (error?.responseJSON?.error) {
+                return error.responseJSON.error;
+            }
+
+            if (typeof error?.responseText === 'string' && error.responseText.trim() !== '') {
+                try {
+                    const payload = JSON.parse(error.responseText);
+
+                    if (payload?.message) {
+                        return payload.message;
+                    }
+                } catch (e) {
+                    return fallback;
+                }
+            }
+
+            return fallback;
+        }
+
         function deleteWorkplanDetail(rowKey) {
             Swal.fire({
                 title: 'Apakah Anda yakin?',
@@ -477,11 +561,16 @@
                 $.ajax(`{{ url('workplan') }}/${rowKey}`, {
                     type: 'DELETE'
                 }).then((response) => {
+                    if (response?.success === false) {
+                        Swal.fire('Error!', response.message ?? 'Gagal menghapus program kerja.', 'error');
+                        return;
+                    }
+
                     Swal.fire('Terhapus!', response.message, 'success').then(() => {
                         window.location.href = '{{ route('workplan.index') }}';
                     });
-                }).catch(() => {
-                    Swal.fire('Error!', 'Gagal menghapus program kerja.', 'error');
+                }).catch((error) => {
+                    Swal.fire('Error!', workplanDeleteErrorMessage(error), 'error');
                 });
             });
         }

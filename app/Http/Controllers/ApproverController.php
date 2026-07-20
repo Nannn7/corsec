@@ -45,14 +45,13 @@ class ApproverController extends Controller
         if (!$user || !$user->can('corsec.authorize')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sorry! You are not allowed to view approval requests.'
+                'message' => 'Anda tidak memiliki akses untuk melihat daftar persetujuan.'
             ], 403);
         }
 
         try {
             $query = ApprovalRequest::query()
-                ->with(['createdBy', 'authorizedBy'])
-                ->latest();
+                ->with(['createdBy', 'authorizedBy']);
 
             $search = trim((string) $request->get('search', ''));
             if ($search !== '') {
@@ -93,7 +92,7 @@ class ApproverController extends Controller
             $filteredRecords = (clone $query)->count();
 
             $sortField = (string) $request->get('sortField', 'id');
-            $sortOrder = (string) $request->get('sortOrder', 'desc');
+            $sortOrder = strtolower((string) $request->get('sortOrder', 'desc'));
 
             $allowedSort = [
                 'id',
@@ -113,6 +112,9 @@ class ApproverController extends Controller
             }
 
             $query->orderBy($sortField, $sortOrder);
+            if ($sortField !== 'id') {
+                $query->orderBy('id', $sortOrder);
+            }
 
             $page = max((int) $request->get('page', 1), 1);
             $size = max((int) $request->get('size', 10), 1);
@@ -151,7 +153,7 @@ class ApproverController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load approval requests.'
+                'message' => 'Gagal memuat daftar persetujuan.'
             ], 500);
         }
     }

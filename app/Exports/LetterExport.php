@@ -6,6 +6,7 @@ use Illuminate\Support\Collection;
 use InvalidArgumentException;
 use Modules\Corsec\Models\IncomingLetter;
 use Modules\Corsec\Models\OutgoingLetter;
+use Modules\Corsec\Services\CorsecPermissionService;
 use Modules\Usermanagement\Models\User;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
@@ -123,6 +124,7 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
 
     private function incomingCollection(): Collection
     {
+        $permissionService = app(CorsecPermissionService::class);
         $query = IncomingLetter::query()
             ->with([
                 'targetDirectorate',
@@ -162,11 +164,24 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
             });
         }
 
-        if ($this->user && !$this->user->hasRole('administrator')) {
+        if ($this->user && !$permissionService->canViewAllCorsec($this->user)) {
             $u = $this->user;
-            $query->where(function ($w) use ($u) {
+            $directorateId = $u->directorate_id ?? $u->directorateid;
+            $isEoCorpAffairActor = $permissionService->isEoCorpAffairActor($u);
+
+            $query->where(function ($w) use ($u, $directorateId, $isEoCorpAffairActor) {
                 $w->where('created_by', $u->id)
-                    ->orWhere('target_directorate_id', $u->directorate_id);
+                    ->orWhere('target_directorate_id', $directorateId);
+
+                if (!empty($directorateId)) {
+                    $w->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
+                        $circulationQuery->where('directorate_id', $directorateId);
+                    });
+                }
+
+                if ($isEoCorpAffairActor) {
+                    $w->orWhereNotNull('id');
+                }
             });
         }
 
@@ -175,6 +190,7 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
 
     private function outgoingCollection(): Collection
     {
+        $permissionService = app(CorsecPermissionService::class);
         $query = OutgoingLetter::query()
             ->with([
                 'requesterDirectorate',
@@ -206,6 +222,18 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
                 $q->where('subject', 'ilike', "%{$s}%")
                     ->orWhere('registration_no', 'ilike', "%{$s}%")
                     ->orWhere('letter_no', 'ilike', "%{$s}%");
+            });
+        }
+
+        if ($this->user && !$permissionService->canViewAllCorsec($this->user)) {
+            $u = $this->user;
+            $directorateId = (int) ($u->directorate_id ?? $u->directorateid ?? 0);
+
+            $query->where(function ($builder) use ($u, $directorateId) {
+                $builder->where('created_by', $u->id);
+                if ($directorateId > 0) {
+                    $builder->orWhere('requester_directorate_id', $directorateId);
+                }
             });
         }
 

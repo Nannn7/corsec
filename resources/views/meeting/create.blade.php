@@ -29,10 +29,16 @@
                     ->all()
                 : [],
         );
+        $selectedDirectorateIds = collect($selectedDirectorates)
+            ->filter()
+            ->map(fn($id) => (int) $id)
+            ->unique()
+            ->values();
         $agendas = old('agendas');
         if (!is_array($agendas)) {
             if ($isEdit) {
                 $agendas = $meeting->agendas
+                    ->filter(fn($agenda) => blank($agenda->source_decision_id))
                     ->map(function ($agenda) {
                         return [
                             'title' => $agenda->title,
@@ -98,12 +104,97 @@
             ->unique()
             ->values()
             ->all();
+        $mandatoryDirectorateIdCollection = collect($mandatoryDirectorateIds);
+
+        $participantDirectorateGroups = $directorates
+            ->groupBy(function ($directorate) {
+                $label = preg_replace('/\s+/', ' ', trim((string) $directorate->displayName()));
+                return strtolower((string) $label);
+            })
+            ->map(function ($group) use ($selectedDirectorateIds, $mandatoryDirectorateIdCollection) {
+                $primaryDirectorate = $group->first();
+                $memberIds = $group->pluck('id')->map(fn($id) => (int) $id)->values();
+                $isMandatoryGroup = $memberIds->intersect($mandatoryDirectorateIdCollection)->isNotEmpty();
+
+                return [
+                    'id' => (int) $primaryDirectorate->id,
+                    'label' => preg_replace('/\s+/', ' ', trim((string) $primaryDirectorate->displayName())),
+                    'member_count' => $group->count(),
+                    'is_operational' => $group->contains(
+                        fn($directorate) => (bool) ($directorate->is_meeting_operational ?? false),
+                    ),
+                    'is_mandatory' => $isMandatoryGroup,
+                    'is_checked' => $isMandatoryGroup || $memberIds->intersect($selectedDirectorateIds)->isNotEmpty(),
+                ];
+            })
+            ->values();
+
+        $agendaDirectorateOptions = $directorates
+            ->groupBy(function ($directorate) {
+                $label = preg_replace('/\s+/', ' ', trim((string) $directorate->displayName()));
+                return strtolower((string) $label);
+            })
+            ->map(function ($group) {
+                $primaryDirectorate = $group->first();
+
+                return [
+                    'id' => (int) $primaryDirectorate->id,
+                    'name' => preg_replace('/\s+/', ' ', trim((string) $primaryDirectorate->displayName())),
+                    'member_ids' => $group
+                        ->pluck('id')
+                        ->map(fn($id) => (int) $id)
+                        ->values()
+                        ->all(),
+                    'member_count' => $group->count(),
+                ];
+            })
+            ->values();
+
+        $agendaDirectorateSelectionMap = $agendaDirectorateOptions
+            ->flatMap(function (array $option) {
+                return collect($option['member_ids'] ?? [])
+                    ->mapWithKeys(fn($memberId) => [(string) $memberId => (string) $option['id']]);
+            })
+            ->all();
+
+        $mandatoryParticipantDirectorateIds = $participantDirectorateGroups
+            ->filter(fn($group) => (bool) ($group['is_mandatory'] ?? false))
+            ->pluck('id')
+            ->map(fn($id) => (int) $id)
+            ->values()
+            ->all();
 
         $isDirektoratMeetingSelected = in_array(
             strtolower(trim((string) $selectedMeetingType)),
             $direktoratTypeCodes,
             true,
         );
+        $isMancommMeetingSelected =
+            strtolower(trim((string) $selectedMeetingType)) === strtolower(\Modules\Corsec\Models\Meeting::TYPE_MANCOMM);
+        $selectedEscalationDecisionIds = collect(
+            old(
+                'escalation_decision_ids',
+                $isEdit
+                    ? $meeting->agendas
+                        ->whereNotNull('source_decision_id')
+                        ->pluck('source_decision_id')
+                        ->all()
+                    : [],
+            ),
+        )
+            ->filter(fn($id) => $id !== null && $id !== '')
+            ->map(fn($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+        $escalationDecisionOptions = collect($escalationDecisionOptions ?? []);
+        $escalationDecisionStatusLabels = [
+            \Modules\Corsec\Models\MeetingDecision::STATUS_PENDING => 'Pending',
+            \Modules\Corsec\Models\MeetingDecision::STATUS_IN_PROGRESS => 'Proses',
+            \Modules\Corsec\Models\MeetingDecision::STATUS_CONTINUOUS => 'Berkelanjutan',
+            \Modules\Corsec\Models\MeetingDecision::STATUS_DONE => 'Done',
+            \Modules\Corsec\Models\MeetingDecision::STATUS_DROPPED => 'Drop',
+        ];
     @endphp
 
     <div class="grid gap-5 lg:gap-7.5">
@@ -241,33 +332,32 @@
                     </div>
 
                     <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
-                        <div class="card card-grid border border-gray-200">
+                        <div class="card card-grid border border-gray-200 {{ $isDirektoratMeetingSelected ? 'lg:col-span-2' : '' }}"
+                            id="participant-directorates-card">
                             <div class="card-header py-3">
                                 <h4 class="card-title text-sm">Pilih Peserta Rapat</h4>
                             </div>
                             <div class="card-body max-h-[260px] overflow-auto grid gap-2">
-                                @foreach ($directorates as $directorate)
-                                    @php
-                                        $isMandatoryDirectorate = in_array(
-                                            (int) $directorate->id,
-                                            $mandatoryDirectorateIds,
-                                            true,
-                                        );
-                                        $isOperationalDirectorate =
-                                            (bool) ($directorate->is_meeting_operational ?? false);
-                                        $isCheckedDirectorate =
-                                            in_array((string) $directorate->id, $selectedDirectorates, true) ||
-                                            $isMandatoryDirectorate;
-                                    @endphp
+                                <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 {{ $isDirektoratMeetingSelected ? '' : 'hidden' }}"
+                                    id="participant-operational-hint">
+                                    Unit <span class="font-medium">Monitoring Only</span> tetap boleh dipilih untuk
+                                    draft, tapi untuk <span class="font-medium">Submit Approval</span> wajib ada minimal
+                                    1 unit operasional.
+                                </div>
+                                @foreach ($participantDirectorateGroups as $directorateGroup)
                                     <label class="flex items-center gap-2 text-sm">
                                         <input class="checkbox checkbox-sm" type="checkbox" name="participants[]"
-                                            value="{{ $directorate->id }}"
-                                            data-is-mandatory="{{ $isMandatoryDirectorate ? '1' : '0' }}"
-                                            {{ $isCheckedDirectorate ? 'checked' : '' }}
-                                            {{ $isMandatoryDirectorate ? 'disabled' : '' }}>
+                                            value="{{ $directorateGroup['id'] }}"
+                                            data-is-mandatory="{{ $directorateGroup['is_mandatory'] ?? false ? '1' : '0' }}"
+                                            {{ $directorateGroup['is_checked'] ?? false ? 'checked' : '' }}
+                                            {{ $directorateGroup['is_mandatory'] ?? false ? 'disabled' : '' }}>
                                         <span>
-                                            {{ $directorate->displayName() }}
-                                            @if (!$isOperationalDirectorate)
+                                            {{ $directorateGroup['label'] }}
+                                            @if (($directorateGroup['member_count'] ?? 0) > 1)
+                                                <span class="text-gray-500">({{ $directorateGroup['member_count'] }}
+                                                    unit)</span>
+                                            @endif
+                                            @if (!($directorateGroup['is_operational'] ?? false))
                                                 <span class="text-gray-500">(Monitoring Only)</span>
                                             @endif
                                         </span>
@@ -280,14 +370,12 @@
                                 </div>
                             @enderror
                         </div>
-                        <div class="card card-grid border border-gray-200" id="participant-users-card">
+                        <div class="card card-grid border border-gray-200 {{ $isDirektoratMeetingSelected ? 'hidden' : '' }}"
+                            id="participant-users-card">
                             <div class="card-header py-3">
-                                <h4 class="card-title text-sm">PIC Otomatis Corporate Secretary</h4>
+                                <h4 class="card-title text-sm">PIC Rapat</h4>
                             </div>
                             <div class="card-body max-h-[260px] overflow-auto grid gap-2">
-                                <div class="text-xs text-gray-500 mb-1">
-                                    Untuk rapat non-direktorat, PIC otomatis di-assign ke user Corporate Secretary.
-                                </div>
                                 @forelse ($meetingPicUsers as $optionUser)
                                     <div class="text-sm">
                                         <span class="font-medium">{{ $optionUser->name }}</span>
@@ -346,14 +434,26 @@
                                         </div>
                                         <div class="flex flex-col">
                                             <label class="form-label">PIC Direktorat</label>
+                                            @php
+                                                $selectedAgendaDirectorateId = (string) old(
+                                                    'agendas.' . $index . '.owner_directorate_id',
+                                                    $agenda['owner_directorate_id'] ?? '',
+                                                );
+                                                $selectedAgendaDirectorateId =
+                                                    $agendaDirectorateSelectionMap[$selectedAgendaDirectorateId] ??
+                                                    $selectedAgendaDirectorateId;
+                                            @endphp
                                             <select
                                                 class="select @error('agendas.' . $index . '.owner_directorate_id') border-danger bg-danger-light @enderror"
                                                 name="agendas[{{ $index }}][owner_directorate_id]">
                                                 <option value="">- Pilih Direktorat -</option>
-                                                @foreach ($directorates as $directorate)
-                                                    <option value="{{ $directorate->id }}"
-                                                        {{ (string) old('agendas.' . $index . '.owner_directorate_id', $agenda['owner_directorate_id'] ?? '') === (string) $directorate->id ? 'selected' : '' }}>
-                                                        {{ $directorate->displayName() }}
+                                                @foreach ($agendaDirectorateOptions as $directorateOption)
+                                                    <option value="{{ $directorateOption['id'] }}"
+                                                        {{ $selectedAgendaDirectorateId === (string) $directorateOption['id'] ? 'selected' : '' }}>
+                                                        {{ $directorateOption['name'] }}
+                                                        @if (($directorateOption['member_count'] ?? 0) > 1)
+                                                            ({{ $directorateOption['member_count'] }} unit)
+                                                        @endif
                                                     </option>
                                                 @endforeach
                                             </select>
@@ -382,6 +482,70 @@
                         @error('agendas')
                             <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                         @enderror
+                    </div>
+
+                    <div class="border-t border-gray-200 pt-5 {{ $isMancommMeetingSelected ? '' : 'hidden' }}"
+                        id="mancomm-escalation-section">
+                        <div class="mb-3">
+                            <h4 class="font-semibold text-gray-800">Agenda Eskalasi Direktorat untuk Mancomm</h4>
+                            <div class="text-sm text-gray-500 mt-1">
+                                Opsional. Pilih backlog hasil rapat direktorat yang belum selesai dibahas untuk dibawa
+                                sebagai agenda relasi pada rapat mancomm.
+                            </div>
+                        </div>
+
+                        @if ($escalationDecisionOptions->isNotEmpty())
+                            <div class="grid gap-3">
+                                @foreach ($escalationDecisionOptions as $decisionOption)
+                                    <label
+                                        class="mancomm-escalation-option flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4 transition">
+                                        <input class="checkbox checkbox-sm mt-1" type="checkbox"
+                                            name="escalation_decision_ids[]" value="{{ $decisionOption['id'] }}"
+                                            data-owner-directorate-id="{{ $decisionOption['owner_directorate_id'] }}"
+                                            {{ in_array((string) $decisionOption['id'], $selectedEscalationDecisionIds, true) ? 'checked' : '' }}>
+                                        <span class="grid gap-1 text-sm">
+                                            <span class="font-semibold text-gray-800">
+                                                {{ $decisionOption['issue_key'] ?: ($decisionOption['decision_key'] ?: 'Issue tanpa key') }}
+                                            </span>
+                                            <span class="text-gray-700">
+                                                {{ $decisionOption['decision_text'] ?: '-' }}
+                                            </span>
+                                            <span class="text-xs text-gray-500">
+                                                Direktorat:
+                                                <span class="font-medium">{{ $decisionOption['owner_directorate_name'] ?? '-' }}</span>
+                                                | PIC:
+                                                <span class="font-medium">{{ $decisionOption['pic_user_name'] ?? '-' }}</span>
+                                            </span>
+                                            <span class="text-xs text-gray-500">
+                                                Sumber:
+                                                <span class="font-medium">{{ $decisionOption['source_meeting_title'] ?? '-' }}</span>
+                                                @if (!empty($decisionOption['source_meeting_at']))
+                                                    | {{ $decisionOption['source_meeting_at'] }}
+                                                @endif
+                                                @if (!empty($decisionOption['target_date']))
+                                                    | Target {{ $decisionOption['target_date'] }}
+                                                @endif
+                                                | Status
+                                                {{ $escalationDecisionStatusLabels[$decisionOption['status'] ?? ''] ?? ($decisionOption['status'] ?? '-') }}
+                                            </span>
+                                        </span>
+                                    </label>
+                                @endforeach
+                            </div>
+                        @else
+                            <div class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
+                                Belum ada backlog rapat direktorat yang open untuk dieskalasikan ke mancomm.
+                            </div>
+                        @endif
+
+                        @error('escalation_decision_ids')
+                            <em class="mt-2 text-sm alert text-danger">{{ $message }}</em>
+                        @enderror
+                        @foreach ($errors->get('escalation_decision_ids.*') as $messages)
+                            @foreach ($messages as $message)
+                                <em class="mt-2 text-sm alert text-danger">{{ $message }}</em>
+                            @endforeach
+                        @endforeach
                     </div>
 
                     <div class="flex flex-col">
@@ -413,6 +577,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const DIREKTORAT_TYPES = new Set(@json($direktoratTypeCodes));
+            const MANCOMM_TYPE = @json(strtolower(\Modules\Corsec\Models\Meeting::TYPE_MANCOMM));
             const agendaRows = document.getElementById('agenda-rows');
             const addAgendaButton = document.getElementById('add-agenda-row');
             const submitInput = document.getElementById('submit_for_approval');
@@ -422,24 +587,29 @@
             const singleMeetingDateInput = singleMeetingDateWrap ? singleMeetingDateWrap.querySelector(
                 'input[name="meeting_date"]') : null;
             const participantUsersCard = document.getElementById('participant-users-card');
+            const participantDirectoratesCard = document.getElementById('participant-directorates-card');
+            const participantOperationalHint = document.getElementById('participant-operational-hint');
             const agendaSection = document.getElementById('agenda-section');
             const batchMeetingDatesWrap = document.getElementById('batch-meeting-dates-wrap');
             const meetingDateRows = document.getElementById('meeting-date-rows');
             const addMeetingDateRowButton = document.getElementById('add-meeting-date-row');
+            const mancommEscalationSection = document.getElementById('mancomm-escalation-section');
 
             if (!agendaRows || !addAgendaButton || !meetingForm || !meetingTypeSelect) {
                 return;
             }
 
-            const directorateOptions = @json($directorateOptions);
+            const directorateOptions = @json($agendaDirectorateOptions);
             const userOptions = @json($userOptions);
-            const mandatoryDirectorateIds = new Set(@json($mandatoryDirectorateIds));
+            const mandatoryDirectorateIds = new Set(@json($mandatoryParticipantDirectorateIds));
             const participantDirectorateCheckboxes = meetingForm.querySelectorAll('input[name="participants[]"]');
+            const escalationDecisionCheckboxes = meetingForm.querySelectorAll('input[name="escalation_decision_ids[]"]');
 
             const buildSelectOptions = (options, placeholder) => {
                 let html = `<option value=\"\">${placeholder}</option>`;
                 options.forEach((item) => {
-                    html += `<option value=\"${item.id}\">${item.name}</option>`;
+                    const suffix = Number(item.member_count ?? 0) > 1 ? ` (${item.member_count} unit)` : '';
+                    html += `<option value=\"${item.id}\">${item.name}${suffix}</option>`;
                 });
                 return html;
             };
@@ -455,6 +625,19 @@
 
             const normalizeMeetingType = (value) => String(value ?? '').trim().toLowerCase();
 
+            const syncEscalationSelectionState = () => {
+                escalationDecisionCheckboxes.forEach((checkbox) => {
+                    const option = checkbox.closest('.mancomm-escalation-option');
+                    if (!option) {
+                        return;
+                    }
+
+                    option.classList.toggle('ring-1', checkbox.checked);
+                    option.classList.toggle('ring-primary/30', checkbox.checked);
+                    option.classList.toggle('border-primary/40', checkbox.checked);
+                });
+            };
+
             const toggleMandatoryDirectorateParticipants = () => {
                 participantDirectorateCheckboxes.forEach((checkbox) => {
                     const directorateId = Number(checkbox.value);
@@ -465,6 +648,38 @@
                     checkbox.checked = true;
                     checkbox.disabled = true;
                 });
+            };
+
+            const syncMancommEscalationSection = () => {
+                if (!mancommEscalationSection) {
+                    return;
+                }
+
+                const isMancommMeeting = normalizeMeetingType(meetingTypeSelect.value) === MANCOMM_TYPE;
+                mancommEscalationSection.classList.toggle('hidden', !isMancommMeeting);
+
+                const selectedParticipantIds = new Set(Array.from(participantDirectorateCheckboxes)
+                    .filter((checkbox) => checkbox.checked)
+                    .map((checkbox) => String(checkbox.value)));
+
+                escalationDecisionCheckboxes.forEach((checkbox) => {
+                    const ownerDirectorateId = String(checkbox.dataset.ownerDirectorateId || '');
+                    const option = checkbox.closest('.mancomm-escalation-option');
+                    const matchesParticipant = !ownerDirectorateId || selectedParticipantIds.size === 0 || selectedParticipantIds
+                        .has(ownerDirectorateId);
+                    const shouldDisable = !isMancommMeeting || !matchesParticipant;
+
+                    checkbox.disabled = shouldDisable;
+                    if (isMancommMeeting && !matchesParticipant) {
+                        checkbox.checked = false;
+                    }
+
+                    if (option) {
+                        option.classList.toggle('opacity-50', !matchesParticipant && isMancommMeeting);
+                    }
+                });
+
+                syncEscalationSelectionState();
             };
 
             const setSectionDisabled = (section, disabled) => {
@@ -521,6 +736,14 @@
                     participantUsersCard.classList.toggle('hidden', isDirektoratMeeting);
                 }
 
+                if (participantDirectoratesCard) {
+                    participantDirectoratesCard.classList.toggle('lg:col-span-2', isDirektoratMeeting);
+                }
+
+                if (participantOperationalHint) {
+                    participantOperationalHint.classList.toggle('hidden', !isDirektoratMeeting);
+                }
+
                 if (agendaSection) {
                     agendaSection.classList.toggle('hidden', isDirektoratMeeting);
                     setSectionDisabled(agendaSection, isDirektoratMeeting);
@@ -545,6 +768,8 @@
                 if (singleMeetingDateInput && batchMeetingDatesWrap) {
                     singleMeetingDateInput.disabled = isDirektoratMeeting;
                 }
+
+                syncMancommEscalationSection();
             };
 
             addAgendaButton.addEventListener('click', function() {
@@ -624,6 +849,17 @@
                     row.remove();
                 });
             }
+
+            participantDirectorateCheckboxes.forEach((checkbox) => {
+                checkbox.addEventListener('change', function() {
+                    toggleMandatoryDirectorateParticipants();
+                    syncMancommEscalationSection();
+                });
+            });
+
+            escalationDecisionCheckboxes.forEach((checkbox) => {
+                checkbox.addEventListener('change', syncEscalationSelectionState);
+            });
 
             meetingForm.querySelectorAll('button[data-submit-mode]').forEach((button) => {
                 button.addEventListener('click', function() {

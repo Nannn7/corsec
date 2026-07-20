@@ -26,7 +26,7 @@ class DashboardController extends Controller
             return view('corsec::dashboard', array_merge($counts, $overview));
         }
 
-        abort(403, 'Sorry! You are not allowed to view corsec app.');
+        abort(403, 'Anda tidak memiliki akses ke aplikasi Corsec.');
     }
 
 }

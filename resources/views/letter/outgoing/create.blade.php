@@ -35,9 +35,18 @@
                     <i class="ki-filled ki-document text-primary"></i>
                     {{ isset($outgoingLetter) ? 'Edit Surat Keluar' : 'Input Surat Keluar' }}
                 </h3>
-                <a href="{{ route('letter.outgoing.index') }}" class="btn btn-sm btn-info">
-                    <i class="ki-filled ki-exit-left"></i> Back
-                </a>
+
+                <div class="flex items-center gap-2">
+                    @if (!isset($outgoingLetter))
+                        <button type="button" id="toggle-bulk-request" class="btn btn-sm btn-warning" disabled>
+                            <i class="ki-filled ki-document"></i> Request Bulk Nomor
+                        </button>
+                    @endif
+
+                    <a href="{{ route('letter.outgoing.index') }}" class="btn btn-sm btn-info">
+                        <i class="ki-filled ki-exit-left"></i> Back
+                    </a>
+                </div>
             </div>
 
             <div class="card-body">
@@ -47,8 +56,10 @@
                     @csrf
                     @if (isset($outgoingLetter))
                         @method('PUT')
+                        <input type="hidden" name="submit_for_approval" id="submit_for_approval" value="0">
                     @else
                         <input type="hidden" name="submit_for_approval" id="submit_for_approval" value="1">
+                        <input type="hidden" name="is_bulk_number_request" id="is_bulk_number_request" value="0">
                     @endif
 
                     <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -74,6 +85,29 @@
                             <input class="input" type="text" id="registration_no" name="registration_no" readonly
                                 value="{{ old('registration_no', $outgoingLetter?->registration_no ?? ($showDetailFields ? 'Auto Generated' : 'Pilih jenis surat terlebih dahulu')) }}">
                         </div>
+
+                        @if (!isset($outgoingLetter))
+                            <div id="bulk-request-section"
+                                class="hidden mt-5 rounded-lg border border-warning/30 bg-warning-light p-4 md:col-span-2">
+                                <div class="grid grid-cols-1 gap-5">
+                                    <div class="flex flex-col w-full">
+                                        <label class="form-label">Jumlah Nomor Surat <span
+                                                class="text-danger">*</span></label>
+                                        <input
+                                            class="input w-full @error('bulk_number_count') border-danger bg-danger-light @enderror"
+                                            type="number" name="bulk_number_count" id="bulk_number_count" min="10"
+                                            step="1" placeholder="Minimal 10">
+                                        <div class="mt-1 text-xs text-gray-500">
+                                            Nomor surat akan langsung dibuat dan statusnya draft. Lengkapi data lainnya
+                                            melalui menu edit.
+                                        </div>
+                                        @error('bulk_number_count')
+                                            <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                                        @enderror
+                                    </div>
+                                </div>
+                            </div>
+                        @endif
                     </div>
 
                     <div id="outgoing-form-fields" style="{{ $showDetailFields ? '' : 'display:none;' }}"
@@ -140,10 +174,11 @@
                         </div>
 
                         <div class="flex flex-col">
-                            <label class="form-label">Perlu Review Direktorat Kepatuhan?</label>
+                            <label class="form-label">Sirkulasi Kepatuhan?</label>
                             <select class="select @error('need_compliance_review') border-danger bg-danger-light @enderror"
                                 name="need_compliance_review" id="need_compliance_review">
-                                <option value="0" {{ $needComplianceReview === '0' ? 'selected' : '' }}>Tidak</option>
+                                <option value="0" {{ $needComplianceReview === '0' ? 'selected' : '' }}>Tidak
+                                </option>
                                 <option value="1" {{ $needComplianceReview === '1' ? 'selected' : '' }}>Ya</option>
                             </select>
                             @error('need_compliance_review')
@@ -224,10 +259,9 @@
                         <div class="flex flex-col md:col-span-2">
                             <label class="form-label">
                                 {{ isset($outgoingLetter) ? 'Tambah Draft Surat (PDF/JPG/PNG)' : 'Upload Draft Surat (PDF/JPG/PNG)' }}
-                                @if (!isset($outgoingLetter))
-                                    <span class="text-danger">*</span>
-                                @endif
                             </label>
+                            <div class="mb-1 text-xs text-gray-500">Wajib saat submit approval. Saat save draft boleh
+                                dikosongkan.</div>
                             <input class="file-input @error('draft_file') border-danger bg-danger-light @enderror"
                                 type="file" name="draft_file" accept=".pdf,.jpg,.jpeg,.png">
                             @error('draft_file')
@@ -259,8 +293,11 @@
                         @if (isset($outgoingLetter))
                             @can('corsec.update')
                                 @if ($isEditableStatus)
-                                    <button type="submit" class="btn btn-primary">
-                                        <i class="ki-filled ki-check"></i> Update
+                                    <button type="button" id="save-draft" class="btn btn-light">
+                                        <i class="ki-filled ki-archive"></i> Simpan Draft
+                                    </button>
+                                    <button type="submit" id="submit-approval" class="btn btn-primary">
+                                        <i class="ki-filled ki-check"></i> Submit Approval
                                     </button>
                                 @endif
                             @endcan
@@ -268,6 +305,9 @@
                             @can('corsec.create')
                                 <button type="button" id="save-draft" class="btn btn-light">
                                     <i class="ki-filled ki-archive"></i> Save Draft
+                                </button>
+                                <button type="button" id="submit-bulk-request" class="btn btn-warning hidden">
+                                    <i class="ki-filled ki-document"></i> Submit Request No
                                 </button>
                                 <button type="submit" id="submit-approval" class="btn btn-primary">
                                     <i class="ki-filled ki-check"></i> Submit Approval
@@ -290,6 +330,7 @@
             const saveDraftButton = document.getElementById('save-draft');
             const submitApprovalButton = document.getElementById('submit-approval');
             const isEdit = {{ isset($outgoingLetter) ? 'true' : 'false' }};
+            const hasDraftAttachment = {{ $outgoingLetter?->draft_attachment_id ? 'true' : 'false' }};
             const registrationPreviewUrl = @json(route('letter.outgoing.registration_preview'));
             const incomingPreviewUrl = @json(route('letter.outgoing.incoming_preview'));
             const letterTypeSelect = document.getElementById('letter_type_id');
@@ -310,9 +351,20 @@
             const subjectInput = document.getElementById('subject');
             const summaryInput = document.getElementById('summary');
             const incomingPreviewCache = {};
+            const bulkModeInput = document.getElementById('is_bulk_number_request');
+            const bulkToggleButton = document.getElementById('toggle-bulk-request');
+            const bulkRequestSection = document.getElementById('bulk-request-section');
+            const bulkNumberCountInput = document.getElementById('bulk_number_count');
+            const submitBulkRequestButton = document.getElementById('submit-bulk-request');
+
 
             async function refreshRegistrationPreview() {
                 if (isEdit || !registrationInput) return;
+
+                if (isBulkMode()) {
+                    registrationInput.value = 'Digenerate saat bulk request';
+                    return;
+                }
 
                 const hasLetterType = !!(letterTypeSelect && letterTypeSelect.value);
                 if (!hasLetterType) {
@@ -350,16 +402,111 @@
             function toggleFormByLetterType() {
                 const hasLetterType = !!(letterTypeSelect && letterTypeSelect.value);
 
-                if (!isEdit) {
-                    if (outgoingFormFields) outgoingFormFields.style.display = hasLetterType ? '' : 'none';
-                    if (outgoingFormExtra) outgoingFormExtra.style.display = hasLetterType ? '' : 'none';
-                    if (outgoingFormActions) outgoingFormActions.style.display = hasLetterType ? 'flex' : 'none';
+                if (!hasLetterType && bulkModeInput) {
+                    bulkModeInput.value = '0';
                 }
+
+                syncBulkModeUI();
 
                 if (hasLetterType || isEdit) {
                     refreshRegistrationPreview();
                 } else if (registrationInput) {
                     registrationInput.value = 'Pilih jenis surat terlebih dahulu';
+                }
+            }
+
+            if (bulkToggleButton) {
+                bulkToggleButton.addEventListener('click', function() {
+                    if (!letterTypeSelect || !letterTypeSelect.value) {
+                        alert('Pilih jenis surat terlebih dahulu.');
+                        return;
+                    }
+
+                    const nextState = !isBulkMode();
+                    if (bulkModeInput) {
+                        bulkModeInput.value = nextState ? '1' : '0';
+                    }
+
+                    syncBulkModeUI();
+                    refreshRegistrationPreview();
+                });
+            }
+
+            if (submitBulkRequestButton) {
+                submitBulkRequestButton.addEventListener('click', function() {
+                    if (approvalInput) {
+                        approvalInput.value = '0';
+                    }
+                    if (bulkModeInput) {
+                        bulkModeInput.value = '1';
+                    }
+
+                    if (form.requestSubmit) {
+                        form.requestSubmit();
+                    } else {
+                        form.submit();
+                    }
+                });
+            }
+
+            function isBulkMode() {
+                return !isEdit && bulkModeInput && bulkModeInput.value === '1';
+            }
+
+            function setSectionControlsDisabled(section, disabled) {
+                if (!section) return;
+
+                section.querySelectorAll('input, select, textarea, button').forEach((control) => {
+                    control.disabled = disabled;
+                });
+            }
+
+            function syncBulkModeUI() {
+                const hasLetterType = !!(letterTypeSelect && letterTypeSelect.value);
+                const bulkEnabled = hasLetterType && isBulkMode();
+
+                if (bulkRequestSection) {
+                    bulkRequestSection.classList.toggle('hidden', !bulkEnabled);
+                }
+
+                if (bulkNumberCountInput) {
+                    bulkNumberCountInput.required = bulkEnabled;
+                    if (!bulkEnabled) {
+                        bulkNumberCountInput.value = '';
+                    }
+                }
+
+                if (!isEdit) {
+                    if (outgoingFormFields) outgoingFormFields.style.display = bulkEnabled ? 'none' : (
+                        hasLetterType ? '' : 'none');
+                    if (outgoingFormExtra) outgoingFormExtra.style.display = bulkEnabled ? 'none' : (hasLetterType ?
+                        '' : 'none');
+                    if (outgoingFormActions) outgoingFormActions.style.display = hasLetterType ? 'flex' : 'none';
+                    setSectionControlsDisabled(outgoingFormFields, bulkEnabled);
+                    setSectionControlsDisabled(outgoingFormExtra, bulkEnabled);
+
+                    if (saveDraftButton) saveDraftButton.classList.toggle('hidden', bulkEnabled);
+                    if (submitApprovalButton) submitApprovalButton.classList.toggle('hidden', bulkEnabled);
+                    if (submitBulkRequestButton) submitBulkRequestButton.classList.toggle('hidden', !bulkEnabled);
+                }
+
+                if (bulkToggleButton) {
+                    bulkToggleButton.disabled = !hasLetterType;
+                    bulkToggleButton.innerHTML = bulkEnabled ?
+                        '<i class="ki-filled ki-cross"></i> Batal Bulk Request' :
+                        '<i class="ki-filled ki-document"></i> Request Bulk Nomor';
+                }
+
+                if (!hasLetterType && bulkModeInput) {
+                    bulkModeInput.value = '0';
+                }
+
+                if (!isEdit && registrationInput) {
+                    if (!hasLetterType) {
+                        registrationInput.value = 'Pilih jenis surat terlebih dahulu';
+                    } else if (bulkEnabled) {
+                        registrationInput.value = 'Digenerate saat bulk request';
+                    }
                 }
             }
 
@@ -537,12 +684,41 @@
                 const {
                     clearValidation,
                     showFieldError,
+                    validateFileSizes,
+                    uploadFailureMessage,
                 } = window.CorsecIncomingValidation;
                 const indexUrl = @json(route('letter.outgoing.index'));
+                const uploadSizeOptions = {
+                    maxBytes: @json(\Modules\Corsec\Support\UploadRule::maxFileSizeKb() * 1024),
+                    label: @json(\Modules\Corsec\Support\UploadRule::label()),
+                };
 
                 function validateOutgoingForm($form) {
                     const errors = {};
                     const requiredMessage = 'Field ini tidak boleh kosong.';
+                    const submitForApproval = approvalInput && approvalInput.value === '1';
+                    const bulkRequestMode = !isEdit && bulkModeInput && bulkModeInput.value === '1';
+
+                    if (!$form.find('[name="letter_type_id"]').val()) {
+                        errors.letter_type_id = requiredMessage;
+                    }
+
+                    if (bulkRequestMode) {
+                        const bulkCountRaw = ($form.find('[name="bulk_number_count"]').val() || '').trim();
+                        const bulkCount = parseInt(bulkCountRaw, 10);
+
+                        if (!bulkCountRaw) {
+                            errors.bulk_number_count = requiredMessage;
+                        } else if (!Number.isInteger(bulkCount) || bulkCount < 10) {
+                            errors.bulk_number_count = 'Minimal request 10 nomor surat.';
+                        }
+
+                        return errors;
+                    }
+
+                    if (!$form.find('[name="order_date"]').val()) {
+                        errors.order_date = requiredMessage;
+                    }
 
                     if (!$form.find('[name="order_date"]').val()) {
                         errors.order_date = requiredMessage;
@@ -580,7 +756,7 @@
                             unifiedField.val(perihalText);
                         }
                         if (!perihalText) {
-                            errors.perihal_text = requiredMessage;
+                            errors[inputName] = requiredMessage;
                         }
                     } else {
                         const unifiedField = $form.find('[name="perihal_text"]');
@@ -590,11 +766,33 @@
                     }
 
                     const filesInput = $form.find('[name="draft_file"]')[0];
-                    if (!isEdit && filesInput && filesInput.files.length === 0) {
+                    if (submitForApproval && !hasDraftAttachment && filesInput && filesInput.files.length === 0) {
                         errors.draft_file = 'Harap upload file.';
                     }
 
+                    Object.assign(errors, validateFileSizes($form, uploadSizeOptions));
+
                     return errors;
+                }
+
+                function resolveOutgoingErrorField(field) {
+                    if (field !== 'perihal_text') {
+                        return field;
+                    }
+
+                    const perihalType = $formPerihalType();
+                    if (perihalType === 'rutinitas') {
+                        return 'perihal_text_rutinitas';
+                    }
+                    if (perihalType === 'insidentil') {
+                        return 'perihal_text_insidentil';
+                    }
+
+                    return field;
+                }
+
+                function $formPerihalType() {
+                    return window.jQuery('[name="perihal_type"]', '#outgoing-letter-form').val();
                 }
 
                 $document.on('submit', 'form.js-ajax-form', function(event) {
@@ -605,7 +803,7 @@
                     const errors = validateOutgoingForm($form);
                     if (Object.keys(errors).length > 0) {
                         Object.keys(errors).forEach((field) => {
-                            showFieldError($form, field, errors[field]);
+                            showFieldError($form, resolveOutgoingErrorField(field), errors[field]);
                         });
                         return;
                     }
@@ -622,14 +820,30 @@
                             'X-CSRF-TOKEN': $form.find('input[name="_token"]').val()
                         },
                         success: function(response) {
+                            const bulkRequestMode = bulkModeInput && bulkModeInput.value ===
+                                '1';
+                            const successMessage = response && response.message ? response
+                                .message : 'Berhasil disimpan.';
+
                             if (response && response.redirect_url) {
+                                if (window.toast && typeof window.toast.success ===
+                                    'function') {
+                                    window.toast.success(successMessage);
+                                    setTimeout(function() {
+                                        window.location.href = response.redirect_url;
+                                    }, 600);
+                                    return;
+                                }
+
                                 window.location.href = response.redirect_url;
                                 return;
                             }
+
                             if (window.toast && typeof window.toast.success === 'function') {
-                                window.toast.success('Berhasil disimpan.');
+                                window.toast.success(successMessage);
                                 setTimeout(function() {
-                                    if (approvalInput && approvalInput.value === '1') {
+                                    if (bulkRequestMode || (approvalInput &&
+                                            approvalInput.value === '1')) {
                                         window.location.href = indexUrl;
                                         return;
                                     }
@@ -637,25 +851,29 @@
                                 }, 600);
                                 return;
                             }
-                            alert('Berhasil disimpan.');
-                            if (approvalInput && approvalInput.value === '1') {
-                                window.location.href = indexUrl;
-                                return;
-                            }
-                            window.location.reload();
+
+                            Swal.fire('Berhasil', successMessage, 'success').then(function() {
+                                if (bulkRequestMode || (approvalInput && approvalInput.value ===
+                                        '1')) {
+                                    window.location.href = indexUrl;
+                                    return;
+                                }
+                                window.location.reload();
+                            });
+                            return;
                         },
                         error: function(xhr) {
                             if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON
                                 .errors) {
                                 const serverErrors = xhr.responseJSON.errors;
                                 Object.keys(serverErrors).forEach((field) => {
-                                    showFieldError($form, field, serverErrors[field][
-                                        0
-                                    ]);
+                                    showFieldError($form, resolveOutgoingErrorField(field),
+                                        serverErrors[field][0]);
                                 });
                                 return;
                             }
-                            alert('Gagal memproses. Coba lagi ya.');
+                            Swal.fire('Error!', uploadFailureMessage(xhr,
+                                'Gagal memproses surat keluar.', uploadSizeOptions), 'error');
                         }
                     });
                 });

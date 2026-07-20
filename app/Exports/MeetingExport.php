@@ -31,6 +31,7 @@ class MeetingExport implements FromCollection, WithHeadings, WithMapping
                 'participants.participantUser',
                 'agendas.ownerDirectorate',
                 'agendas.picUser',
+                'agendas.attachables.attachment',
                 'materials.attachment',
                 'materials.uploader',
                 'materials.authorizedBy',
@@ -191,7 +192,24 @@ class MeetingExport implements FromCollection, WithHeadings, WithMapping
 
     private function canViewAllMeetings(User $user): bool
     {
-        return $user->hasRole('administrator') || $user->hasRole('checker') || $user->hasRole('approver');
+        return $user->hasRole('administrator') || $this->isAllDataDirectorate($user);
+    }
+
+    private function isAllDataDirectorate(User $user): bool
+    {
+        $user->loadMissing('directorate');
+        $name = strtolower((string) ($user->directorate?->name ?? ''));
+        $code = (string) ($user->directorate?->code ?? '');
+        $complianceCode = (string) config('corsec.compliance_directorate_code', '');
+        $corpCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+
+        return ($code !== '' && $complianceCode !== '' && $code === $complianceCode)
+            || ($code !== '' && $corpCode !== '' && $code === $corpCode)
+            || str_contains($name, 'kepatuhan')
+            || str_contains($name, 'compliance')
+            || str_contains($name, 'complience')
+            || str_contains($name, 'corporate secretary')
+            || str_contains($name, 'skai');
     }
 
     private function participantDetails(Collection $participants): string
@@ -213,6 +231,7 @@ class MeetingExport implements FromCollection, WithHeadings, WithMapping
     {
         return $this->joinValues($agendas->map(function ($agenda) {
             $order = $agenda->order_no ? '#' . $agenda->order_no : '#-';
+            $agendaFiles = $this->attachableDetails($agenda->attachables ?? collect());
 
             return trim(implode(' | ', array_filter([
                 $order,
@@ -220,6 +239,8 @@ class MeetingExport implements FromCollection, WithHeadings, WithMapping
                 $agenda->ownerDirectorate?->name ? 'Owner: ' . $agenda->ownerDirectorate->name : null,
                 $agenda->picUser?->name ? 'PIC: ' . $agenda->picUser->name : null,
                 $agenda->description ? 'Desc: ' . $this->cleanText($agenda->description) : null,
+                $agenda->minutes_discussion ? 'Discussion: ' . $this->cleanText($agenda->minutes_discussion) : null,
+                $agendaFiles !== '-' ? 'Photos: ' . $agendaFiles : null,
             ])));
         })->all());
     }

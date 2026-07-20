@@ -7,7 +7,6 @@
 @section('content')
     @php
         $filters = $filters ?? [];
-        $supportsSupportUserAssignments = (bool) ($supportsSupportUserAssignments ?? false);
         $agingLabels = [
             'cat_1' => 'CAT 1 (< 30 hari)',
             'cat_2' => 'CAT 2 (30 - 90 hari)',
@@ -31,20 +30,13 @@
             'dropped' => 'Drop',
             default => $status ?: '-',
         };
-        $getDecisionSupportUsers = function ($decision) use ($supportsSupportUserAssignments) {
-            if (!$supportsSupportUserAssignments) {
-                return collect();
-            }
-
-            return $decision->supportUsers ?? collect();
-        };
     @endphp
 
     <div class="grid gap-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
                 <h2 class="text-xl font-semibold text-gray-800">Tabulasi Tindak Lanjut Rapat</h2>
-                <div class="text-sm text-gray-500">Ringkasan issue lintas rapat berdasarkan issue terakhir pada tiap family.</div>
+                <div class="text-sm text-gray-500">Ringkasan issue lintas rapat berdasarkan issue terakhir.</div>
             </div>
             <div class="flex gap-2">
                 <a href="{{ route('meeting.index') }}" class="btn btn-sm btn-light">Kembali ke Daftar Meeting</a>
@@ -66,7 +58,8 @@
                     <select class="select" name="meeting_type">
                         <option value="">- Semua -</option>
                         @foreach ($typeOptions as $value => $label)
-                            <option value="{{ $value }}" {{ ($filters['meeting_type'] ?? '') === $value ? 'selected' : '' }}>
+                            <option value="{{ $value }}"
+                                {{ ($filters['meeting_type'] ?? '') === $value ? 'selected' : '' }}>
                                 {{ $label }}
                             </option>
                         @endforeach
@@ -89,7 +82,8 @@
                     <select class="select" name="status">
                         <option value="">- Semua -</option>
                         @foreach (['pending' => 'Pending', 'in_progress' => 'Proses', 'continuous' => 'Berkelanjutan', 'done' => 'Done', 'dropped' => 'Drop'] as $value => $label)
-                            <option value="{{ $value }}" {{ ($filters['status'] ?? '') === $value ? 'selected' : '' }}>
+                            <option value="{{ $value }}"
+                                {{ ($filters['status'] ?? '') === $value ? 'selected' : '' }}>
                                 {{ $label }}
                             </option>
                         @endforeach
@@ -100,7 +94,8 @@
                     <select class="select" name="aging_bucket">
                         <option value="">- Semua -</option>
                         @foreach ($agingLabels as $value => $label)
-                            <option value="{{ $value }}" {{ ($filters['aging_bucket'] ?? '') === $value ? 'selected' : '' }}>
+                            <option value="{{ $value }}"
+                                {{ ($filters['aging_bucket'] ?? '') === $value ? 'selected' : '' }}>
                                 {{ $label }}
                             </option>
                         @endforeach
@@ -175,7 +170,6 @@
                                     <th class="min-w-[280px]">Issue / Tindak Lanjut</th>
                                     <th class="min-w-[200px]">Rapat Terakhir</th>
                                     <th class="min-w-[180px]">PIC</th>
-                                    <th class="min-w-[180px]">Support</th>
                                     <th class="min-w-[130px]">Tgl Radir Awal</th>
                                     <th class="min-w-[90px]">Frekuensi</th>
                                     <th class="min-w-[110px]">Progress</th>
@@ -221,31 +215,6 @@
                                                 {{ $decision->picUser?->name ?? '-' }}
                                             </div>
                                         </td>
-                                        <td>
-                                            @php($supportUsers = $getDecisionSupportUsers($decision))
-                                            @if ($decision->supportDirectorates->count() > 0)
-                                                <div class="flex flex-col gap-1">
-                                                    @foreach ($decision->supportDirectorates as $supportDirectorate)
-                                                        <span class="text-xs text-gray-700">{{ $supportDirectorate->displayName() }}</span>
-                                                    @endforeach
-                                                </div>
-                                            @endif
-                                            @if ($supportUsers->count() > 0)
-                                                <div class="flex flex-col gap-1 {{ $decision->supportDirectorates->count() > 0 ? 'mt-2' : '' }}">
-                                                    @foreach ($supportUsers as $supportUser)
-                                                        <span class="text-xs text-gray-700">
-                                                            {{ $supportUser->name }}
-                                                            @if ($supportUser->directorate)
-                                                                <span class="text-gray-500">({{ $supportUser->directorate->displayName() }})</span>
-                                                            @endif
-                                                        </span>
-                                                    @endforeach
-                                                </div>
-                                            @endif
-                                            @if ($decision->supportDirectorates->count() === 0 && $supportUsers->count() === 0)
-                                                -
-                                            @endif
-                                        </td>
                                         <td>{{ $decision->first_discussed_at?->format('d/m/Y') ?? '-' }}</td>
                                         <td>{{ $decision->discussion_count ?? 0 }}x</td>
                                         <td>{{ $decision->latest_progress_percent ?? 0 }}%</td>
@@ -256,8 +225,11 @@
                                         </td>
                                         <td>
                                             @if ($decision->aging_bucket)
-                                                <div>{{ $agingLabels[$decision->aging_bucket] ?? strtoupper($decision->aging_bucket) }}</div>
-                                                <div class="text-xs text-gray-500">{{ $decision->aging_days ?? 0 }} hari</div>
+                                                <div>
+                                                    {{ $agingLabels[$decision->aging_bucket] ?? strtoupper($decision->aging_bucket) }}
+                                                </div>
+                                                <div class="text-xs text-gray-500">{{ $decision->aging_days ?? 0 }} hari
+                                                </div>
                                             @else
                                                 -
                                             @endif

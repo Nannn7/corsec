@@ -11,13 +11,14 @@ use Modules\Corsec\Models\Directorate;
 use Modules\Corsec\Models\IncomingLetter;
 use Modules\Corsec\Models\OutgoingLetter;
 use Modules\Corsec\Notifications\CorsecFlowNotification;
+use Modules\Corsec\Support\DirectorateApprovalFlow;
 use Modules\Usermanagement\Models\User;
 
 class OutgoingLetterWorkflowService
 {
-    public function submit(OutgoingLetter $letter, User $actor): void
+    public function submit(OutgoingLetter $letter, User $actor): array
     {
-        DB::transaction(function () use ($letter, $actor) {
+        return DB::transaction(function () use ($letter, $actor) {
             if (!in_array((string) $letter->status, [OutgoingLetter::STATUS_DRAFT, OutgoingLetter::STATUS_RETURNED], true)) {
                 abort(403, 'Surat keluar tidak dapat disubmit pada status ini.');
             }
@@ -25,6 +26,41 @@ class OutgoingLetterWorkflowService
             if (!$actor->hasRole('administrator') && (int) $letter->requester_directorate_id !== (int) $actor->directorate_id) {
                 abort(403, 'Submit surat hanya untuk direktorat pemohon.');
             }
+
+            if (!$letter->draft_attachment_id) {
+                abort(422, 'Upload draft surat wajib diisi sebelum submit approval.');
+            }
+
+            $approvalFlow = DirectorateApprovalFlow::forActor($actor);
+
+            if ($approvalFlow === DirectorateApprovalFlow::NONE) {
+                $letter->update([
+                    'authorized_status' => 'pending',
+                    'authorized_at' => null,
+                    'authorized_by' => null,
+                    'number_requested_at' => null,
+                    'number_requested_by' => null,
+                    'number_request_note' => null,
+                    'updated_by' => $actor->id,
+                ]);
+                $this->completeDirectorateApprovedState(
+                    $letter,
+                    $actor,
+                    'Flow direktorat dilewati karena submitter berposisi Deputy Director.'
+                );
+
+                return [
+                    'flow' => $approvalFlow,
+                    'success_message' => $this->submitSuccessMessage($letter, $approvalFlow),
+                ];
+            }
+
+            $pendingLabel = $approvalFlow === DirectorateApprovalFlow::DD_ONLY
+                ? 'Menunggu approval DD Direktorat'
+                : 'Menunggu approval EO dan DD Direktorat';
+            $pendingMessage = $approvalFlow === DirectorateApprovalFlow::DD_ONLY
+                ? 'Surat keluar menunggu approval DD Direktorat.'
+                : 'Surat keluar menunggu approval EO Direktorat.';
 
             $letter->update([
                 'status' => OutgoingLetter::STATUS_WAITING_DIR_APPROVAL,
@@ -41,14 +77,16 @@ class OutgoingLetterWorkflowService
                 'approvable_type' => OutgoingLetter::class,
                 'approvable_id' => $letter->id,
                 'status' => 'pending',
-                'note' => 'Menunggu approval EO dan DD Direktorat',
+                'note' => $pendingLabel,
             ]);
 
-            $checkerIds = $this->getDirectorateCheckerIds((int) $letter->requester_directorate_id);
-            if ($checkerIds->isNotEmpty()) {
-                $this->notifyUsers($checkerIds, 'outgoing_letter_dir_approval', [
+            $approvalUserIds = $approvalFlow === DirectorateApprovalFlow::DD_ONLY
+                ? $this->getDirectorateApproverIds((int) $letter->requester_directorate_id)
+                : $this->getDirectorateCheckerIds((int) $letter->requester_directorate_id);
+            if ($approvalUserIds->isNotEmpty()) {
+                $this->notifyUsers($approvalUserIds, 'outgoing_letter_dir_approval', [
                     'title' => 'Approval Direktorat Surat Keluar',
-                    'message' => 'Surat keluar menunggu approval EO Direktorat.',
+                    'message' => $pendingMessage,
                     'outgoing_letter_id' => $letter->id,
                     'registration_no' => $letter->registration_no,
                     'subject' => $letter->subject,
@@ -60,6 +98,11 @@ class OutgoingLetterWorkflowService
                     ],
                 ]);
             }
+
+            return [
+                'flow' => $approvalFlow,
+                'success_message' => $this->submitSuccessMessage($letter, $approvalFlow),
+            ];
         });
     }
 
@@ -307,67 +350,6 @@ class OutgoingLetterWorkflowService
         });
     }
 
-    public function verifyAction(OutgoingLetter $letter, User $actor, string $action, ?string $note): void
-    {
-        DB::transaction(function () use ($letter, $actor, $action, $note) {
-            if ($letter->status !== OutgoingLetter::STATUS_WAITING_VERIFICATION) {
-                abort(403, 'Verifikasi EO Corp Affair tidak sesuai status.');
-            }
-
-            $isAdmin = $actor->hasRole('administrator');
-            if (!$isAdmin && !$this->isCorpSecretaryDirectorate($actor)) {
-                abort(403, 'Verifikasi hanya untuk direktorat Corporate Secretary.');
-            }
-            if (!$isAdmin && !$actor->hasRole('checker')) {
-                abort(403, 'Verifikasi hanya untuk role checker dari Corporate Secretary.');
-            }
-
-            $approval = $this->latestPendingApproval($letter);
-
-            if (in_array($action, ['verify', 'approve'], true)) {
-                $this->closeOrCreateApproval($letter, $approval, 'approved', 'EO Corp Affair Approved', $note, $actor);
-
-                $letter->update([
-                    'status' => OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD,
-                    'authorized_status' => 'authorized',
-                    'authorized_at' => now(),
-                    'authorized_by' => $actor->id,
-                    'updated_by' => $actor->id,
-                ]);
-
-                $this->notifyOutgoingDecision(
-                    $letter,
-                    $actor,
-                    'Verifikasi EO Corp Affair disetujui. Menunggu final upload oleh staff direktorat terkait.'
-                );
-
-                $this->notifyFinalUploadRequired($letter, $actor);
-
-                return;
-            }
-
-            if (in_array($action, ['return', 'reject'], true)) {
-                $this->closeOrCreateApproval($letter, $approval, 'returned', 'EO Corp Affair Returned', $note, $actor);
-
-                $letter->update([
-                    'status' => OutgoingLetter::STATUS_RETURNED,
-                    'authorized_status' => 'returned',
-                    'authorized_at' => null,
-                    'authorized_by' => null,
-                    'updated_by' => $actor->id,
-                ]);
-
-                $this->notifyOutgoingDecision(
-                    $letter,
-                    $actor,
-                    'Verifikasi EO Corp Affair dikembalikan.'
-                );
-
-                $this->addOutgoingComment($letter, $actor, 'RETURN VERIFIKASI EO CORP AFFAIR', $note);
-            }
-        });
-    }
-
     public function uploadFinal(
         OutgoingLetter $letter,
         User $actor,
@@ -413,15 +395,6 @@ class OutgoingLetterWorkflowService
                 'updated_by' => $actor->id,
             ]);
 
-            Approval::create([
-                'approvable_type' => IncomingLetter::class,
-                'approvable_id' => $incomingLetter->id,
-                'status' => 'approved',
-                'note' => 'Verifikasi via Surat Keluar - ' . ($letter->registration_no ?? ('ID ' . $letter->id)),
-                'acted_by' => $actor->id,
-                'acted_at' => now(),
-            ]);
-
             $targetUserIds = collect([
                 $incomingLetter->created_by,
                 $incomingLetter->followup_submitted_by,
@@ -433,7 +406,7 @@ class OutgoingLetterWorkflowService
             if ($targetUserIds->isNotEmpty()) {
                 $this->notifyUsers($targetUserIds, 'incoming_letter_action', [
                     'title' => 'Penyelesaian Surat Jawaban',
-                    'message' => 'Surat masuk ditandai selesai berdasarkan final Surat Keluar.',
+                    'message' => 'Surat jawaban selesai diunggah dan surat masuk dinyatakan selesai.',
                     'incoming_letter_id' => $incomingLetter->id,
                     'registration_no' => $incomingLetter->registration_no,
                     'subject' => $incomingLetter->subject,
@@ -458,18 +431,22 @@ class OutgoingLetterWorkflowService
         }
 
         $approval = $this->latestPendingApproval($letter);
-        $checkerApproved = $this->approvalExistsByNotePrefix($letter, 'EO Direktorat Approved');
+        $roundStartedAt = $approval?->created_at;
+        $requiresCheckerApproval = $this->requiresCheckerApproval($approval);
+        $checkerApproved = $requiresCheckerApproval
+            ? $this->approvalExistsByNotePrefixInRound($letter, 'EO Direktorat Approved', $roundStartedAt)
+            : false;
 
         $isChecker = $actor->hasRole('checker') || $actor->hasRole('administrator');
         $isApprover = $actor->hasRole('approver') || $actor->hasRole('administrator');
 
         if ($action === 'approve') {
-            if (!$checkerApproved) {
+            if ($requiresCheckerApproval && !$checkerApproved) {
                 if (!$isChecker) {
                     abort(403, 'Approval EO Direktorat hanya untuk role checker.');
                 }
 
-                if ($this->actorAlreadyActed($letter, $actor, ['EO Direktorat Approved', 'EO Direktorat Returned'])) {
+                if ($this->actorAlreadyActedInRound($letter, $actor, ['EO Direktorat Approved', 'EO Direktorat Returned'], $roundStartedAt)) {
                     abort(403, 'Approval EO Direktorat sudah diproses oleh user ini.');
                 }
 
@@ -512,78 +489,25 @@ class OutgoingLetterWorkflowService
                 abort(403, 'Approval DD Direktorat hanya untuk role approver.');
             }
 
-            if ($this->actorAlreadyActed($letter, $actor, ['DD Direktorat Approved', 'DD Direktorat Returned'])) {
+            if ($this->actorAlreadyActedInRound($letter, $actor, ['DD Direktorat Approved', 'DD Direktorat Returned'], $roundStartedAt)) {
                 abort(403, 'Approval DD Direktorat sudah diproses oleh user ini.');
             }
 
             $this->closeOrCreateApproval($letter, $approval, 'approved', 'DD Direktorat Approved', $note, $actor);
 
-            $nextStatus = $letter->need_compliance_review
-                ? OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL
-                : OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD;
-
-            $updatePayload = [
-                'status' => $nextStatus,
-                'updated_by' => $actor->id,
-            ];
-
-            if (!$letter->need_compliance_review) {
-                $updatePayload['authorized_status'] = 'authorized';
-                $updatePayload['authorized_at'] = now();
-                $updatePayload['authorized_by'] = $actor->id;
-            }
-
-            $letter->update($updatePayload);
-
-            if ($letter->need_compliance_review) {
-                Approval::create([
-                    'approvable_type' => OutgoingLetter::class,
-                    'approvable_id' => $letter->id,
-                    'status' => 'pending',
-                    'note' => 'Menunggu approval EO dan DD Direktorat Kepatuhan',
-                ]);
-
-                $this->notifyOutgoingDecision(
-                    $letter,
-                    $actor,
-                    'Approval DD Direktorat disetujui. Lanjut approval EO dan DD Kepatuhan.'
-                );
-
-                $checkerIds = $this->getComplianceCheckerIds();
-                if ($checkerIds->isNotEmpty()) {
-                    $this->notifyUsers($checkerIds, 'outgoing_letter_compliance_approval', [
-                        'title' => 'Approval Kepatuhan Surat Keluar',
-                        'message' => 'Surat keluar menunggu approval EO Kepatuhan.',
-                        'outgoing_letter_id' => $letter->id,
-                        'registration_no' => $letter->registration_no,
-                        'subject' => $letter->subject,
-                        'status' => $letter->status,
-                        'created_by' => [
-                            'id' => $actor->id,
-                            'name' => $actor->name,
-                        ],
-                    ]);
-                }
-
-                return 'Approval DD Direktorat disetujui. Lanjut approval EO dan DD Kepatuhan.';
-            } else {
-                $this->notifyOutgoingDecision(
-                    $letter,
-                    $actor,
-                    'Approval DD Direktorat disetujui. Menunggu final upload oleh staff direktorat terkait.'
-                );
-
-                $this->notifyFinalUploadRequired($letter, $actor);
-
-                return 'Approval DD Direktorat disetujui. Menunggu final upload oleh staff direktorat terkait.';
-            }
+            return $this->completeDirectorateApprovedState($letter, $actor, 'Approval DD Direktorat disetujui.');
         }
 
-        $fallbackLabel = 'EO+DD Direktorat Returned';
-        if (!$checkerApproved && $actor->hasRole('checker')) {
+        if ($requiresCheckerApproval && !$checkerApproved && !$isChecker) {
+            abort(403, 'Approval EO Direktorat hanya untuk role checker.');
+        }
+        if ((!$requiresCheckerApproval || $checkerApproved) && !$isApprover) {
+            abort(403, 'Approval DD Direktorat hanya untuk role approver.');
+        }
+
+        $fallbackLabel = 'DD Direktorat Returned';
+        if ($requiresCheckerApproval && !$checkerApproved && $actor->hasRole('checker')) {
             $fallbackLabel = 'EO Direktorat Returned';
-        } elseif ($checkerApproved && $actor->hasRole('approver')) {
-            $fallbackLabel = 'DD Direktorat Returned';
         }
 
         $this->closeOrCreateApproval($letter, $approval, 'returned', $fallbackLabel, $note, $actor);
@@ -604,7 +528,7 @@ class OutgoingLetterWorkflowService
 
         $this->addOutgoingComment($letter, $actor, 'RETURN APPROVAL DIREKTORAT', $note);
 
-        return (!$checkerApproved && $actor->hasRole('checker'))
+        return ($requiresCheckerApproval && !$checkerApproved && $actor->hasRole('checker'))
             ? 'Approval EO Direktorat dikembalikan.'
             : 'Approval DD Direktorat dikembalikan.';
     }
@@ -785,6 +709,21 @@ class OutgoingLetterWorkflowService
             ->exists();
     }
 
+    private function approvalExistsByNotePrefixInRound(OutgoingLetter $letter, string $prefix, $roundStartedAt): bool
+    {
+        $query = Approval::query()
+            ->where('approvable_type', OutgoingLetter::class)
+            ->where('approvable_id', $letter->id)
+            ->where('status', 'approved')
+            ->where('note', 'ilike', $prefix . '%');
+
+        if ($roundStartedAt) {
+            $query->where('created_at', '>=', $roundStartedAt);
+        }
+
+        return $query->exists();
+    }
+
     private function actorAlreadyActed(OutgoingLetter $letter, User $actor, array $notePrefixes): bool
     {
         $approvals = Approval::query()
@@ -802,7 +741,98 @@ class OutgoingLetterWorkflowService
                 }
             }
             return false;
+            });
+    }
+
+    private function actorAlreadyActedInRound(OutgoingLetter $letter, User $actor, array $notePrefixes, $roundStartedAt): bool
+    {
+        $query = Approval::query()
+            ->where('approvable_type', OutgoingLetter::class)
+            ->where('approvable_id', $letter->id)
+            ->where('acted_by', $actor->id)
+            ->whereIn('status', ['approved', 'returned']);
+
+        if ($roundStartedAt) {
+            $query->where('created_at', '>=', $roundStartedAt);
+        }
+
+        $approvals = $query->get(['note']);
+
+        return $approvals->contains(function ($approval) use ($notePrefixes) {
+            $note = (string) $approval->note;
+            foreach ($notePrefixes as $prefix) {
+                if (Str::startsWith($note, $prefix)) {
+                    return true;
+                }
+            }
+
+            return false;
         });
+    }
+
+    private function requiresCheckerApproval(?Approval $pendingApproval): bool
+    {
+        return DirectorateApprovalFlow::requiresCheckerApproval($pendingApproval);
+    }
+
+    private function submitSuccessMessage(OutgoingLetter $letter, string $approvalFlow): string
+    {
+        return match ($approvalFlow) {
+            DirectorateApprovalFlow::NONE => $letter->need_compliance_review
+                ? 'Surat keluar berhasil disubmit. Karena submitter Deputy Director, flow direktorat dilewati dan langsung lanjut ke review Direktorat Kepatuhan.'
+                : 'Surat keluar berhasil disubmit. Karena submitter Deputy Director, flow direktorat dilewati dan langsung menunggu final upload.',
+            DirectorateApprovalFlow::DD_ONLY => 'Surat keluar berhasil disubmit untuk approval DD Direktorat.',
+            default => 'Surat keluar berhasil disubmit untuk approval EO + DD Direktorat.',
+        };
+    }
+
+    private function completeDirectorateApprovedState(OutgoingLetter $letter, User $actor, string $approvalMessagePrefix): string
+    {
+        $nextStatus = $letter->need_compliance_review
+            ? OutgoingLetter::STATUS_COMPLIANCE_REVIEW
+            : OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD;
+
+        $updatePayload = [
+            'status' => $nextStatus,
+            'updated_by' => $actor->id,
+        ];
+
+        if (!$letter->need_compliance_review) {
+            $updatePayload['authorized_status'] = 'authorized';
+            $updatePayload['authorized_at'] = now();
+            $updatePayload['authorized_by'] = $actor->id;
+        }
+
+        $letter->update($updatePayload);
+
+        if ($letter->need_compliance_review) {
+            $message = trim($approvalMessagePrefix . ' Lanjut review oleh staff Direktorat Kepatuhan.');
+            $this->notifyOutgoingDecision($letter, $actor, $message);
+
+            $makerIds = $this->getComplianceMakerStaffIds();
+            if ($makerIds->isNotEmpty()) {
+                $this->notifyUsers($makerIds, 'outgoing_letter_compliance_review', [
+                    'title' => 'Review Kepatuhan Surat Keluar',
+                    'message' => 'Surat keluar menunggu review staff Direktorat Kepatuhan.',
+                    'outgoing_letter_id' => $letter->id,
+                    'registration_no' => $letter->registration_no,
+                    'subject' => $letter->subject,
+                    'status' => $letter->status,
+                    'created_by' => [
+                        'id' => $actor->id,
+                        'name' => $actor->name,
+                    ],
+                ]);
+            }
+
+            return $message;
+        }
+
+        $message = trim($approvalMessagePrefix . ' Menunggu final upload oleh staff direktorat terkait.');
+        $this->notifyOutgoingDecision($letter, $actor, $message);
+        $this->notifyFinalUploadRequired($letter, $actor);
+
+        return $message;
     }
 
     private function buildApprovalNote(string $label, ?string $note): string
@@ -929,7 +959,6 @@ class OutgoingLetterWorkflowService
             OutgoingLetter::STATUS_WAITING_DIR_APPROVAL,
             OutgoingLetter::STATUS_COMPLIANCE_REVIEW,
             OutgoingLetter::STATUS_WAITING_COMPLIANCE_APPROVAL,
-            OutgoingLetter::STATUS_WAITING_VERIFICATION,
             OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD,
         ];
     }
@@ -1053,26 +1082,6 @@ class OutgoingLetterWorkflowService
             ->pluck('id');
     }
 
-    private function isCorpSecretaryDirectorate(User $user): bool
-    {
-        $corpCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
-        $user->loadMissing('directorate');
-
-        $directorateCode = $user->directorate?->code;
-        $directorateName = $user->directorate?->name;
-
-        if ($directorateCode && $corpCode !== '' && $directorateCode === $corpCode) {
-            return true;
-        }
-
-        if ($directorateName) {
-            $normalized = Str::lower($directorateName);
-            return Str::contains($normalized, 'corporate secretary');
-        }
-
-        return false;
-    }
-
     private function isComplianceDirectorate(User $user): bool
     {
         $complianceCode = (string) config('corsec.compliance_directorate_code', '');
@@ -1091,23 +1100,6 @@ class OutgoingLetterWorkflowService
         }
 
         return false;
-    }
-
-    private function getCorpSecretaryDirectorateId(): ?int
-    {
-        $corpCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
-        if ($corpCode !== '') {
-            $directorateId = Directorate::query()
-                ->where('code', $corpCode)
-                ->value('id');
-            if ($directorateId) {
-                return (int) $directorateId;
-            }
-        }
-
-        return Directorate::query()
-            ->where('name', 'ilike', '%corporate secretary%')
-            ->value('id');
     }
 
     private function getComplianceDirectorateId(): ?int
@@ -1130,18 +1122,4 @@ class OutgoingLetterWorkflowService
             ->value('id');
     }
 
-    private function getCorpSecretaryCheckerIds()
-    {
-        $directorateId = $this->getCorpSecretaryDirectorateId();
-        if (!$directorateId) {
-            return collect();
-        }
-
-        return User::query()
-            ->where('directorate_id', $directorateId)
-            ->whereHas('roles', function ($query) {
-                $query->where('name', 'checker');
-            })
-            ->pluck('id');
-    }
 }

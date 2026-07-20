@@ -120,12 +120,12 @@ class Meeting extends Model
     {
         return [
             self::STATUS_DRAFT => 'Draft',
-            self::STATUS_WAITING_CORSEC_APPROVAL => 'Menunggu Approval EO Corp Affair',
-            self::STATUS_RETURNED_BY_CORSEC => 'Returned EO Corp Affair',
+            self::STATUS_WAITING_CORSEC_APPROVAL => 'Menunggu Corporate Secretary',
+            self::STATUS_RETURNED_BY_CORSEC => 'Returned Corporate Secretary',
             self::STATUS_JADWAL_TERKIRIM => 'Jadwal Terkirim',
             self::STATUS_PENDING_DIREKTORAT => 'Pending Direktorat',
-            self::STATUS_WAITING_DIREKTORAT_APPROVAL => 'Menunggu Approval EO + DD Direktorat',
-            self::STATUS_RETURNED_BY_DIREKTORAT => 'Returned EO + DD Direktorat',
+            self::STATUS_WAITING_DIREKTORAT_APPROVAL => 'Menunggu Approval Direktorat',
+            self::STATUS_RETURNED_BY_DIREKTORAT => 'Returned Direktorat',
             self::STATUS_DATA_TERKIRIM => 'Data Terkirim',
             self::STATUS_PROSES_PEMBUATAN_NOTULEN => 'Proses Pembuatan Notulen',
             self::STATUS_PROSES_SIRKULASI_TANDATANGAN => 'Proses Sirkulasi Tandatangan',
