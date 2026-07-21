@@ -233,7 +233,7 @@ class MeetingController extends Controller
     public function export(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.export')) {
+        if (!$user || !$user->can('meeting.export')) {
             abort(403, 'Anda tidak memiliki akses untuk export meeting.');
         }
 

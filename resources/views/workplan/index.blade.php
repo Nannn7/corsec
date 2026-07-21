@@ -110,17 +110,17 @@
                         </label>
                     </div>
                     <div class="flex flex-wrap gap-2.5">
-                        @if (auth()->user()?->can('corsec.export') || auth()->user()?->can('corsec.create'))
+                        @if (auth()->user()?->can('workplan.export') || auth()->user()?->can('workplan.create'))
                             <div class="h-[24px] border border-r-gray-200"></div>
                         @endif
 
-                        @can('corsec.export')
+                        @can('workplan.export')
                             <a id="export-btn" class="btn btn-sm btn-light" href="{{ route('workplan.export') }}">
                                 Export to Excel
                             </a>
                         @endcan
 
-                        @can('corsec.create')
+                        @can('workplan.create')
                             <a class="btn btn-sm btn-primary" href="{{ route('workplan.create') }}">
                                 Tambah Program Kerja
                             </a>
@@ -364,13 +364,13 @@
                         const rowKey = data.uuid ?? data.id;
                         let html = `<div class="flex flex-nowrap justify-center">`;
 
-                        @can('corsec.read')
+                        @can('workplan.read')
                             html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}">
                                 <i class="ki-outline ki-eye"></i>
                             </a>`;
                         @endcan
 
-                        @if (auth()->user()?->can('corsec.update') && !(auth()->user()?->hasRole('viewer') && !auth()->user()?->hasRole(['administrator', 'maker', 'checker', 'approver'])))
+                        @if (auth()->user()?->can('workplan.update') && !(auth()->user()?->hasRole('viewer') && !auth()->user()?->hasRole(['administrator', 'maker', 'checker', 'approver'])))
                             if (canEditStatus && !isDeputyDirector) {
                                 html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}/edit">
                                     <i class="ki-outline ki-notepad-edit"></i>
@@ -378,7 +378,7 @@
                             }
                         @endif
 
-                        @can('corsec.delete')
+                        @can('workplan.delete')
                             html += `<a onclick="deleteWorkplan('${rowKey}')" class="btn btn-sm btn-icon btn-clear btn-danger">
                                 <i class="ki-outline ki-trash"></i>
                             </a>`;

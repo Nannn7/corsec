@@ -320,7 +320,7 @@
                             Cancel
                         </a>
                         @if (isset($incomingLetter))
-                            @can('corsec.update')
+                            @can('letter.update')
                                 @if ($isEditableStatus)
                                     <button type="button" id="save-draft" class="btn btn-light">
                                         <i class="ki-filled ki-archive"></i> Update Draft
@@ -331,7 +331,7 @@
                                 @endif
                             @endcan
                         @else
-                            @can('corsec.create')
+                            @can('letter.create')
                                 <button type="button" id="save-draft" class="btn btn-light">
                                     <i class="ki-filled ki-archive"></i> Save Draft
                                 </button>

@@ -81,7 +81,7 @@
                             Edit
                         </a>
                     @endif
-                    @can('corsec.delete')
+                    @can('workplan.delete')
                         <button type="button" class="btn btn-sm btn-danger"
                             onclick="deleteWorkplanDetail('{{ $workplan->uuid }}')">
                             Hapus
@@ -475,7 +475,7 @@
             </div>
         </div>
 
-        @can('corsec.authorize')
+        @can('workplan.authorize')
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Approval</h3>
