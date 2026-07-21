@@ -369,7 +369,7 @@
             </div>
         </div>
 
-        @can('corsec.authorize')
+        @can('letter.authorize')
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Approval</h3>

@@ -346,7 +346,7 @@
             </div>
         @endif
 
-        @can('corsec.authorize')
+        @can('meeting.authorize')
             @if ($canCorsecApproval)
                 <div class="card">
                     <div class="card-header">
@@ -581,7 +581,7 @@
             @endif
         @endif
 
-        @can('corsec.authorize')
+        @can('meeting.authorize')
             @if ($canDirectorateCheckerApproval || $canDirectorateApproverApproval)
                 <div class="card">
                     <div class="card-header">

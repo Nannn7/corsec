@@ -510,7 +510,7 @@ class CorsecPermissionService
         return [
             'is_admin' => (bool) ($user?->hasRole('administrator') ?? false),
             'actor_id' => (int) ($user?->id ?? 0),
-            'can_read' => (bool) ($user?->can('corsec.read') ?? false),
+            'can_read' => (bool) ($user?->can('meeting.read') ?? false),
             'can_create' => $this->canCreateMeeting($user),
             'can_export' => (bool) ($user?->can('meeting.export') ?? false),
             'can_delete' => (bool) ($user?->can('meeting.delete') ?? false),
@@ -744,7 +744,12 @@ class CorsecPermissionService
 
         return $user->hasRole(['maker', 'checker', 'approver', 'administrator', 'viewer'])
             || $user->can('corsec.read')
-            || $user->can('usermanagement.read');
+            || $user->can('usermanagement.read')
+            || $user->can('letter.read')
+            || $user->can('meeting.read')
+            || $user->can('workplan.read')
+            || $user->can('report.read')
+            || $user->can('library.read');
     }
 
     public function dashboardCounts(User $user): array
