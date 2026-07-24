@@ -27,7 +27,8 @@
                             @endif
 
                             @if ($permissionFlags['can_export'] ?? false)
-                                <a id="export-btn" class="btn btn-sm btn-light" href="{{ route('letter.outgoing.export') }}">
+                                <a id="export-btn" class="btn btn-sm btn-light"
+                                    href="{{ route('letter.outgoing.export') }}">
                                     Export to Excel
                                 </a>
                             @endif
@@ -54,10 +55,30 @@
                                     <th class="w-14">
                                         <input class="checkbox checkbox-sm" data-datatable-check="true" type="checkbox" />
                                     </th>
-                                    <th class="min-w-[180px]" data-datatable-column="registration_no">No Registrasi</th>
-                                    <th class="min-w-[180px]" data-datatable-column="letter_no">No Surat</th>
-                                    <th class="min-w-[160px]" data-datatable-column="order_date">Tanggal Order</th>
-                                    <th class="min-w-[220px]" data-datatable-column="subject">Perihal</th>
+                                    <th class="min-w-[180px]" data-datatable-column="registration_no">
+                                        <span class="sort">
+                                            <span class="sort-label">No Registrasi</span>
+                                            <span class="sort-icon"></span>
+                                        </span>
+                                    </th>
+                                    <th class="min-w-[180px]" data-datatable-column="letter_no">
+                                        <span class="sort">
+                                            <span class="sort-label">No Surat</span>
+                                            <span class="sort-icon"></span>
+                                        </span>
+                                    </th>
+                                    <th class="min-w-[160px]" data-datatable-column="order_date">
+                                        <span class="sort">
+                                            <span class="sort-label">Tanggal Order</span>
+                                            <span class="sort-icon"></span>
+                                        </span>
+                                    </th>
+                                    <th class="min-w-[220px]" data-datatable-column="subject">
+                                        <span class="sort">
+                                            <span class="sort-label">Perihal</span>
+                                            <span class="sort-icon"></span>
+                                        </span>
+                                    </th>
                                     <th class="min-w-[220px]" data-datatable-column="summary">Ringkasan</th>
                                     <th class="min-w-[180px]" data-datatable-column="recipient">Penerima</th>
                                     <th class="min-w-[180px]" data-datatable-column="letter_type">Jenis Surat</th>
@@ -66,7 +87,12 @@
                                     <th class="min-w-[220px]" data-datatable-column="circulation">Sirkulasi</th>
                                     <th class="min-w-[260px]" data-datatable-column="comments">Komentar</th>
                                     <th class="min-w-[220px]" data-datatable-column="attachments">Attachment</th>
-                                    <th class="min-w-[140px]" data-datatable-column="status">Status</th>
+                                    <th class="min-w-[140px]" data-datatable-column="status">
+                                        <span class="sort">
+                                            <span class="sort-label">Status</span>
+                                            <span class="sort-icon"></span>
+                                        </span>
+                                    </th>
                                     <th class="min-w-[70px] text-center" data-datatable-column="actions">Action</th>
                                 </tr>
                             </thead>
@@ -321,19 +347,19 @@
             return `<div class="flex flex-col gap-1">${list.map((attachment) => {
                 if (!attachment?.view_url) return '';
                 return `<a class="btn btn-xs btn-light justify-start" target="_blank" href="${attachment.view_url}">
-                    <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
-                </a>`;
+                        <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
+                    </a>`;
             }).join('')}</div>`;
         };
 
         const renderComments = (data) => {
             const comments = Array.isArray(data.comments) ? data.comments : [];
-            const commentList = comments.length > 0
-                ? `<div class="mb-2 space-y-1">${comments.map((comment) => `<div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs">
-                    <div>${escapeHtml(comment.body || '-')}</div>
-                    <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
-                </div>`).join('')}</div>`
-                : '<div class="mb-2 text-xs text-gray-500">Belum ada komentar.</div>';
+            const commentList = comments.length > 0 ?
+                `<div class="mb-2 space-y-1">${comments.map((comment) => `<div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs">
+                        <div>${escapeHtml(comment.body || '-')}</div>
+                        <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
+                    </div>`).join('')}</div>` :
+                '<div class="mb-2 text-xs text-gray-500">Belum ada komentar.</div>';
 
             if (!canComment || !data.comment_url) return commentList;
 
@@ -349,7 +375,8 @@
             if (val === 'waiting_dir_approval') normalized = 'waiting_dir_approval';
             if (val === 'compliance_review') normalized = 'compliance_review';
             if (val === 'waiting_compliance_approval') normalized = 'waiting_compliance_approval';
-            if (val === 'waiting_final_upload' || val === 'final_uploaded' || val === 'waiting_verification') normalized = 'waiting_final_upload';
+            if (val === 'waiting_final_upload' || val === 'final_uploaded' || val === 'waiting_verification')
+                normalized = 'waiting_final_upload';
             if (val === 'waiting_cancel_approval') normalized = 'waiting_cancel_approval';
             if (val === 'verified') normalized = 'done';
             if (val === 'returned') normalized = 'revisi';
@@ -558,7 +585,9 @@
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     },
-                    body: JSON.stringify({ note })
+                    body: JSON.stringify({
+                        note
+                    })
                 });
                 if (!response.ok) throw response;
                 if (typeof dataTable.reload === 'function') dataTable.reload();

@@ -62,9 +62,9 @@
                     <select class="select" name="directorate_id">
                         <option value="">- Semua -</option>
                         @foreach ($directorates as $directorate)
-                            <option value="{{ $directorate->id }}"
-                                {{ (string) ($filters['directorate_id'] ?? '') === (string) $directorate->id ? 'selected' : '' }}>
-                                {{ $directorate->displayName() }}
+                            <option value="{{ $directorate->label }}"
+                                {{ (string) ($filters['directorate_id'] ?? '') === (string) $directorate->label ? 'selected' : '' }}>
+                                {{ $directorate->label }}
                             </option>
                         @endforeach
                     </select>
@@ -74,7 +74,8 @@
                     <select class="select" name="status">
                         <option value="">- Semua -</option>
                         @foreach ($statusOptions as $value => $label)
-                            <option value="{{ $value }}" {{ ($filters['status'] ?? '') === $value ? 'selected' : '' }}>
+                            <option value="{{ $value }}"
+                                {{ ($filters['status'] ?? '') === $value ? 'selected' : '' }}>
                                 {{ $label }}
                             </option>
                         @endforeach
@@ -233,16 +234,20 @@
                             <tbody>
                                 @foreach ($rows as $row)
                                     @php
-                                        $badgeClass = $statusBadgeClasses[(string) ($row->status ?? '')] ?? 'badge-light';
-                                        $statusLabel = $statusOptions[(string) ($row->status ?? '')] ?? ($row->display_status_label ?? ($row->status ?? '-'));
-                                        $agingBucket = $row->report_aging_bucket ?? $row->aging_bucket ?? null;
-                                        $agingDays = $row->report_aging_days ?? $row->aging_days ?? null;
+                                        $badgeClass =
+                                            $statusBadgeClasses[(string) ($row->status ?? '')] ?? 'badge-light';
+                                        $statusLabel =
+                                            $statusOptions[(string) ($row->status ?? '')] ??
+                                            ($row->display_status_label ?? ($row->status ?? '-'));
+                                        $agingBucket = $row->report_aging_bucket ?? ($row->aging_bucket ?? null);
+                                        $agingDays = $row->report_aging_days ?? ($row->aging_days ?? null);
                                     @endphp
                                     <tr>
                                         @if ($activeModule === 'incoming')
                                             <td>
                                                 <div class="font-medium">{{ $row->registration_no ?? '-' }}</div>
-                                                <div class="text-xs text-gray-500">{{ $row->external_letter_no ?? '-' }}</div>
+                                                <div class="text-xs text-gray-500">{{ $row->external_letter_no ?? '-' }}
+                                                </div>
                                             </td>
                                             <td>
                                                 <a class="font-medium text-primary hover:underline"
@@ -261,7 +266,9 @@
                                             </td>
                                             <td>
                                                 @if ($agingBucket)
-                                                    <div>{{ $agingLabels[$agingBucket] ?? strtoupper((string) $agingBucket) }}</div>
+                                                    <div>
+                                                        {{ $agingLabels[$agingBucket] ?? strtoupper((string) $agingBucket) }}
+                                                    </div>
                                                     <div class="text-xs text-gray-500">{{ $agingDays ?? 0 }} hari</div>
                                                 @else
                                                     -
@@ -299,7 +306,9 @@
                                             </td>
                                             <td>
                                                 @if ($agingBucket)
-                                                    <div>{{ $agingLabels[$agingBucket] ?? strtoupper((string) $agingBucket) }}</div>
+                                                    <div>
+                                                        {{ $agingLabels[$agingBucket] ?? strtoupper((string) $agingBucket) }}
+                                                    </div>
                                                     <div class="text-xs text-gray-500">{{ $agingDays ?? 0 }} hari</div>
                                                 @else
                                                     -
@@ -311,14 +320,16 @@
                                                 <div class="text-xs text-gray-500">{{ $row->decision_key ?? '-' }}</div>
                                             </td>
                                             <td>
-                                                <div class="font-medium text-gray-800">{{ $row->decision_text ?? '-' }}</div>
+                                                <div class="font-medium text-gray-800">{{ $row->decision_text ?? '-' }}
+                                                </div>
                                                 <div class="text-xs text-gray-500">
                                                     {{ \Illuminate\Support\Str::limit($row->latest_update_note ?? '-', 120) }}
                                                 </div>
                                             </td>
                                             <td>
                                                 @if ($row->meeting)
-                                                    <a class="text-primary hover:underline" href="{{ route('meeting.show', $row->meeting) }}">
+                                                    <a class="text-primary hover:underline"
+                                                        href="{{ route('meeting.show', $row->meeting) }}">
                                                         {{ $row->meeting->title }}
                                                     </a>
                                                     <div class="text-xs text-gray-500">
@@ -341,7 +352,9 @@
                                             </td>
                                             <td>
                                                 @if ($agingBucket)
-                                                    <div>{{ $agingLabels[$agingBucket] ?? strtoupper((string) $agingBucket) }}</div>
+                                                    <div>
+                                                        {{ $agingLabels[$agingBucket] ?? strtoupper((string) $agingBucket) }}
+                                                    </div>
                                                     <div class="text-xs text-gray-500">{{ $agingDays ?? 0 }} hari</div>
                                                 @else
                                                     -
@@ -350,7 +363,8 @@
                                         @else
                                             <td>
                                                 @if ($row->program)
-                                                    <a class="text-primary hover:underline" href="{{ route('workplan.show', $row->program) }}">
+                                                    <a class="text-primary hover:underline"
+                                                        href="{{ route('workplan.show', $row->program) }}">
                                                         {{ $row->program->title }}
                                                     </a>
                                                 @else
@@ -370,7 +384,9 @@
                                             </td>
                                             <td>
                                                 @if ($agingBucket)
-                                                    <div>{{ $agingLabels[$agingBucket] ?? strtoupper((string) $agingBucket) }}</div>
+                                                    <div>
+                                                        {{ $agingLabels[$agingBucket] ?? strtoupper((string) $agingBucket) }}
+                                                    </div>
                                                     <div class="text-xs text-gray-500">{{ $agingDays ?? 0 }} hari</div>
                                                 @else
                                                     -

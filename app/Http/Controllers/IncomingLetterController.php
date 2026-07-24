@@ -143,7 +143,8 @@ class IncomingLetterController extends Controller
         $isInvitationLetter = $this->isInvitationLetterPayload($request, $letterTypeId);
         if ($isInvitationLetter) {
             $request->validate([
-                'register_due_date' => ['required', 'date'],
+                'register_due_date' => ['nullable', 'date'],
+                // 'register_due_date' => ['required', 'date'],
             ]);
         }
 
@@ -439,7 +440,8 @@ class IncomingLetterController extends Controller
         $isInvitationLetter = $this->isInvitationLetterPayload($request, $letterTypeId, $incomingLetter);
         if ($isInvitationLetter) {
             $request->validate([
-                'register_due_date' => ['required', 'date'],
+                'register_due_date' => ['nullable', 'date'],
+                // 'register_due_date' => ['required', 'date'],
             ]);
         }
 

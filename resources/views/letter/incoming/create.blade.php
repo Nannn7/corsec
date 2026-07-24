@@ -254,8 +254,8 @@
                             <input class="input @error('register_due_date') border-danger bg-danger-light @enderror"
                                 type="date" name="register_due_date" id="register_due_date"
                                 value="{{ old('register_due_date', $incomingLetter?->register_due_date?->format('Y-m-d')) }}">
-                            <div class="mt-1 text-xs text-gray-500">Wajib diisi jika surat yang diterima berupa undangan.
-                            </div>
+                            {{--  <div class="mt-1 text-xs text-gray-500">Wajib diisi jika surat yang diterima berupa undangan.
+                            </div>  --}}
                             @error('register_due_date')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
@@ -569,9 +569,6 @@
                         }
                         if (letterTypeValue === 'other' && !$form.find('[name="letter_type_other"]').val()) {
                             errors.letter_type_other = requiredMessage;
-                        }
-                        if (isInvitationLetter() && !$form.find('[name="register_due_date"]').val()) {
-                            errors.register_due_date = 'Due date register wajib diisi untuk surat undangan.';
                         }
                         const targetDateValue = $form.find('[name="target_date"]').val();
                         if (targetDateValue && targetDateValue < todayYmd) {
