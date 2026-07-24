@@ -454,8 +454,8 @@ class MeetingWorkflowService
             }
 
             $isAdmin = $actor->hasRole('administrator');
-            $isCheckerExecutiveOfficer = $actor->hasRole('checker') && $this->isExecutiveOfficer($actor);
-            $isApproverDeputyDirector = $actor->hasRole('approver') && $this->isDeputyDirector($actor);
+            $isCheckerExecutiveOfficer = $actor->can('meeting.checker_action') && $this->isExecutiveOfficer($actor);
+            $isApproverDeputyDirector = $actor->can('meeting.approver_action') && $this->isDeputyDirector($actor);
             $requiresCheckerApproval = $this->requiresCheckerApproval($pending);
             $checkerApproved = $requiresCheckerApproval
                 ? $this->isCheckerApprovedInCurrentRound($meeting, $pending->created_at)
@@ -950,7 +950,7 @@ class MeetingWorkflowService
             abort(403, 'Direktorat Corporate Secretary belum terkonfigurasi.');
         }
 
-        $isChecker = $actor->hasRole('checker');
+        $isChecker = $actor->can('meeting.checker_action');
         $isCorpSecretary = (int) ($actor->directorate_id ?? 0) === (int) $directorateId;
 
         if (!$isChecker || !$isCorpSecretary) {

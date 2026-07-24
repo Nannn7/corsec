@@ -169,22 +169,28 @@ class SenderController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($sender, $user) {
-                $sender->update(['deleted_by' => $user->id]);
-                $sender->delete();
-            });
+            $oldPayload = $sender->only(['name']);
 
-            Log::info('Sender deleted successfully', [
+            $this->approvalService->createRequest(
+                Sender::class,
+                ApprovalRequest::ACTION_DELETE,
+                (string) $sender->id,
+                [],
+                $oldPayload,
+                'Pengajuan delete sender: ' . $sender->name
+            );
+
+            Log::info('Sender delete requested for approval', [
                 'sender_id' => $sender->id,
                 'user_id' => $user->id
             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Pengirim berhasil dihapus.'
+                'message' => 'Pengajuan delete pengirim berhasil dikirim untuk approval.'
             ]);
         } catch (Exception $e) {
-            Log::error('Failed to delete sender: ' . $e->getMessage(), [
+            Log::error('Failed to submit sender delete request: ' . $e->getMessage(), [
                 'sender_id' => $sender->id,
                 'user_id' => $user->id,
                 'trace' => $e->getTraceAsString()
@@ -192,7 +198,7 @@ class SenderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus pengirim. Silakan coba lagi.'
+                'message' => 'Gagal mengajukan hapus pengirim. Silakan coba lagi.'
             ], 500);
         }
     }
@@ -235,21 +241,29 @@ class SenderController extends Controller
             }
 
             DB::transaction(function () use ($ids, $user) {
-                Sender::whereIn('id', $ids)->update(['deleted_by' => $user->id]);
-                Sender::whereIn('id', $ids)->delete();
+                foreach (Sender::whereIn('id', $ids)->get() as $sender) {
+                    $this->approvalService->createRequest(
+                        Sender::class,
+                        ApprovalRequest::ACTION_DELETE,
+                        (string) $sender->id,
+                        [],
+                        $sender->only(['name']),
+                        'Pengajuan delete sender: ' . $sender->name
+                    );
+                }
             });
 
-            Log::info('Multiple sender deleted successfully', [
+            Log::info('Multiple sender delete requested for approval', [
                 'requested_ids' => $ids,
                 'user_id' => $user->id,
             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Pengirim terpilih berhasil dihapus.'
+                'message' => 'Pengajuan delete pengirim terpilih berhasil dikirim untuk approval.'
             ]);
         } catch (Exception $e) {
-            Log::error('Failed to delete multiple sender: ' . $e->getMessage(), [
+            Log::error('Failed to submit multiple sender delete request: ' . $e->getMessage(), [
                 'requested_ids' => $ids ?? [],
                 'user_id' => $user->id,
                 'trace' => $e->getTraceAsString()
@@ -257,7 +271,7 @@ class SenderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus pengirim terpilih. Silakan coba lagi.',
+                'message' => 'Gagal mengajukan delete pengirim terpilih. Silakan coba lagi.',
                 'error_details' => $e->getMessage()
             ], 500);
         }

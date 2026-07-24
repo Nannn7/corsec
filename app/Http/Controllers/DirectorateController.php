@@ -199,30 +199,36 @@ class DirectorateController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($directorate, $user) {
-                $directorate->update(['deleted_by' => $user->id]);
-                $directorate->delete();
-            });
+            $oldPayload = $directorate->only(['code', 'name']);
 
-            Log::info('Directorate deleted successfully', [
-                'directorate_id' => $directorate->id,
-                'user_id' => $user->id
-            ]);
+            $this->approvalService->createRequest(
+                Directorate::class,
+                ApprovalRequest::ACTION_DELETE,
+                (string) $directorate->id,
+                [],
+                $oldPayload,
+                'Pengajuan delete directorate: ' . $directorate->name
+            );
+
+            Log::info('Directorate delete requested for approval', [
+                 'directorate_id' => $directorate->id,
+                 'user_id' => $user->id
+             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Direktorat berhasil dihapus.'
+                'message' => 'Pengajuan hapus direktorat berhasil dikirim untuk approval.'
             ]);
         } catch (Exception $e) {
-            Log::error('Failed to delete directorate: ' . $e->getMessage(), [
+            Log::error('Failed to submit directorate delete request: ' . $e->getMessage(), [
                 'directorate_id' => $directorate->id,
-                'user_id' => $user->id,
-                'trace' => $e->getTraceAsString()
-            ]);
+                 'user_id' => $user->id,
+                 'trace' => $e->getTraceAsString()
+             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus direktorat. Silakan coba lagi.'
+                'message' => 'Gagal mengirim pengajuan hapus direktorat. Silakan coba lagi.'
             ], 500);
         }
     }
@@ -269,29 +275,37 @@ class DirectorateController extends Controller
             }
 
             DB::transaction(function () use ($ids, $user) {
-                Directorate::whereIn('id', $ids)->update(['deleted_by' => $user->id]);
-                Directorate::whereIn('id', $ids)->delete();
+                foreach (Directorate::whereIn('id', $ids)->get() as $directorate) {
+                    $this->approvalService->createRequest(
+                        Directorate::class,
+                        ApprovalRequest::ACTION_DELETE,
+                        (string) $directorate->id,
+                        [],
+                        $directorate->only(['code', 'name']),
+                        'Pengajuan delete directorate: ' . $directorate->name
+                    );
+                }
             });
 
-            Log::info('Multiple directorate deleted successfully', [
-                'requested_ids' => $ids,
-                'user_id' => $user->id,
-            ]);
+            Log::info('Multiple directorate delete requested for approval', [
+                 'requested_ids' => $ids,
+                 'user_id' => $user->id,
+             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Direktorat terpilih berhasil dihapus.'
+                'message' => 'Pengajuan hapus direktorat terpilih berhasil dikirim untuk approval.'
             ]);
         } catch (Exception $e) {
-            Log::error('Failed to delete multiple directorate: ' . $e->getMessage(), [
-                'requested_ids' => $ids ?? [],
-                'user_id' => $user->id,
-                'trace' => $e->getTraceAsString()
+            Log::error('Failed to submit multiple directorate delete request: ' . $e->getMessage(), [
+                 'requested_ids' => $ids ?? [],
+                 'user_id' => $user->id,
+                 'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus direktorat terpilih. Silakan coba lagi.',
+                'message' => 'Gagal mengirim pengajuan hapus direktorat terpilih. Silakan coba lagi.',
                 'error_details' => $e->getMessage()
             ], 500);
         }

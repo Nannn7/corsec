@@ -1214,7 +1214,7 @@ class IncomingLetterController extends Controller
         $isExecutiveOfficer = $this->permissionService->isExecutiveOfficer($user);
         $isSekretariatDireksi = $this->permissionService->isSekretariatDireksi($user);
         $isEoCorpSecretaryChecker =
-            $user && $user->hasRole('checker') && $this->permissionService->isCorpSecretaryDirectorate($user) && $isExecutiveOfficer;
+            $user && $user->can('letter.checker_action') && $this->permissionService->isCorpSecretaryDirectorate($user) && $isExecutiveOfficer;
 
         if (!$user || (!$isAdmin && !$isTargetDirectorate && !$isEoCorpSecretaryChecker && !$isSekretariatDireksi)) {
             abort(403, 'Anda tidak memiliki akses untuk menambahkan monitoring.');
