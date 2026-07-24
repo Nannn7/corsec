@@ -42,7 +42,7 @@ class ApproverController extends Controller
     public function datatables(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->can('corsec.authorize')) {
+        if (!$user || !($user->can('corsec.authorize') || $user->can('corsec.read'))) {
             return response()->json([
                 'success' => false,
                 'message' => 'Anda tidak memiliki akses untuk melihat daftar persetujuan.'

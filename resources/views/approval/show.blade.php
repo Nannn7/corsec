@@ -281,7 +281,7 @@
             </div>
         @endif
 
-        @if ($approvalRequest->status === 'pending')
+        @if ($approvalRequest->status === 'pending' && auth()->user()->can('corsec.authorize'))
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Tindakan</h3>

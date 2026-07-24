@@ -9,8 +9,7 @@
     ],
     "files": [],
     "menu": {
-        "main": [
-            {
+        "main": [{
                 "title": "Letter",
                 "path": "letter",
                 "icon": "ki-filled ki-document text-lg text-primary",
@@ -25,8 +24,7 @@
                     "approver",
                     "viewer"
                 ],
-                "sub": [
-                    {
+                "sub": [{
                         "title": "Incoming Letter",
                         "path": "letter.incoming",
                         "classes": "",
@@ -123,8 +121,7 @@
                 ]
             }
         ],
-        "master": [
-            {
+        "master": [{
                 "title": "Directorate",
                 "path": "directorate",
                 "icon": "ki-filled ki-office-bag text-lg text-primary",
@@ -159,8 +156,7 @@
                     "administrator",
                     "admin siskon"
                 ],
-                "sub": [
-                    {
+                "sub": [{
                         "title": "Letter Types In",
                         "path": "letter-type.in",
                         "classes": "",
@@ -197,19 +193,17 @@
                 ]
             }
         ],
-        "otorisator": [
-            {
-                "title": "Approval Requests",
-                "path": "approval",
-                "icon": "ki-filled ki-shield-tick text-lg text-primary",
-                "classes": "",
-                "attributes": [],
-                "permission": "corsec.authorize",
-                "roles": [
-                    "administrator",
-                    "admin siskon"
-                ]
-            }
-        ]
+        "otorisator": [{
+            "title": "Approval Requests",
+            "path": "approval",
+            "icon": "ki-filled ki-shield-tick text-lg text-primary",
+            "classes": "",
+            "attributes": [],
+            "permission": "corsec.read|corsec.authorize",
+            "roles": [
+                "administrator",
+                "admin siskon"
+            ]
+        }]
     }
 }
