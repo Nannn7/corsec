@@ -46,6 +46,62 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="flex flex-wrap items-end gap-3.5 px-5 py-4 border-b border-gray-200"
+                    id="outgoing-letter-filters">
+                    <div class="flex flex-col gap-1">
+                        <label class="form-label text-2sm">Status</label>
+                        <select class="select select-sm w-48" id="filter-status">
+                            <option value="">- Semua -</option>
+                            <option value="draft">Draft</option>
+                            <option value="waiting_dir_approval">Approval Direktorat</option>
+                            <option value="compliance_review">Review Kepatuhan</option>
+                            <option value="waiting_compliance_approval">Approval EO dan DD Kepatuhan</option>
+                            <option value="waiting_final_upload">Final Upload</option>
+                            <option value="waiting_cancel_approval">Approval Pembatalan EO Direktorat</option>
+                            <option value="verified">Done</option>
+                            <option value="returned">Revisi</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="form-label text-2sm">Penerima</label>
+                        <select class="select select-sm w-48" id="filter-recipient">
+                            <option value="">- Semua -</option>
+                            @foreach ($recipients as $recipient)
+                                <option value="{{ $recipient->id }}">{{ $recipient->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="form-label text-2sm">Jenis Surat</label>
+                        <select class="select select-sm w-44" id="filter-letter-type">
+                            <option value="">- Semua -</option>
+                            @foreach ($letterTypes as $letterType)
+                                <option value="{{ $letterType->id }}">{{ $letterType->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="form-label text-2sm">Jenis Perihal</label>
+                        <select class="select select-sm w-44" id="filter-perihal-type">
+                            <option value="">- Semua -</option>
+                            <option value="tanggapan_surat_masuk">Tanggapan Surat Masuk</option>
+                            <option value="rutinitas">Rutinitas</option>
+                            <option value="insidentil">Insidentil</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="form-label text-2sm">Tanggal Order</label>
+                        <div class="flex items-center gap-1.5">
+                            <input type="date" class="input input-sm w-36" id="filter-order-date-from">
+                            <span class="text-2sm text-gray-500">s/d</span>
+                            <input type="date" class="input input-sm w-36" id="filter-order-date-to">
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-light" id="filter-reset">Reset Filter</button>
+                </div>
+
                 <div class="card-body">
                     <div class="scrollable-x-auto">
                         <table class="table text-sm font-medium text-gray-700 align-middle table-auto table-border"
@@ -83,7 +139,8 @@
                                     <th class="min-w-[180px]" data-datatable-column="recipient">Penerima</th>
                                     <th class="min-w-[180px]" data-datatable-column="letter_type">Jenis Surat</th>
                                     <th class="min-w-[120px]" data-datatable-column="perihal_type">Jenis Perihal</th>
-                                    <th class="min-w-[170px]" data-datatable-column="requester_directorate">Direktorat</th>
+                                    <th class="min-w-[170px]" data-datatable-column="requester_directorate">Direktorat
+                                    </th>
                                     <th class="min-w-[220px]" data-datatable-column="circulation">Sirkulasi</th>
                                     <th class="min-w-[260px]" data-datatable-column="comments">Komentar</th>
                                     <th class="min-w-[220px]" data-datatable-column="attachments">Attachment</th>
@@ -102,7 +159,8 @@
                         class="flex-col gap-3 justify-center font-medium text-gray-600 card-footer md:justify-between md:flex-row text-2sm">
                         <div class="flex gap-2 items-center">
                             Show
-                            <select class="w-16 select select-sm" data-datatable-size="true" name="perpage"> </select> per
+                            <select class="w-16 select select-sm" data-datatable-size="true" name="perpage"> </select>
+                            per
                             page
                         </div>
                         <div class="flex gap-4 items-center">
@@ -316,6 +374,43 @@
         const deleteSelectedButton = document.getElementById('deleteSelected');
         const apiUrl = element.getAttribute('data-api-url');
         const baseUrl = element.getAttribute('data-base-url');
+
+        // --- Filter panel (Status, Penerima, Jenis Surat, Jenis Perihal, rentang Tanggal Order) ---
+        const filterElements = {
+            status: document.getElementById('filter-status'),
+            recipient_id: document.getElementById('filter-recipient'),
+            letter_type_id: document.getElementById('filter-letter-type'),
+            perihal_type: document.getElementById('filter-perihal-type'),
+            order_date_from: document.getElementById('filter-order-date-from'),
+            order_date_to: document.getElementById('filter-order-date-to'),
+        };
+        const filterResetButton = document.getElementById('filter-reset');
+
+        function getActiveFilters() {
+            const filters = {};
+            Object.entries(filterElements).forEach(([key, el]) => {
+                if (el && el.value) filters[key] = el.value;
+            });
+            return filters;
+        }
+
+        function applyFiltersFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            Object.entries(filterElements).forEach(([key, el]) => {
+                if (el && params.has(key)) el.value = params.get(key);
+            });
+            if (params.has('search')) searchInput.value = params.get('search');
+        }
+
+        function updateUrlFromFilters() {
+            const url = new URL(window.location.href);
+            url.search = '';
+            Object.entries(getActiveFilters()).forEach(([key, value]) => url.searchParams.set(key, value));
+            if (searchInput.value) url.searchParams.set('search', searchInput.value);
+            window.history.replaceState({}, '', url.toString());
+        }
+
+        applyFiltersFromUrl();
         const isAdmin = @json((bool) ($permissionFlags['is_admin'] ?? false));
         const hasOperationalRole = @json((bool) ($permissionFlags['has_operational_role'] ?? false));
         const isViewerRole = @json((bool) ($permissionFlags['is_viewer_role'] ?? false));
@@ -421,6 +516,10 @@
         const dataTableOptions = {
             apiEndpoint: apiUrl,
             pageSize: 10,
+            mapRequest: (params) => {
+                Object.entries(getActiveFilters()).forEach(([key, value]) => params.set(key, value));
+                return params;
+            },
             columns: {
                 select: {
                     render: (item, data) => {
@@ -615,6 +714,27 @@
             const searchValue = this.value.trim();
             dataTable.search(searchValue, true);
             dataTable.goPage(1);
+            updateUrlFromFilters();
+            updateExportUrl();
+        });
+
+        Object.values(filterElements).forEach((el) => {
+            if (!el) return;
+            el.addEventListener('change', function() {
+                dataTable.goPage(1);
+                dataTable.reload();
+                updateUrlFromFilters();
+                updateExportUrl();
+            });
+        });
+
+        filterResetButton?.addEventListener('click', function() {
+            Object.values(filterElements).forEach((el) => {
+                if (el) el.value = '';
+            });
+            dataTable.goPage(1);
+            dataTable.reload();
+            updateUrlFromFilters();
             updateExportUrl();
         });
 

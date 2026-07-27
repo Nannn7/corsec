@@ -228,6 +228,7 @@
                         <div class="flex flex-col">
                             <label class="form-label">Tanggal Upload Final (wajib jika Simpan Draft)</label>
                             <input class="input" type="date" name="final_upload_date"
+                                min="{{ now()->format('Y-m-d') }}"
                                 value="{{ old('final_upload_date', optional($outgoingLetter->final_upload_date)->format('Y-m-d')) }}">
                         </div>
                         <div class="flex flex-col">
@@ -284,8 +285,7 @@
                         <div class="flex flex-col">
                             <label class="form-label">Komentar Viewer (Direksi / Sekdir / Corporate Secretary) <span
                                     class="text-danger">*</span></label>
-                            <textarea class="textarea w-full" name="note" rows="3"
-                                placeholder="Tambahkan komentar viewer..." required></textarea>
+                            <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan komentar viewer..." required></textarea>
                         </div>
                         <div class="flex justify-end">
                             <button class="btn btn-primary" type="submit">Simpan Komentar</button>
@@ -337,7 +337,7 @@
 
         <div class="card">
             <div class="card-header">
-                    <h3 class="card-title">Riwayat Komentar</h3>
+                <h3 class="card-title">Riwayat Komentar</h3>
             </div>
             <div class="card-body">
                 @if ($sortedComments->count() > 0)

@@ -40,8 +40,10 @@ class OutgoingLetterController extends Controller
         $user = Auth::user();
         $canCreate = $this->permissionService->canCreateOutgoing($user);
         $permissionFlags = $this->permissionService->outgoingIndexFlags($user);
+        $recipients = $this->getCachedSenders();
+        $letterTypes = $this->getOutgoingLetterTypes($user);
 
-        return view('corsec::letter.outgoing.index', compact('canCreate', 'permissionFlags'));
+        return view('corsec::letter.outgoing.index', compact('canCreate', 'permissionFlags', 'recipients', 'letterTypes'));
     }
 
     public function datatables(Request $request)
@@ -76,7 +78,33 @@ class OutgoingLetterController extends Controller
         $this->scopeOutgoingVisibility($baseCountQuery, $user);
 
         if ($request->filled('status')) {
-            $query->where('status', $request->string('status'));
+            $statusFilter = $request->string('status')->toString();
+            // "Final Upload" in the status badge groups 3 raw status values together
+            // (see the statusBadge() normalizer in outgoing/index.blade.php JS), so a
+            // single filter option needs to match all 3 underlying values.
+            $statusGroups = [
+                'waiting_final_upload' => ['waiting_final_upload', 'final_uploaded', 'waiting_verification'],
+            ];
+            if (isset($statusGroups[$statusFilter])) {
+                $query->whereIn('status', $statusGroups[$statusFilter]);
+            } else {
+                $query->where('status', $statusFilter);
+            }
+        }
+        if ($request->filled('recipient_id')) {
+            $query->where('recipient_id', $request->string('recipient_id')->toString());
+        }
+        if ($request->filled('letter_type_id')) {
+            $query->where('letter_type_id', $request->string('letter_type_id')->toString());
+        }
+        if ($request->filled('perihal_type')) {
+            $query->where('perihal_type', $request->string('perihal_type')->toString());
+        }
+        if ($request->filled('order_date_from')) {
+            $query->whereDate('order_date', '>=', $request->string('order_date_from')->toString());
+        }
+        if ($request->filled('order_date_to')) {
+            $query->whereDate('order_date', '<=', $request->string('order_date_to')->toString());
         }
 
         $search = trim((string) $request->get('search', ''));
@@ -102,7 +130,13 @@ class OutgoingLetterController extends Controller
             });
         }
 
-        $isFiltered = $search !== '' || $request->filled('status');
+        $isFiltered = $search !== ''
+            || $request->filled('status')
+            || $request->filled('recipient_id')
+            || $request->filled('letter_type_id')
+            || $request->filled('perihal_type')
+            || $request->filled('order_date_from')
+            || $request->filled('order_date_to');
         $totalRecords = $baseCountQuery->count();
         $filteredRecords = $isFiltered ? (clone $query)->count() : $totalRecords;
 
@@ -883,17 +917,32 @@ class OutgoingLetterController extends Controller
             abort(403, 'Upload final surat hanya untuk staff maker dari direktorat terkait.');
         }
 
-        $request->validate([
-            'submit_action' => ['nullable', Rule::in(['draft', 'upload'])],
-            'final_upload_date' => ['nullable', 'date'],
-            'final_file' => ['nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
-        ]);
+        $request->validate(
+            [
+                'submit_action' => ['nullable', Rule::in(['draft', 'upload'])],
+                'final_file' => ['required', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
+                'final_upload_date' => ['nullable', 'date', 'after_or_equal:today'],
+            ],
+            [
+                'final_upload_date.after_or_equal' => 'Tanggal Upload Final tidak boleh kurang dari tanggal hari ini.',
+            ]
+        );
 
         $submitAction = (string) $request->input('submit_action', 'upload');
         if ($submitAction === 'draft') {
-            $request->validate([
-                'final_upload_date' => ['required', 'date'],
-            ]);
+            $request->validate(
+                [
+                    'final_upload_date' => [
+                        'required',
+                        'date',
+                        'after_or_equal:today',
+                    ],
+                ],
+                [
+                    'final_upload_date.required' => 'Tanggal Upload Final wajib diisi.',
+                    'final_upload_date.after_or_equal' => 'Tanggal Upload Final tidak boleh kurang dari tanggal hari ini.',
+                ]
+            );
 
             $outgoingLetter->update([
                 'final_upload_date' => $request->input('final_upload_date'),

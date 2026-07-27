@@ -661,6 +661,21 @@ class IncomingLetterController extends Controller
             if ($request->filled('directorate_id')) {
                 $query->where('target_directorate_id', (int) $request->directorate_id);
             }
+            if ($request->filled('sender_id')) {
+                $query->where('sender_id', $request->string('sender_id')->toString());
+            }
+            if ($request->filled('letter_date_from')) {
+                $query->whereDate('letter_date', '>=', $request->string('letter_date_from')->toString());
+            }
+            if ($request->filled('letter_date_to')) {
+                $query->whereDate('letter_date', '<=', $request->string('letter_date_to')->toString());
+            }
+            if ($request->filled('received_date_from')) {
+                $query->whereDate('received_date', '>=', $request->string('received_date_from')->toString());
+            }
+            if ($request->filled('received_date_to')) {
+                $query->whereDate('received_date', '<=', $request->string('received_date_to')->toString());
+            }
 
             // search (sesuai template: param "search")
             $search = trim((string) $request->get('search', ''));
@@ -683,7 +698,14 @@ class IncomingLetterController extends Controller
 
             // total counts
             $totalRecords = $baseCountQuery->count();
-            $isFiltered = $search !== '' || $request->filled('status') || $request->filled('directorate_id');
+            $isFiltered = $search !== ''
+                || $request->filled('status')
+                || $request->filled('directorate_id')
+                || $request->filled('sender_id')
+                || $request->filled('letter_date_from')
+                || $request->filled('letter_date_to')
+                || $request->filled('received_date_from')
+                || $request->filled('received_date_to');
             $filteredRecords = $isFiltered ? (clone $query)->count() : $totalRecords;
 
             // sorting (KTDataTable biasanya kirim sortField/sortOrder)
