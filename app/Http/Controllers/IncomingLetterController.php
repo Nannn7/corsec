@@ -656,7 +656,19 @@ class IncomingLetterController extends Controller
 
             // optional filter kalau nanti mau dipakai dari UI
             if ($request->filled('status')) {
-                $query->where('status', $request->string('status')->toString());
+                $statusFilter = $request->string('status')->toString();
+                if ($statusFilter === 'needs_followup') {
+                    // Dipakai oleh tombol "Butuh Tindak Lanjut" di dashboard: disamakan
+                    // dengan definisi "incomingOpen" (semua status selain Verified,
+                    // Rejected, dan Returned) supaya angka dan isi listnya sinkron.
+                    $query->whereNotIn('status', [
+                        IncomingLetter::STATUS_VERIFIED,
+                        IncomingLetter::STATUS_REJECTED,
+                        IncomingLetter::STATUS_RETURNED,
+                    ]);
+                } else {
+                    $query->where('status', $statusFilter);
+                }
             }
             if ($request->filled('directorate_id')) {
                 $query->where('target_directorate_id', (int) $request->directorate_id);
