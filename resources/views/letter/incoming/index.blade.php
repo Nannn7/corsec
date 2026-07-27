@@ -44,6 +44,51 @@
                 </div>
             </div>
 
+            <div class="flex flex-wrap items-end gap-3.5 px-5 py-4 border-b border-gray-200" id="incoming-letter-filters">
+                <div class="flex flex-col gap-1">
+                    <label class="form-label text-2sm">Status</label>
+                    <select class="select select-sm w-40" id="filter-status">
+                        <option value="">- Semua -</option>
+                        <option value="draft">Draft</option>
+                        <option value="on_approval">On Approval</option>
+                        <option value="dispatched">Dispatched</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="waiting_dir_approval">Waiting Dir Approval</option>
+                        <option value="waiting_response_letter">Waiting Response Letter</option>
+                        <option value="waiting_verification">Waiting Validation</option>
+                        <option value="verified">Verified</option>
+                        <option value="returned">Returned</option>
+                        <option value="rejected">Rejected</option>
+                    </select>
+                </div>
+                <div class="flex flex-col gap-1">
+                    <label class="form-label text-2sm">Pengirim</label>
+                    <select class="select select-sm w-48" id="filter-sender">
+                        <option value="">- Semua -</option>
+                        @foreach ($senders as $sender)
+                            <option value="{{ $sender->id }}">{{ $sender->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="flex flex-col gap-1">
+                    <label class="form-label text-2sm">Tanggal Surat</label>
+                    <div class="flex items-center gap-1.5">
+                        <input type="date" class="input input-sm w-36" id="filter-letter-date-from">
+                        <span class="text-2sm text-gray-500">s/d</span>
+                        <input type="date" class="input input-sm w-36" id="filter-letter-date-to">
+                    </div>
+                </div>
+                <div class="flex flex-col gap-1">
+                    <label class="form-label text-2sm">Tanggal Diterima</label>
+                    <div class="flex items-center gap-1.5">
+                        <input type="date" class="input input-sm w-36" id="filter-received-date-from">
+                        <span class="text-2sm text-gray-500">s/d</span>
+                        <input type="date" class="input input-sm w-36" id="filter-received-date-to">
+                    </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-light" id="filter-reset">Reset Filter</button>
+            </div>
+
             <div class="card-body">
                 <div class="scrollable-x-auto">
                     <table class="table text-sm font-medium text-gray-700 align-middle table-auto table-border"
@@ -61,7 +106,7 @@
                                     </span>
                                 </th>
 
-				<th class="min-w-[200px]" data-datatable-column="sender_id">
+                                <th class="min-w-[200px]" data-datatable-column="sender_id">
                                     <span class="sort">
                                         <span class="sort-label">Pengirim</span>
                                         <span class="sort-icon"></span>
@@ -250,6 +295,43 @@
         const canEditAction = @json((bool) ($permissionFlags['can_edit_action'] ?? false));
         const canComment = @json((bool) ($permissionFlags['can_comment'] ?? false));
 
+        // --- Filter panel (Status, Pengirim, rentang Tanggal Surat & Tanggal Diterima) ---
+        const filterElements = {
+            status: document.getElementById('filter-status'),
+            sender_id: document.getElementById('filter-sender'),
+            letter_date_from: document.getElementById('filter-letter-date-from'),
+            letter_date_to: document.getElementById('filter-letter-date-to'),
+            received_date_from: document.getElementById('filter-received-date-from'),
+            received_date_to: document.getElementById('filter-received-date-to'),
+        };
+        const filterResetButton = document.getElementById('filter-reset');
+
+        function getActiveFilters() {
+            const filters = {};
+            Object.entries(filterElements).forEach(([key, el]) => {
+                if (el && el.value) filters[key] = el.value;
+            });
+            return filters;
+        }
+
+        function applyFiltersFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            Object.entries(filterElements).forEach(([key, el]) => {
+                if (el && params.has(key)) el.value = params.get(key);
+            });
+            if (params.has('search')) searchInput.value = params.get('search');
+        }
+
+        function updateUrlFromFilters() {
+            const url = new URL(window.location.href);
+            url.search = '';
+            Object.entries(getActiveFilters()).forEach(([key, value]) => url.searchParams.set(key, value));
+            if (searchInput.value) url.searchParams.set('search', searchInput.value);
+            window.history.replaceState({}, '', url.toString());
+        }
+
+        applyFiltersFromUrl();
+
         const escapeHtml = (value) => {
             const div = document.createElement('div');
             div.textContent = value ?? '';
@@ -268,19 +350,19 @@
             return `<div class="flex flex-col gap-1">${list.map((attachment) => {
                 if (!attachment?.view_url) return '';
                 return `<a class="btn btn-xs btn-light justify-start" target="_blank" href="${attachment.view_url}">
-                    <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
-                </a>`;
+                        <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
+                    </a>`;
             }).join('')}</div>`;
         };
 
         const renderComments = (data) => {
             const comments = Array.isArray(data.comments) ? data.comments : [];
-            const commentList = comments.length > 0
-                ? `<div class="mb-2 space-y-1">${comments.map((comment) => `<div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs">
-                    <div>${escapeHtml(comment.body || '-')}</div>
-                    <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
-                </div>`).join('')}</div>`
-                : '<div class="mb-2 text-xs text-gray-500">Belum ada komentar.</div>';
+            const commentList = comments.length > 0 ?
+                `<div class="mb-2 space-y-1">${comments.map((comment) => `<div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs">
+                        <div>${escapeHtml(comment.body || '-')}</div>
+                        <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
+                    </div>`).join('')}</div>` :
+                '<div class="mb-2 text-xs text-gray-500">Belum ada komentar.</div>';
 
             if (!canComment || !data.comment_url) return commentList;
 
@@ -337,6 +419,10 @@
         const dataTableOptions = {
             apiEndpoint: apiUrl,
             pageSize: 10,
+            mapRequest: (params) => {
+                Object.entries(getActiveFilters()).forEach(([key, value]) => params.set(key, value));
+                return params;
+            },
             columns: {
                 select: {
                     render: (item, data) => {
@@ -360,7 +446,7 @@
                     render: (item, data) => data.registration_no ?? '-',
                 },
 
-		sender_id: {
+                sender_id: {
                     title: 'Pengirim',
                     render: (item, data) => {
                         if (data.sender && data.sender.name) return `${data.sender.name}`;
@@ -496,7 +582,9 @@
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     },
-                    body: JSON.stringify({ note })
+                    body: JSON.stringify({
+                        note
+                    })
                 });
                 if (!response.ok) throw response;
                 if (typeof dataTable.reload === 'function') dataTable.reload();
@@ -522,6 +610,27 @@
             const searchValue = this.value.trim();
             dataTable.goPage(1);
             dataTable.search(searchValue, true);
+            updateUrlFromFilters();
+            updateExportUrl();
+        });
+
+        Object.values(filterElements).forEach((el) => {
+            if (!el) return;
+            el.addEventListener('change', function() {
+                dataTable.goPage(1);
+                dataTable.reload();
+                updateUrlFromFilters();
+                updateExportUrl();
+            });
+        });
+
+        filterResetButton?.addEventListener('click', function() {
+            Object.values(filterElements).forEach((el) => {
+                if (el) el.value = '';
+            });
+            dataTable.goPage(1);
+            dataTable.reload();
+            updateUrlFromFilters();
             updateExportUrl();
         });
 
@@ -546,6 +655,7 @@
             selectAllCheckbox.addEventListener('change', updateDeleteButtonVisibility);
         }
 
+        updateExportUrl();
         window.dataTable = dataTable;
     </script>
 @endpush
