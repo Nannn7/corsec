@@ -164,7 +164,7 @@ class CorsecPermissionService
     public function isEoCorpAffairActor(?User $user): bool
     {
         if (!$user || !$this->hasAnyStageAction($user, ['checker_action', 'approver_action'])) {
-             return false;
+            return false;
         }
 
         return $this->isCorpSecretaryDirectorate($user);
@@ -853,6 +853,10 @@ class CorsecPermissionService
                 'route' => route('letter.incoming.index'),
                 'accent' => '#0ea5e9',
                 'action' => 'Buka Incoming Letter',
+                'followup_route' => (int) ($counts['incomingOpen'] ?? 0) > 0
+                    ? route('letter.incoming.index', ['status' => 'needs_followup'])
+                    : null,
+                'followup_action' => 'Butuh Tindak Lanjut',
             ],
             [
                 'key' => 'outgoing',
@@ -862,6 +866,10 @@ class CorsecPermissionService
                 'route' => route('letter.outgoing.index'),
                 'accent' => '#f97316',
                 'action' => 'Buka Outgoing Letter',
+                'followup_route' => (int) ($counts['outgoingOpen'] ?? 0) > 0
+                    ? route('letter.outgoing.index', ['status' => 'needs_followup'])
+                    : null,
+                'followup_action' => 'Butuh Tindak Lanjut',
             ],
             [
                 'key' => 'meeting',

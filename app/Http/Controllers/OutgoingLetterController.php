@@ -85,7 +85,17 @@ class OutgoingLetterController extends Controller
             $statusGroups = [
                 'waiting_final_upload' => ['waiting_final_upload', 'final_uploaded', 'waiting_verification'],
             ];
-            if (isset($statusGroups[$statusFilter])) {
+            if ($statusFilter === 'needs_followup') {
+                // Dipakai oleh tombol "Butuh Tindak Lanjut" di dashboard: disamakan
+                // dengan definisi "outgoingOpen" supaya angka dan isi listnya sinkron.
+                $query->where(function ($openQuery) {
+                    $openQuery->whereNull('status')
+                        ->orWhereNotIn('status', ['done', 'completed', 'sent', 'verified', OutgoingLetter::STATUS_CANCELLED]);
+                })->where(function ($openQuery) {
+                    $openQuery->whereNull('authorized_status')
+                        ->orWhere('authorized_status', '!=', 'cancelled');
+                })->whereNull('cancelled_at');
+            } elseif (isset($statusGroups[$statusFilter])) {
                 $query->whereIn('status', $statusGroups[$statusFilter]);
             } else {
                 $query->where('status', $statusFilter);

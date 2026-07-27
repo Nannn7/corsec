@@ -47,12 +47,24 @@
                     </div>
                 </div>
 
+                <div class="hidden flex-wrap items-center gap-2.5 px-5 py-3 border-b border-gray-200 bg-warning-light text-warning"
+                    id="active-filter-banner">
+                    <i class="ki-filled ki-filter-tick text-base"></i>
+                    <span class="text-2sm font-medium">
+                        Sedang menampilkan surat dengan filter <strong>Butuh Tindak Lanjut</strong> aktif.
+                    </span>
+                    <button type="button" class="btn btn-sm btn-light ms-auto" id="active-filter-clear">
+                        Lihat Semua
+                    </button>
+                </div>
+
                 <div class="flex flex-wrap items-end gap-3.5 px-5 py-4 border-b border-gray-200"
                     id="outgoing-letter-filters">
                     <div class="flex flex-col gap-1">
                         <label class="form-label text-2sm">Status</label>
                         <select class="select select-sm w-48" id="filter-status">
                             <option value="">- Semua -</option>
+                            <option value="needs_followup">Butuh Tindak Lanjut</option>
                             <option value="draft">Draft</option>
                             <option value="waiting_dir_approval">Approval Direktorat</option>
                             <option value="compliance_review">Review Kepatuhan</option>
@@ -385,6 +397,15 @@
             order_date_to: document.getElementById('filter-order-date-to'),
         };
         const filterResetButton = document.getElementById('filter-reset');
+        const activeFilterBanner = document.getElementById('active-filter-banner');
+        const activeFilterClearButton = document.getElementById('active-filter-clear');
+
+        function updateActiveFilterBanner() {
+            if (!activeFilterBanner) return;
+            const isNeedsFollowup = filterElements.status?.value === 'needs_followup';
+            activeFilterBanner.classList.toggle('hidden', !isNeedsFollowup);
+            activeFilterBanner.classList.toggle('flex', isNeedsFollowup);
+        }
 
         function getActiveFilters() {
             const filters = {};
@@ -400,6 +421,7 @@
                 if (el && params.has(key)) el.value = params.get(key);
             });
             if (params.has('search')) searchInput.value = params.get('search');
+            updateActiveFilterBanner();
         }
 
         function updateUrlFromFilters() {
@@ -442,8 +464,8 @@
             return `<div class="flex flex-col gap-1">${list.map((attachment) => {
                 if (!attachment?.view_url) return '';
                 return `<a class="btn btn-xs btn-light justify-start" target="_blank" href="${attachment.view_url}">
-                        <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
-                    </a>`;
+                            <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
+                        </a>`;
             }).join('')}</div>`;
         };
 
@@ -451,9 +473,9 @@
             const comments = Array.isArray(data.comments) ? data.comments : [];
             const commentList = comments.length > 0 ?
                 `<div class="mb-2 space-y-1">${comments.map((comment) => `<div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs">
-                        <div>${escapeHtml(comment.body || '-')}</div>
-                        <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
-                    </div>`).join('')}</div>` :
+                            <div>${escapeHtml(comment.body || '-')}</div>
+                            <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
+                        </div>`).join('')}</div>` :
                 '<div class="mb-2 text-xs text-gray-500">Belum ada komentar.</div>';
 
             if (!canComment || !data.comment_url) return commentList;
@@ -725,6 +747,7 @@
                 dataTable.reload();
                 updateUrlFromFilters();
                 updateExportUrl();
+                updateActiveFilterBanner();
             });
         });
 
@@ -736,6 +759,11 @@
             dataTable.reload();
             updateUrlFromFilters();
             updateExportUrl();
+            updateActiveFilterBanner();
+        });
+
+        activeFilterClearButton?.addEventListener('click', function() {
+            filterResetButton?.click();
         });
 
         function updateDeleteButtonVisibility() {
