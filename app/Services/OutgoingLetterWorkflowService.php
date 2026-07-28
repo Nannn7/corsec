@@ -437,8 +437,8 @@ class OutgoingLetterWorkflowService
             ? $this->approvalExistsByNotePrefixInRound($letter, 'EO Direktorat Approved', $roundStartedAt)
             : false;
 
-        $isChecker = $actor->hasRole('checker') || $actor->hasRole('administrator');
-        $isApprover = $actor->hasRole('approver') || $actor->hasRole('administrator');
+        $isChecker = $actor->hasRole('administrator') || $actor->can('letter.checker_action');
+        $isApprover = $actor->hasRole('administrator') || $actor->can('letter.approver_action');
 
         if ($action === 'approve') {
             if ($requiresCheckerApproval && !$checkerApproved) {
@@ -506,9 +506,9 @@ class OutgoingLetterWorkflowService
         }
 
         $fallbackLabel = 'DD Direktorat Returned';
-        if ($requiresCheckerApproval && !$checkerApproved && $actor->hasRole('checker')) {
-            $fallbackLabel = 'EO Direktorat Returned';
-        }
+        if ($requiresCheckerApproval && !$checkerApproved && $isChecker) {
+             $fallbackLabel = 'EO Direktorat Returned';
+         }
 
         $this->closeOrCreateApproval($letter, $approval, 'returned', $fallbackLabel, $note, $actor);
 
@@ -528,9 +528,9 @@ class OutgoingLetterWorkflowService
 
         $this->addOutgoingComment($letter, $actor, 'RETURN APPROVAL DIREKTORAT', $note);
 
-        return ($requiresCheckerApproval && !$checkerApproved && $actor->hasRole('checker'))
-            ? 'Approval EO Direktorat dikembalikan.'
-            : 'Approval DD Direktorat dikembalikan.';
+        return ($requiresCheckerApproval && !$checkerApproved && $isChecker)
+             ? 'Approval EO Direktorat dikembalikan.'
+             : 'Approval DD Direktorat dikembalikan.';
     }
 
     private function handleComplianceApproval(OutgoingLetter $letter, User $actor, string $action, ?string $note): string
@@ -542,8 +542,8 @@ class OutgoingLetterWorkflowService
         $approval = $this->latestPendingApproval($letter);
         $checkerApproved = $this->approvalExistsByNotePrefix($letter, 'EO Kepatuhan Approved');
 
-        $isChecker = $actor->hasRole('checker') || $actor->hasRole('administrator');
-        $isApprover = $actor->hasRole('approver') || $actor->hasRole('administrator');
+        $isChecker = $actor->hasRole('administrator') || $actor->can('letter.checker_action');
+        $isApprover = $actor->hasRole('administrator') || $actor->can('letter.approver_action');
 
         if ($action === 'approve') {
             if (!$checkerApproved) {
@@ -619,9 +619,9 @@ class OutgoingLetterWorkflowService
         }
 
         $fallbackLabel = 'EO+DD Kepatuhan Returned';
-        if (!$checkerApproved && $actor->hasRole('checker')) {
+        if (!$checkerApproved && $isChecker) {
             $fallbackLabel = 'EO Kepatuhan Returned';
-        } elseif ($checkerApproved && $actor->hasRole('approver')) {
+        } elseif ($checkerApproved && $isApprover) {
             $fallbackLabel = 'DD Kepatuhan Returned';
         }
 
@@ -643,7 +643,7 @@ class OutgoingLetterWorkflowService
 
         $this->addOutgoingComment($letter, $actor, 'RETURN APPROVAL KEPATUHAN', $note);
 
-        return (!$checkerApproved && $actor->hasRole('checker'))
+        return (!$checkerApproved && $isChecker)
             ? 'Approval EO Kepatuhan dikembalikan.'
             : 'Approval DD Kepatuhan dikembalikan.';
     }
@@ -911,7 +911,7 @@ class OutgoingLetterWorkflowService
             return true;
         }
 
-        if (!$user->hasRole('maker')) {
+        if (!$user->hasRole('letter.maker_action')) {
             return false;
         }
 
@@ -948,7 +948,7 @@ class OutgoingLetterWorkflowService
             return false;
         }
 
-        return $user->hasRole('checker');
+        return $user->can('letter.checker_action');
     }
 
     private function cancellableRequestStatuses(): array
@@ -979,7 +979,7 @@ class OutgoingLetterWorkflowService
             return true;
         }
 
-        if (!$user->hasRole('maker') || !$this->isComplianceDirectorate($user)) {
+        if (!$user->can('letter.maker_action') || !$this->isComplianceDirectorate($user)) {
             return false;
         }
 

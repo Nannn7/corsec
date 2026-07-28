@@ -78,9 +78,12 @@ class ApprovalRequestService
                 $model->update($payload);
                 $this->applyApprovedRelations($model, $requestNew);
             } elseif ($approvalRequest->action === ApprovalRequest::ACTION_DELETE) {
-                $modelClass::query()
-                    ->where('id', $approvalRequest->target_id)
-                    ->delete();
+                $query = $modelClass::query()->where('id', $approvalRequest->target_id);
+
+                if (Schema::hasColumn((new $modelClass())->getTable(), 'deleted_by')) {
+                    $query->update(['deleted_by' => $actor->id]);
+                }
+                $query->delete();
             }
 
             if ($modelClass === LetterType::class) {

@@ -86,8 +86,8 @@ class IncomingLetterWorkflowService
             $roundStartedAt = $approval?->created_at;
 
             $isAdmin = $actor->hasRole('administrator');
-            $isChecker = $actor->hasRole('checker');
-            $isApprover = $actor->hasRole('approver');
+            $isChecker = $isAdmin || $actor->can('letter.checker_action');
+            $isApprover = $isAdmin || $actor->can('letter.approver_action');
             $isEoCorpAffairActor = $this->isEoCorpAffairActor($actor);
 
             if ($incomingLetter->authorized_status === 'pending' || $incomingLetter->status === IncomingLetter::STATUS_ON_APPROVAL) {
@@ -541,8 +541,8 @@ class IncomingLetterWorkflowService
 
     private function isEoCorpAffairActor(User $actor): bool
     {
-        $isChecker = $actor->hasRole('checker');
-        $isApprover = $actor->hasRole('approver');
+        $isChecker = $actor->can('letter.checker_action');
+        $isApprover = $actor->can('letter.approver_action');
         if (!$isChecker && !$isApprover) {
             return false;
         }

@@ -201,8 +201,8 @@ class WorkplanWorkflowService
             }
 
             $isAdmin = $actor->hasRole('administrator');
-            $isChecker = $actor->hasRole('checker');
-            $isApprover = $actor->hasRole('approver');
+            $isChecker = $actor->can('workplan.checker_action');
+            $isApprover = $actor->can('workplan.approver_action');
             $isApproverDeputyDirector = $isApprover && $this->isDeputyDirector($actor);
             $isSameDirectorate = (int) ($actor->directorate_id ?? 0) === (int) ($program->directorate_id ?? 0);
 
@@ -433,7 +433,7 @@ class WorkplanWorkflowService
             return true;
         }
 
-        return $user->hasRole('checker') &&
+        return $user->can('workplan.checker_action') &&
             (int) ($program->directorate_id ?? 0) === (int) ($user->directorate_id ?? 0);
     }
 
@@ -443,14 +443,26 @@ class WorkplanWorkflowService
             return true;
         }
 
-        return $user->hasRole('approver') &&
+        return $user->can('workplan.approver_action') &&
             $this->isDeputyDirector($user) &&
             (int) ($program->directorate_id ?? 0) === (int) ($user->directorate_id ?? 0);
     }
 
     public function isViewerRole(User $user): bool
     {
-        return $user->hasRole('viewer') && !$user->hasRole(['administrator', 'maker', 'checker', 'approver']);
+        if (!$user->hasRole('viewer')) {
+            return false;
+        }
+
+        if ($user->hasRole('administrator')) {
+            return false;
+        }
+
+        $hasWorkplanStageAction = $user->can('workplan.maker_action')
+            || $user->can('workplan.checker_action')
+            || $user->can('workplan.approver_action');
+
+        return !$hasWorkplanStageAction;
     }
 
     public function latestPendingProgramApproval(WorkProgram $program): ?Approval

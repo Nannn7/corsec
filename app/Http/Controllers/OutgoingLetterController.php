@@ -1368,7 +1368,7 @@ class OutgoingLetterController extends Controller
 
     private function canAccessComplianceQueue($user): bool
     {
-        if (!$user || !$user->hasRole('maker')) {
+        if (!$user || !$user->hasRole('letter.maker_action')) {
             return false;
         }
 

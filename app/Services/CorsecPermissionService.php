@@ -16,6 +16,30 @@ use Modules\Usermanagement\Models\User;
 
 class CorsecPermissionService
 {
+    private const STAGE_GROUPS = ['letter', 'meeting', 'workplan'];
+
+    private function hasAnyStageAction(?User $user, array $actions): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        foreach (self::STAGE_GROUPS as $group) {
+            foreach ($actions as $action) {
+                if ((bool) $user->can("{$group}.{$action}")) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function isStageAction(?User $user, string $group, string $action): bool
+    {
+        return (bool) ($user?->can("{$group}.{$action}") ?? false);
+    }
+
     public function hasOperationalRole(?User $user): bool
     {
         if (!$user) {
@@ -139,8 +163,8 @@ class CorsecPermissionService
 
     public function isEoCorpAffairActor(?User $user): bool
     {
-        if (!$user || !$user->hasRole(['checker', 'approver'])) {
-            return false;
+        if (!$user || !$this->hasAnyStageAction($user, ['checker_action', 'approver_action'])) {
+             return false;
         }
 
         return $this->isCorpSecretaryDirectorate($user);
@@ -162,8 +186,7 @@ class CorsecPermissionService
         }
 
         return $user->hasRole('administrator')
-            || $user->hasRole('checker')
-            || $user->hasRole('approver')
+            || $this->hasAnyStageAction($user, ['checker_action', 'approver_action'])
             || $this->isAssistantDirectorOrAbove($user)
             || $this->isAllCorsecDataDirectorate($user);
     }
@@ -198,7 +221,8 @@ class CorsecPermissionService
         }
 
         if ($this->isCorpSecretaryDirectorate($user)) {
-            return $user->hasRole('maker');
+            // return $user->hasRole('maker');
+            return $user->hasRole('administrator') || $this->isStageAction($user, 'letter', 'maker_action');
         }
 
         return true;
@@ -214,7 +238,7 @@ class CorsecPermissionService
             return true;
         }
 
-        return $user->hasRole('maker')
+        return $this->isStageAction($user, 'letter', 'maker_action')
             && $this->isCorpSecretaryDirectorate($user)
             && $this->isStaffPosition($user);
     }
@@ -225,7 +249,11 @@ class CorsecPermissionService
             return false;
         }
 
-        return $user->hasRole('maker')
+        if ($user->hasRole('administrator')) {
+            return true;
+        }
+
+        return $this->isStageAction($user, 'meeting', 'maker_action')
             && $this->isCorpSecretaryDirectorate($user)
             && $this->isStaffPosition($user);
     }
@@ -236,7 +264,7 @@ class CorsecPermissionService
             return true;
         }
 
-        if (!$user->hasRole('maker')) {
+        if (!$this->isStageAction($user, 'letter', 'maker_action')) {
             return false;
         }
 
@@ -270,8 +298,8 @@ class CorsecPermissionService
         $status = (string) ($incomingLetter->status ?? '');
 
         $isAdmin = (bool) ($user?->hasRole('administrator') ?? false);
-        $isChecker = (bool) ($user?->hasRole('checker') ?? false);
-        $isApprover = (bool) ($user?->hasRole('approver') ?? false);
+        $isChecker = $isAdmin || $this->isStageAction($user, 'letter', 'checker_action');
+        $isApprover = $isAdmin || $this->isStageAction($user, 'letter', 'approver_action');
         $isEoCorpAffairDirectorate = $this->isCorpSecretaryDirectorate($user);
         $isEoCorpAffairActor = $this->isEoCorpAffairActor($user);
         $isCorpSecretaryValidationActor = $this->isCorpSecretaryValidationActor($user);
@@ -365,7 +393,7 @@ class CorsecPermissionService
     public function outgoingIndexFlags(?User $user): array
     {
         $isAdmin = (bool) ($user?->hasRole('administrator') ?? false);
-        $hasMakerRole = (bool) ($user?->hasRole('maker') ?? false);
+        $hasMakerRole = $isAdmin || $this->isStageAction($user, 'letter', 'maker_action');
 
         return [
             'is_admin' => $isAdmin,
@@ -391,8 +419,8 @@ class CorsecPermissionService
         $status = (string) ($outgoingLetter->status ?? '');
 
         $isAdmin = (bool) ($user?->hasRole('administrator') ?? false);
-        $isChecker = (bool) ($user?->hasRole('checker') ?? false);
-        $isApprover = (bool) ($user?->hasRole('approver') ?? false);
+        $isChecker = $isAdmin || $this->isStageAction($user, 'letter', 'checker_action');
+        $isApprover = $isAdmin || $this->isStageAction($user, 'letter', 'approver_action');
 
         $isRequesterDirectorate = $user
             && (int) ($outgoingLetter->requester_directorate_id ?? 0) === (int) ($user->directorate_id ?? 0);
@@ -537,8 +565,8 @@ class CorsecPermissionService
         $isClosedNotConducted = $status === Meeting::STATUS_CLOSED_NOT_CONDUCTED;
 
         $isAdmin = (bool) ($user?->hasRole('administrator') ?? false);
-        $isChecker = (bool) ($user?->hasRole('checker') ?? false);
-        $isApprover = (bool) ($user?->hasRole('approver') ?? false);
+        $isChecker = $isAdmin || $this->isStageAction($user, 'meeting', 'checker_action');
+        $isApprover = $isAdmin || $this->isStageAction($user, 'meeting', 'approver_action');
 
         $actorUserId = (int) ($user?->id ?? 0);
         $actorDirectorateId = (int) ($user?->directorate_id ?? 0);

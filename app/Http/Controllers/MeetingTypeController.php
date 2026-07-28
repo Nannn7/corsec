@@ -180,22 +180,28 @@ class MeetingTypeController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($meetingType, $user) {
-                $meetingType->update(['deleted_by' => $user->id]);
-                $meetingType->delete();
-            });
+            $oldPayload = $meetingType->only(['code', 'name']);
 
-            Log::info('Meeting type deleted successfully', [
-                'meeting_type_id' => $meetingType->id,
-                'user_id' => $user->id,
+            $this->approvalService->createRequest(
+                MeetingType::class,
+                ApprovalRequest::ACTION_DELETE,
+                (string) $meetingType->id,
+                [],
+                $oldPayload,
+                'Pengajuan delete meeting type: ' . $meetingType->name
+            );
+
+            Log::info('Meeting type delete requested for approval', [
+                 'meeting_type_id' => $meetingType->id,
+                 'user_id' => $user->id,
             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Tipe meeting berhasil dihapus.',
+                'message' => 'Pengajuan hapus tipe meeting berhasil dikirim untuk approval.',
             ]);
         } catch (Exception $e) {
-            Log::error('Failed to delete meeting type: ' . $e->getMessage(), [
+            Log::error('Failed to submit meeting type delete request: ' . $e->getMessage(), [
                 'meeting_type_id' => $meetingType->id,
                 'user_id' => $user->id,
                 'trace' => $e->getTraceAsString(),
@@ -203,7 +209,7 @@ class MeetingTypeController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus tipe meeting. Silakan coba lagi.',
+                'message' => 'Gagal mengirim pengajuan hapus tipe meeting. Silakan coba lagi.',
             ], 500);
         }
     }
@@ -246,21 +252,29 @@ class MeetingTypeController extends Controller
             }
 
             DB::transaction(function () use ($ids, $user) {
-                MeetingType::whereIn('id', $ids)->update(['deleted_by' => $user->id]);
-                MeetingType::whereIn('id', $ids)->delete();
+                foreach (MeetingType::whereIn('id', $ids)->get() as $meetingType) {
+                    $this->approvalService->createRequest(
+                        MeetingType::class,
+                        ApprovalRequest::ACTION_DELETE,
+                        (string) $meetingType->id,
+                        [],
+                        $meetingType->only(['code', 'name']),
+                        'Pengajuan delete meeting type: ' . $meetingType->name
+                    );
+                }
             });
 
-            Log::info('Multiple meeting type deleted successfully', [
+            Log::info('Multiple meeting type delete requested for approval', [
                 'requested_ids' => $ids,
                 'user_id' => $user->id,
             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Tipe meeting terpilih berhasil dihapus.',
+                'message' => 'Pengajuan hapus tipe meeting terpilih berhasil dikirim untuk approval.',
             ]);
         } catch (Exception $e) {
-            Log::error('Failed to delete multiple meeting type: ' . $e->getMessage(), [
+            Log::error('Failed to submit multiple meeting type delete request: ' . $e->getMessage(), [
                 'requested_ids' => $ids ?? [],
                 'user_id' => $user->id,
                 'trace' => $e->getTraceAsString(),
@@ -268,7 +282,7 @@ class MeetingTypeController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus tipe meeting terpilih. Silakan coba lagi.',
+                'message' => 'Gagal mengirim pengajuan hapus tipe meeting terpilih. Silakan coba lagi.',
                 'error_details' => $e->getMessage(),
             ], 500);
         }

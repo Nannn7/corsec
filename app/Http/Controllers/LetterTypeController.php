@@ -230,34 +230,40 @@ class LetterTypeController extends Controller
         $this->ensureLetterTypeScope($letterType, $scope);
 
         try {
-            DB::transaction(function () use ($letterType, $user) {
-                $letterType->update(['deleted_by' => $user->id]);
-                $letterType->delete();
-            });
+            $oldPayload = $letterType->only(['code', 'name', 'category']);
+
+            $this->approvalService->createRequest(
+                LetterType::class,
+                ApprovalRequest::ACTION_DELETE,
+                (string) $letterType->id,
+                [],
+                $oldPayload,
+                'Pengajuan delete letter type: ' . $letterType->name
+            );
 
             $this->forgetLetterTypeCaches($scope);
 
-            Log::info('Letter type deleted successfully', [
-                'letter_type_id' => $letterType->id,
-                'user_id' => $user->id,
-                'scope' => $scope,
+            Log::info('Letter type delete requested for approval', [
+                 'letter_type_id' => $letterType->id,
+                 'user_id' => $user->id,
+                 'scope' => $scope,
             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Tipe surat berhasil dihapus.'
+                'message' => 'Pengajuan hapus tipe surat berhasil dikirim untuk approval.'
             ]);
         } catch (Exception $e) {
-            Log::error('Failed to delete letter type: ' . $e->getMessage(), [
-                'letter_type_id' => $letterType->id,
-                'user_id' => $user->id,
-                'scope' => $scope,
+            Log::error('Failed to submit letter type delete request: ' . $e->getMessage(), [
+                 'letter_type_id' => $letterType->id,
+                 'user_id' => $user->id,
+                 'scope' => $scope,
                 'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus tipe surat. Silakan coba lagi.'
+                'message' => 'Gagal mengirim pengajuan hapus tipe surat. Silakan coba lagi.'
             ], 500);
         }
     }
@@ -308,20 +314,26 @@ class LetterTypeController extends Controller
             }
 
             DB::transaction(function () use ($ids, $scope, $user) {
-                LetterType::query()
-                    ->forScope($scope)
-                    ->whereIn('id', $ids)
-                    ->update(['deleted_by' => $user->id]);
+                $letterTypes = LetterType::query()
+                     ->forScope($scope)
+                     ->whereIn('id', $ids)
+                     ->get();
 
-                LetterType::query()
-                    ->forScope($scope)
-                    ->whereIn('id', $ids)
-                    ->delete();
+                foreach ($letterTypes as $letterType) {
+                     $this->approvalService->createRequest(
+                         LetterType::class,
+                         ApprovalRequest::ACTION_DELETE,
+                         (string) $letterType->id,
+                         [],
+                         $letterType->only(['code', 'name', 'category']),
+                         'Pengajuan delete letter type: ' . $letterType->name
+                     );
+                }
             });
 
             $this->forgetLetterTypeCaches($scope);
 
-            Log::info('Multiple letter type deleted successfully', [
+            Log::info('Multiple letter type delete requested for approval', [
                 'requested_ids' => $ids,
                 'user_id' => $user->id,
                 'scope' => $scope,
@@ -329,10 +341,10 @@ class LetterTypeController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Tipe surat terpilih berhasil dihapus.'
+                'message' => 'Pengajuan hapus tipe surat terpilih berhasil dikirim untuk approval.'
             ]);
         } catch (Exception $e) {
-            Log::error('Failed to delete multiple letter type: ' . $e->getMessage(), [
+            Log::error('Failed to submit multiple letter type delete request: ' . $e->getMessage(), [
                 'requested_ids' => $ids ?? [],
                 'user_id' => $user->id,
                 'scope' => $scope,
@@ -341,7 +353,7 @@ class LetterTypeController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus tipe surat terpilih. Silakan coba lagi.',
+                'message' => 'Gagal mengirim pengajuan hapus tipe surat terpilih. Silakan coba lagi.',
                 'error_details' => $e->getMessage()
             ], 500);
         }
