@@ -332,8 +332,8 @@ class OutgoingLetterController extends Controller
         if ($request->filled('incoming_letter_id')) {
             $candidateId = (int) $request->input('incoming_letter_id');
             if ($candidateId > 0) {
-                $prefillAllowed = $incomingLetters->contains('id', $candidateId);
-                if ($prefillAllowed) {
+                $candidateLetter = $incomingLetters->first(fn($letter) => (int) $letter->id === $candidateId);
+                if ($candidateLetter && $candidateLetter->is_eligible) {
                     $prefillIncomingLetterId = $candidateId;
                 }
             }
@@ -1019,22 +1019,62 @@ class OutgoingLetterController extends Controller
 
     private function getIncomingLettersForResponseLetter(?int $selectedIncomingLetterId = null)
     {
-        return IncomingLetter::query()
-            ->where(function ($query) use ($selectedIncomingLetterId) {
-                $query->where(function ($eligibleQuery) {
-                    $eligibleQuery
-                        ->where('followup_action', 'response_letter')
-                        ->where('status', IncomingLetter::STATUS_WAITING_RESPONSE_LETTER)
-                        ->whereDoesntHave('responseOutgoingLetters', function ($outgoingQuery) {
-                            $outgoingQuery->where('status', '!=', OutgoingLetter::STATUS_CANCELLED);
-                        });
-                });
-                if ($selectedIncomingLetterId) {
-                    $query->orWhere('id', $selectedIncomingLetterId);
-                }
-            })
+        // Surat yang statusnya belum "Menunggu Surat Jawaban" tetap ditampilkan (biar user
+        // tahu suratnya ada, statusnya apa), tapi ditandai is_eligible = false supaya di
+        // blade opsinya di-disable. Validasi keras tetap dijaga di
+        // ensureIncomingLetterIsResponseLetter() saat submit.
+        $activeResponseIncomingIds = OutgoingLetter::query()
+            ->where('status', '!=', OutgoingLetter::STATUS_CANCELLED)
+            ->whereNotNull('perihal_incoming_letter_id')
+            ->pluck('perihal_incoming_letter_id')
+            ->all();
+
+        $columns = ['id', 'external_letter_no', 'registration_no', 'subject', 'status', 'followup_action'];
+
+        $incomingLetters = IncomingLetter::query()
             ->orderByDesc('id')
-            ->get(['id', 'external_letter_no', 'registration_no', 'subject']);
+            ->limit(150)
+            ->get($columns);
+
+        if ($selectedIncomingLetterId && !$incomingLetters->contains('id', $selectedIncomingLetterId)) {
+            $selectedIncomingLetter = IncomingLetter::query()->find($selectedIncomingLetterId, $columns);
+            if ($selectedIncomingLetter) {
+                $incomingLetters->push($selectedIncomingLetter);
+            }
+        }
+
+        return $incomingLetters
+            ->map(function ($incomingLetter) use ($activeResponseIncomingIds, $selectedIncomingLetterId) {
+                $alreadyResponded = in_array($incomingLetter->id, $activeResponseIncomingIds, true)
+                    && (int) $incomingLetter->id !== (int) $selectedIncomingLetterId;
+
+                $incomingLetter->is_eligible = $incomingLetter->followup_action === 'response_letter'
+                    && $incomingLetter->status === IncomingLetter::STATUS_WAITING_RESPONSE_LETTER
+                    && !$alreadyResponded;
+                $incomingLetter->status_label = $this->incomingLetterStatusLabel($incomingLetter->status);
+
+                return $incomingLetter;
+            })
+            ->sortByDesc(fn($incomingLetter) => (int) $incomingLetter->is_eligible)
+            ->values();
+    }
+
+    private function incomingLetterStatusLabel(?string $status): string
+    {
+        $map = [
+            IncomingLetter::STATUS_DRAFT => 'Draft',
+            IncomingLetter::STATUS_ON_APPROVAL => 'On Approval',
+            IncomingLetter::STATUS_DISPATCHED => 'Dispatched',
+            IncomingLetter::STATUS_IN_PROGRESS => 'In Progress',
+            IncomingLetter::STATUS_WAITING_DIR_APPROVAL => 'Waiting Dir Approval',
+            IncomingLetter::STATUS_WAITING_RESPONSE_LETTER => 'Waiting Response Letter',
+            IncomingLetter::STATUS_WAITING_VERIFICATION => 'Waiting Validation',
+            IncomingLetter::STATUS_VERIFIED => 'Verified',
+            IncomingLetter::STATUS_RETURNED => 'Returned',
+            IncomingLetter::STATUS_REJECTED => 'Rejected',
+        ];
+
+        return $map[$status] ?? ($status ?? '-');
     }
 
     private function ensureIncomingLetterIsResponseLetter(int $incomingLetterId, string $field = 'perihal_incoming_letter_id'): IncomingLetter
