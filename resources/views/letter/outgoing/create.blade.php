@@ -218,11 +218,27 @@
                                 <option value="">- Pilih Surat Masuk -</option>
                                 @foreach ($incomingLetters as $incomingLetter)
                                     <option value="{{ $incomingLetter->id }}"
-                                        {{ (string) $selectedPerihalIncomingLetterId === (string) $incomingLetter->id ? 'selected' : '' }}>
+                                        {{ (string) $selectedPerihalIncomingLetterId === (string) $incomingLetter->id ? 'selected' : '' }}
+                                        {{ !$incomingLetter->is_eligible ? 'disabled' : '' }}>
+                                        [{{ $incomingLetter->status_label }}]
                                         {{ $incomingLetter->external_letter_no }} - {{ $incomingLetter->subject }}
+                                        {{ !$incomingLetter->is_eligible ? '(belum bisa dipilih)' : '' }}
                                     </option>
                                 @endforeach
                             </select>
+                            <div class="mt-1 text-xs text-gray-500">
+                                Hanya surat dengan status <strong>"Waiting Response Letter"</strong> yang bisa
+                                dipilih (opsi lain ditampilkan tapi tidak bisa diklik). Kalau surat yang kamu
+                                cari belum bisa dipilih, cek dulu status &amp; tindak lanjutnya di menu Incoming
+                                Letter — surat harus diproses sampai statusnya
+                                <strong>"Waiting Response Letter"</strong> dengan tindak lanjut
+                                <strong>"Surat Jawaban"</strong> terlebih dahulu.
+                            </div>
+                            @if ($incomingLetters->isEmpty())
+                                <div class="mt-1 text-xs text-warning">
+                                    Belum ada data surat masuk sama sekali.
+                                </div>
+                            @endif
                             @error('perihal_incoming_letter_id')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
@@ -301,6 +317,7 @@
                                     </button>
                                 @endif
                             @endcan
+<<<<<<< HEAD
                         @else
                             @can('letter.create')
                                 <button type="button" id="save-draft" class="btn btn-light">
@@ -328,6 +345,35 @@
             const form = document.getElementById('outgoing-letter-form');
             const approvalInput = document.getElementById('submit_for_approval');
             const saveDraftButton = document.getElementById('save-draft');
+=======
+                        @else
+                            @can('letter.create')
+                                <button type="button" id="save-draft" class="btn btn-light">
+                                    <i class="ki-filled ki-archive"></i> Save Draft
+                                </button>
+                                <button type="button" id="submit-bulk-request" class="btn btn-warning hidden">
+                                    <i class="ki-filled ki-document"></i> Submit Request No
+                                </button>
+                                <button type="submit" id="submit-approval" class="btn btn-primary">
+                                    <i class="ki-filled ki-check"></i> Submit Approval
+                                </button>
+                            @endcan
+                        @endif
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+@endsection
+
+@push('scripts')
+    <script src="{{ asset('js/corsec/incoming-validation.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('outgoing-letter-form');
+            const approvalInput = document.getElementById('submit_for_approval');
+            const saveDraftButton = document.getElementById('save-draft');
+>>>>>>> a9ffbcb4303082f03373542873e743757c99707a
             const submitApprovalButton = document.getElementById('submit-approval');
             const isEdit = {{ isset($outgoingLetter) ? 'true' : 'false' }};
             const hasDraftAttachment = {{ $outgoingLetter?->draft_attachment_id ? 'true' : 'false' }};
@@ -853,7 +899,8 @@
                             }
 
                             Swal.fire('Berhasil', successMessage, 'success').then(function() {
-                                if (bulkRequestMode || (approvalInput && approvalInput.value ===
+                                if (bulkRequestMode || (approvalInput && approvalInput
+                                        .value ===
                                         '1')) {
                                     window.location.href = indexUrl;
                                     return;
@@ -867,13 +914,15 @@
                                 .errors) {
                                 const serverErrors = xhr.responseJSON.errors;
                                 Object.keys(serverErrors).forEach((field) => {
-                                    showFieldError($form, resolveOutgoingErrorField(field),
+                                    showFieldError($form, resolveOutgoingErrorField(
+                                            field),
                                         serverErrors[field][0]);
                                 });
                                 return;
                             }
                             Swal.fire('Error!', uploadFailureMessage(xhr,
-                                'Gagal memproses surat keluar.', uploadSizeOptions), 'error');
+                                    'Gagal memproses surat keluar.', uploadSizeOptions),
+                                'error');
                         }
                     });
                 });

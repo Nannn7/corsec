@@ -27,7 +27,8 @@
                             @endif
 
                             @if ($permissionFlags['can_export'] ?? false)
-                                <a id="export-btn" class="btn btn-sm btn-light" href="{{ route('letter.outgoing.export') }}">
+                                <a id="export-btn" class="btn btn-sm btn-light"
+                                    href="{{ route('letter.outgoing.export') }}">
                                     Export to Excel
                                 </a>
                             @endif
@@ -45,6 +46,74 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="hidden flex-wrap items-center gap-2.5 px-5 py-3 border-b border-gray-200 bg-warning-light text-warning"
+                    id="active-filter-banner">
+                    <i class="ki-filled ki-filter-tick text-base"></i>
+                    <span class="text-2sm font-medium">
+                        Sedang menampilkan surat dengan filter <strong>Butuh Tindak Lanjut</strong> aktif.
+                    </span>
+                    <button type="button" class="btn btn-sm btn-light ms-auto" id="active-filter-clear">
+                        Lihat Semua
+                    </button>
+                </div>
+
+                <div class="flex flex-wrap items-end gap-3.5 px-5 py-4 border-b border-gray-200"
+                    id="outgoing-letter-filters">
+                    <div class="flex flex-col gap-1">
+                        <label class="form-label text-2sm">Status</label>
+                        <select class="select select-sm w-48" id="filter-status">
+                            <option value="">- Semua -</option>
+                            <option value="needs_followup">Butuh Tindak Lanjut</option>
+                            <option value="draft">Draft</option>
+                            <option value="waiting_dir_approval">Approval Direktorat</option>
+                            <option value="compliance_review">Review Kepatuhan</option>
+                            <option value="waiting_compliance_approval">Approval EO dan DD Kepatuhan</option>
+                            <option value="waiting_final_upload">Final Upload</option>
+                            <option value="waiting_cancel_approval">Approval Pembatalan EO Direktorat</option>
+                            <option value="verified">Done</option>
+                            <option value="returned">Revisi</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="form-label text-2sm">Penerima</label>
+                        <select class="select select-sm w-48" id="filter-recipient">
+                            <option value="">- Semua -</option>
+                            @foreach ($recipients as $recipient)
+                                <option value="{{ $recipient->id }}">{{ $recipient->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="form-label text-2sm">Jenis Surat</label>
+                        <select class="select select-sm w-44" id="filter-letter-type">
+                            <option value="">- Semua -</option>
+                            @foreach ($letterTypes as $letterType)
+                                <option value="{{ $letterType->id }}">{{ $letterType->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="form-label text-2sm">Jenis Perihal</label>
+                        <select class="select select-sm w-44" id="filter-perihal-type">
+                            <option value="">- Semua -</option>
+                            <option value="tanggapan_surat_masuk">Tanggapan Surat Masuk</option>
+                            <option value="rutinitas">Rutinitas</option>
+                            <option value="insidentil">Insidentil</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="form-label text-2sm">Tanggal Order</label>
+                        <div class="flex items-center gap-1.5">
+                            <input type="date" class="input input-sm w-36" id="filter-order-date-from">
+                            <span class="text-2sm text-gray-500">s/d</span>
+                            <input type="date" class="input input-sm w-36" id="filter-order-date-to">
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-light" id="filter-reset">Reset Filter</button>
+                </div>
+
                 <div class="card-body">
                     <div class="scrollable-x-auto">
                         <table class="table text-sm font-medium text-gray-700 align-middle table-auto table-border"
@@ -54,19 +123,45 @@
                                     <th class="w-14">
                                         <input class="checkbox checkbox-sm" data-datatable-check="true" type="checkbox" />
                                     </th>
-                                    <th class="min-w-[180px]" data-datatable-column="registration_no">No Registrasi</th>
-                                    <th class="min-w-[180px]" data-datatable-column="letter_no">No Surat</th>
-                                    <th class="min-w-[160px]" data-datatable-column="order_date">Tanggal Order</th>
-                                    <th class="min-w-[220px]" data-datatable-column="subject">Perihal</th>
+                                    <th class="min-w-[180px]" data-datatable-column="registration_no">
+                                        <span class="sort">
+                                            <span class="sort-label">No Registrasi</span>
+                                            <span class="sort-icon"></span>
+                                        </span>
+                                    </th>
+                                    <th class="min-w-[180px]" data-datatable-column="letter_no">
+                                        <span class="sort">
+                                            <span class="sort-label">No Surat</span>
+                                            <span class="sort-icon"></span>
+                                        </span>
+                                    </th>
+                                    <th class="min-w-[160px]" data-datatable-column="order_date">
+                                        <span class="sort">
+                                            <span class="sort-label">Tanggal Order</span>
+                                            <span class="sort-icon"></span>
+                                        </span>
+                                    </th>
+                                    <th class="min-w-[220px]" data-datatable-column="subject">
+                                        <span class="sort">
+                                            <span class="sort-label">Perihal</span>
+                                            <span class="sort-icon"></span>
+                                        </span>
+                                    </th>
                                     <th class="min-w-[220px]" data-datatable-column="summary">Ringkasan</th>
                                     <th class="min-w-[180px]" data-datatable-column="recipient">Penerima</th>
                                     <th class="min-w-[180px]" data-datatable-column="letter_type">Jenis Surat</th>
                                     <th class="min-w-[120px]" data-datatable-column="perihal_type">Jenis Perihal</th>
-                                    <th class="min-w-[170px]" data-datatable-column="requester_directorate">Direktorat</th>
+                                    <th class="min-w-[170px]" data-datatable-column="requester_directorate">Direktorat
+                                    </th>
                                     <th class="min-w-[220px]" data-datatable-column="circulation">Sirkulasi</th>
                                     <th class="min-w-[260px]" data-datatable-column="comments">Komentar</th>
                                     <th class="min-w-[220px]" data-datatable-column="attachments">Attachment</th>
-                                    <th class="min-w-[140px]" data-datatable-column="status">Status</th>
+                                    <th class="min-w-[140px]" data-datatable-column="status">
+                                        <span class="sort">
+                                            <span class="sort-label">Status</span>
+                                            <span class="sort-icon"></span>
+                                        </span>
+                                    </th>
                                     <th class="min-w-[70px] text-center" data-datatable-column="actions">Action</th>
                                 </tr>
                             </thead>
@@ -76,7 +171,8 @@
                         class="flex-col gap-3 justify-center font-medium text-gray-600 card-footer md:justify-between md:flex-row text-2sm">
                         <div class="flex gap-2 items-center">
                             Show
-                            <select class="w-16 select select-sm" data-datatable-size="true" name="perpage"> </select> per
+                            <select class="w-16 select select-sm" data-datatable-size="true" name="perpage"> </select>
+                            per
                             page
                         </div>
                         <div class="flex gap-4 items-center">
@@ -290,6 +386,53 @@
         const deleteSelectedButton = document.getElementById('deleteSelected');
         const apiUrl = element.getAttribute('data-api-url');
         const baseUrl = element.getAttribute('data-base-url');
+
+        // --- Filter panel (Status, Penerima, Jenis Surat, Jenis Perihal, rentang Tanggal Order) ---
+        const filterElements = {
+            status: document.getElementById('filter-status'),
+            recipient_id: document.getElementById('filter-recipient'),
+            letter_type_id: document.getElementById('filter-letter-type'),
+            perihal_type: document.getElementById('filter-perihal-type'),
+            order_date_from: document.getElementById('filter-order-date-from'),
+            order_date_to: document.getElementById('filter-order-date-to'),
+        };
+        const filterResetButton = document.getElementById('filter-reset');
+        const activeFilterBanner = document.getElementById('active-filter-banner');
+        const activeFilterClearButton = document.getElementById('active-filter-clear');
+
+        function updateActiveFilterBanner() {
+            if (!activeFilterBanner) return;
+            const isNeedsFollowup = filterElements.status?.value === 'needs_followup';
+            activeFilterBanner.classList.toggle('hidden', !isNeedsFollowup);
+            activeFilterBanner.classList.toggle('flex', isNeedsFollowup);
+        }
+
+        function getActiveFilters() {
+            const filters = {};
+            Object.entries(filterElements).forEach(([key, el]) => {
+                if (el && el.value) filters[key] = el.value;
+            });
+            return filters;
+        }
+
+        function applyFiltersFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            Object.entries(filterElements).forEach(([key, el]) => {
+                if (el && params.has(key)) el.value = params.get(key);
+            });
+            if (params.has('search')) searchInput.value = params.get('search');
+            updateActiveFilterBanner();
+        }
+
+        function updateUrlFromFilters() {
+            const url = new URL(window.location.href);
+            url.search = '';
+            Object.entries(getActiveFilters()).forEach(([key, value]) => url.searchParams.set(key, value));
+            if (searchInput.value) url.searchParams.set('search', searchInput.value);
+            window.history.replaceState({}, '', url.toString());
+        }
+
+        applyFiltersFromUrl();
         const isAdmin = @json((bool) ($permissionFlags['is_admin'] ?? false));
         const hasOperationalRole = @json((bool) ($permissionFlags['has_operational_role'] ?? false));
         const isViewerRole = @json((bool) ($permissionFlags['is_viewer_role'] ?? false));
@@ -321,19 +464,19 @@
             return `<div class="flex flex-col gap-1">${list.map((attachment) => {
                 if (!attachment?.view_url) return '';
                 return `<a class="btn btn-xs btn-light justify-start" target="_blank" href="${attachment.view_url}">
-                    <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
-                </a>`;
+                            <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
+                        </a>`;
             }).join('')}</div>`;
         };
 
         const renderComments = (data) => {
             const comments = Array.isArray(data.comments) ? data.comments : [];
-            const commentList = comments.length > 0
-                ? `<div class="mb-2 space-y-1">${comments.map((comment) => `<div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs">
-                    <div>${escapeHtml(comment.body || '-')}</div>
-                    <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
-                </div>`).join('')}</div>`
-                : '<div class="mb-2 text-xs text-gray-500">Belum ada komentar.</div>';
+            const commentList = comments.length > 0 ?
+                `<div class="mb-2 space-y-1">${comments.map((comment) => `<div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs">
+                            <div>${escapeHtml(comment.body || '-')}</div>
+                            <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
+                        </div>`).join('')}</div>` :
+                '<div class="mb-2 text-xs text-gray-500">Belum ada komentar.</div>';
 
             if (!canComment || !data.comment_url) return commentList;
 
@@ -349,7 +492,8 @@
             if (val === 'waiting_dir_approval') normalized = 'waiting_dir_approval';
             if (val === 'compliance_review') normalized = 'compliance_review';
             if (val === 'waiting_compliance_approval') normalized = 'waiting_compliance_approval';
-            if (val === 'waiting_final_upload' || val === 'final_uploaded' || val === 'waiting_verification') normalized = 'waiting_final_upload';
+            if (val === 'waiting_final_upload' || val === 'final_uploaded' || val === 'waiting_verification')
+                normalized = 'waiting_final_upload';
             if (val === 'waiting_cancel_approval') normalized = 'waiting_cancel_approval';
             if (val === 'verified') normalized = 'done';
             if (val === 'returned') normalized = 'revisi';
@@ -394,6 +538,10 @@
         const dataTableOptions = {
             apiEndpoint: apiUrl,
             pageSize: 10,
+            mapRequest: (params) => {
+                Object.entries(getActiveFilters()).forEach(([key, value]) => params.set(key, value));
+                return params;
+            },
             columns: {
                 select: {
                     render: (item, data) => {
@@ -558,7 +706,9 @@
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     },
-                    body: JSON.stringify({ note })
+                    body: JSON.stringify({
+                        note
+                    })
                 });
                 if (!response.ok) throw response;
                 if (typeof dataTable.reload === 'function') dataTable.reload();
@@ -586,7 +736,34 @@
             const searchValue = this.value.trim();
             dataTable.search(searchValue, true);
             dataTable.goPage(1);
+            updateUrlFromFilters();
             updateExportUrl();
+        });
+
+        Object.values(filterElements).forEach((el) => {
+            if (!el) return;
+            el.addEventListener('change', function() {
+                dataTable.goPage(1);
+                dataTable.reload();
+                updateUrlFromFilters();
+                updateExportUrl();
+                updateActiveFilterBanner();
+            });
+        });
+
+        filterResetButton?.addEventListener('click', function() {
+            Object.values(filterElements).forEach((el) => {
+                if (el) el.value = '';
+            });
+            dataTable.goPage(1);
+            dataTable.reload();
+            updateUrlFromFilters();
+            updateExportUrl();
+            updateActiveFilterBanner();
+        });
+
+        activeFilterClearButton?.addEventListener('click', function() {
+            filterResetButton?.click();
         });
 
         function updateDeleteButtonVisibility() {

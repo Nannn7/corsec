@@ -40,8 +40,10 @@ class OutgoingLetterController extends Controller
         $user = Auth::user();
         $canCreate = $this->permissionService->canCreateOutgoing($user);
         $permissionFlags = $this->permissionService->outgoingIndexFlags($user);
+        $recipients = $this->getCachedSenders();
+        $letterTypes = $this->getOutgoingLetterTypes($user);
 
-        return view('corsec::letter.outgoing.index', compact('canCreate', 'permissionFlags'));
+        return view('corsec::letter.outgoing.index', compact('canCreate', 'permissionFlags', 'recipients', 'letterTypes'));
     }
 
     public function datatables(Request $request)
@@ -76,7 +78,43 @@ class OutgoingLetterController extends Controller
         $this->scopeOutgoingVisibility($baseCountQuery, $user);
 
         if ($request->filled('status')) {
-            $query->where('status', $request->string('status'));
+            $statusFilter = $request->string('status')->toString();
+            // "Final Upload" in the status badge groups 3 raw status values together
+            // (see the statusBadge() normalizer in outgoing/index.blade.php JS), so a
+            // single filter option needs to match all 3 underlying values.
+            $statusGroups = [
+                'waiting_final_upload' => ['waiting_final_upload', 'final_uploaded', 'waiting_verification'],
+            ];
+            if ($statusFilter === 'needs_followup') {
+                // Dipakai oleh tombol "Butuh Tindak Lanjut" di dashboard: disamakan
+                // dengan definisi "outgoingOpen" supaya angka dan isi listnya sinkron.
+                $query->where(function ($openQuery) {
+                    $openQuery->whereNull('status')
+                        ->orWhereNotIn('status', ['done', 'completed', 'sent', 'verified', OutgoingLetter::STATUS_CANCELLED]);
+                })->where(function ($openQuery) {
+                    $openQuery->whereNull('authorized_status')
+                        ->orWhere('authorized_status', '!=', 'cancelled');
+                })->whereNull('cancelled_at');
+            } elseif (isset($statusGroups[$statusFilter])) {
+                $query->whereIn('status', $statusGroups[$statusFilter]);
+            } else {
+                $query->where('status', $statusFilter);
+            }
+        }
+        if ($request->filled('recipient_id')) {
+            $query->where('recipient_id', $request->string('recipient_id')->toString());
+        }
+        if ($request->filled('letter_type_id')) {
+            $query->where('letter_type_id', $request->string('letter_type_id')->toString());
+        }
+        if ($request->filled('perihal_type')) {
+            $query->where('perihal_type', $request->string('perihal_type')->toString());
+        }
+        if ($request->filled('order_date_from')) {
+            $query->whereDate('order_date', '>=', $request->string('order_date_from')->toString());
+        }
+        if ($request->filled('order_date_to')) {
+            $query->whereDate('order_date', '<=', $request->string('order_date_to')->toString());
         }
 
         $search = trim((string) $request->get('search', ''));
@@ -102,7 +140,13 @@ class OutgoingLetterController extends Controller
             });
         }
 
-        $isFiltered = $search !== '' || $request->filled('status');
+        $isFiltered = $search !== ''
+            || $request->filled('status')
+            || $request->filled('recipient_id')
+            || $request->filled('letter_type_id')
+            || $request->filled('perihal_type')
+            || $request->filled('order_date_from')
+            || $request->filled('order_date_to');
         $totalRecords = $baseCountQuery->count();
         $filteredRecords = $isFiltered ? (clone $query)->count() : $totalRecords;
 
@@ -288,8 +332,8 @@ class OutgoingLetterController extends Controller
         if ($request->filled('incoming_letter_id')) {
             $candidateId = (int) $request->input('incoming_letter_id');
             if ($candidateId > 0) {
-                $prefillAllowed = $incomingLetters->contains('id', $candidateId);
-                if ($prefillAllowed) {
+                $candidateLetter = $incomingLetters->first(fn($letter) => (int) $letter->id === $candidateId);
+                if ($candidateLetter && $candidateLetter->is_eligible) {
                     $prefillIncomingLetterId = $candidateId;
                 }
             }
@@ -883,17 +927,32 @@ class OutgoingLetterController extends Controller
             abort(403, 'Upload final surat hanya untuk staff maker dari direktorat terkait.');
         }
 
-        $request->validate([
-            'submit_action' => ['nullable', Rule::in(['draft', 'upload'])],
-            'final_upload_date' => ['nullable', 'date'],
-            'final_file' => ['nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
-        ]);
+        $request->validate(
+            [
+                'submit_action' => ['nullable', Rule::in(['draft', 'upload'])],
+                'final_file' => ['required', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
+                'final_upload_date' => ['nullable', 'date', 'after_or_equal:today'],
+            ],
+            [
+                'final_upload_date.after_or_equal' => 'Tanggal Upload Final tidak boleh kurang dari tanggal hari ini.',
+            ]
+        );
 
         $submitAction = (string) $request->input('submit_action', 'upload');
         if ($submitAction === 'draft') {
-            $request->validate([
-                'final_upload_date' => ['required', 'date'],
-            ]);
+            $request->validate(
+                [
+                    'final_upload_date' => [
+                        'required',
+                        'date',
+                        'after_or_equal:today',
+                    ],
+                ],
+                [
+                    'final_upload_date.required' => 'Tanggal Upload Final wajib diisi.',
+                    'final_upload_date.after_or_equal' => 'Tanggal Upload Final tidak boleh kurang dari tanggal hari ini.',
+                ]
+            );
 
             $outgoingLetter->update([
                 'final_upload_date' => $request->input('final_upload_date'),
@@ -960,22 +1019,62 @@ class OutgoingLetterController extends Controller
 
     private function getIncomingLettersForResponseLetter(?int $selectedIncomingLetterId = null)
     {
-        return IncomingLetter::query()
-            ->where(function ($query) use ($selectedIncomingLetterId) {
-                $query->where(function ($eligibleQuery) {
-                    $eligibleQuery
-                        ->where('followup_action', 'response_letter')
-                        ->where('status', IncomingLetter::STATUS_WAITING_RESPONSE_LETTER)
-                        ->whereDoesntHave('responseOutgoingLetters', function ($outgoingQuery) {
-                            $outgoingQuery->where('status', '!=', OutgoingLetter::STATUS_CANCELLED);
-                        });
-                });
-                if ($selectedIncomingLetterId) {
-                    $query->orWhere('id', $selectedIncomingLetterId);
-                }
-            })
+        // Surat yang statusnya belum "Menunggu Surat Jawaban" tetap ditampilkan (biar user
+        // tahu suratnya ada, statusnya apa), tapi ditandai is_eligible = false supaya di
+        // blade opsinya di-disable. Validasi keras tetap dijaga di
+        // ensureIncomingLetterIsResponseLetter() saat submit.
+        $activeResponseIncomingIds = OutgoingLetter::query()
+            ->where('status', '!=', OutgoingLetter::STATUS_CANCELLED)
+            ->whereNotNull('perihal_incoming_letter_id')
+            ->pluck('perihal_incoming_letter_id')
+            ->all();
+
+        $columns = ['id', 'external_letter_no', 'registration_no', 'subject', 'status', 'followup_action'];
+
+        $incomingLetters = IncomingLetter::query()
             ->orderByDesc('id')
-            ->get(['id', 'external_letter_no', 'registration_no', 'subject']);
+            ->limit(150)
+            ->get($columns);
+
+        if ($selectedIncomingLetterId && !$incomingLetters->contains('id', $selectedIncomingLetterId)) {
+            $selectedIncomingLetter = IncomingLetter::query()->find($selectedIncomingLetterId, $columns);
+            if ($selectedIncomingLetter) {
+                $incomingLetters->push($selectedIncomingLetter);
+            }
+        }
+
+        return $incomingLetters
+            ->map(function ($incomingLetter) use ($activeResponseIncomingIds, $selectedIncomingLetterId) {
+                $alreadyResponded = in_array($incomingLetter->id, $activeResponseIncomingIds, true)
+                    && (int) $incomingLetter->id !== (int) $selectedIncomingLetterId;
+
+                $incomingLetter->is_eligible = $incomingLetter->followup_action === 'response_letter'
+                    && $incomingLetter->status === IncomingLetter::STATUS_WAITING_RESPONSE_LETTER
+                    && !$alreadyResponded;
+                $incomingLetter->status_label = $this->incomingLetterStatusLabel($incomingLetter->status);
+
+                return $incomingLetter;
+            })
+            ->sortByDesc(fn($incomingLetter) => (int) $incomingLetter->is_eligible)
+            ->values();
+    }
+
+    private function incomingLetterStatusLabel(?string $status): string
+    {
+        $map = [
+            IncomingLetter::STATUS_DRAFT => 'Draft',
+            IncomingLetter::STATUS_ON_APPROVAL => 'On Approval',
+            IncomingLetter::STATUS_DISPATCHED => 'Dispatched',
+            IncomingLetter::STATUS_IN_PROGRESS => 'In Progress',
+            IncomingLetter::STATUS_WAITING_DIR_APPROVAL => 'Waiting Dir Approval',
+            IncomingLetter::STATUS_WAITING_RESPONSE_LETTER => 'Waiting Response Letter',
+            IncomingLetter::STATUS_WAITING_VERIFICATION => 'Waiting Validation',
+            IncomingLetter::STATUS_VERIFIED => 'Verified',
+            IncomingLetter::STATUS_RETURNED => 'Returned',
+            IncomingLetter::STATUS_REJECTED => 'Rejected',
+        ];
+
+        return $map[$status] ?? ($status ?? '-');
     }
 
     private function ensureIncomingLetterIsResponseLetter(int $incomingLetterId, string $field = 'perihal_incoming_letter_id'): IncomingLetter

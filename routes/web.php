@@ -151,9 +151,18 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () us
 
     // Approver Routes
     Route::middleware('auth')->prefix('approval')->name('approval.')->group(function () use ($datatablesThrottle, $writeHeavyThrottle) {
+<<<<<<< HEAD
         Route::get('/', [ApproverController::class, 'index'])->middleware('permission:corsec.authorize')->name('index');
         Route::get('/datatables', [ApproverController::class, 'datatables'])->middleware(['permission:corsec.authorize', $datatablesThrottle])->name('datatables');
         Route::get('/{approvalRequest}', [ApproverController::class, 'show'])->middleware('permission:corsec.authorize')->name('show');
+=======
+        // Read-only viewing (list + detail) is allowed with either corsec.read or
+        // corsec.authorize, so a "maker" role can be given read-only visibility
+        // into request status without being able to approve/reject anything.
+        Route::get('/', [ApproverController::class, 'index'])->middleware('permission:corsec.read|corsec.authorize')->name('index');
+        Route::get('/datatables', [ApproverController::class, 'datatables'])->middleware(['permission:corsec.read|corsec.authorize', $datatablesThrottle])->name('datatables');
+        Route::get('/{approvalRequest}', [ApproverController::class, 'show'])->middleware('permission:corsec.read|corsec.authorize')->name('show');
+>>>>>>> a9ffbcb4303082f03373542873e743757c99707a
         Route::post('/{approvalRequest}/approve', [ApproverController::class, 'approve'])
             ->middleware(['permission:corsec.authorize', $writeHeavyThrottle])
             ->name('approve');

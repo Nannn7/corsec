@@ -91,9 +91,32 @@ class ReportController extends Controller
     {
         return Cache::remember('corsec.reporting.directorates', 300, function () {
             return Directorate::query()
-                ->orderByRaw('COALESCE(NULLIF(tabulation_label, \'\'), name)')
-                ->get(['id', 'name', 'tabulation_label']);
+                ->where('status', true)
+                ->selectRaw("COALESCE(NULLIF(tabulation_label, ''), name) as label")
+                ->groupBy('label')
+                ->orderBy('label')
+                ->get();
         });
+    }
+
+    /**
+     * A single "Direktorat" option in the reporting filter can represent
+     * several underlying corsec_directorates rows that share the same
+     * tabulation_label (e.g. "Bureau" covers both "Head of Bureau" and
+     * "Vice Head of Bureau"). Resolve the selected label back to every
+     * directorate id it covers so filtering doesn't miss any of them.
+     */
+    private function directorateIdsForLabel(string $label): array
+    {
+        if ($label === '') {
+            return [];
+        }
+
+        return Directorate::query()
+            ->where('status', true)
+            ->whereRaw("COALESCE(NULLIF(tabulation_label, ''), name) = ?", [$label])
+            ->pluck('id')
+            ->all();
     }
 
     private function agingLabels(): array
@@ -375,9 +398,9 @@ class ReportController extends Controller
             });
         }
 
-        $directorateId = (int) $request->input('directorate_id', 0);
-        if ($directorateId > 0) {
-            $query->where('target_directorate_id', $directorateId);
+        $directorateLabel = trim((string) $request->input('directorate_id', ''));
+        if ($directorateLabel !== '') {
+            $query->whereIn('target_directorate_id', $this->directorateIdsForLabel($directorateLabel) ?: [0]);
         }
 
         $status = (string) $request->input('status', '');
@@ -545,9 +568,9 @@ class ReportController extends Controller
             });
         }
 
-        $directorateId = (int) $request->input('directorate_id', 0);
-        if ($directorateId > 0) {
-            $query->where('corsec_outgoing_letters.requester_directorate_id', $directorateId);
+        $directorateLabel = trim((string) $request->input('directorate_id', ''));
+        if ($directorateLabel !== '') {
+            $query->whereIn('corsec_outgoing_letters.requester_directorate_id', $this->directorateIdsForLabel($directorateLabel) ?: [0]);
         }
 
         $status = (string) $request->input('status', '');
@@ -718,9 +741,9 @@ class ReportController extends Controller
             });
         }
 
-        $directorateId = (int) $request->input('directorate_id', 0);
-        if ($directorateId > 0) {
-            $query->where('owner_directorate_id', $directorateId);
+        $directorateLabel = trim((string) $request->input('directorate_id', ''));
+        if ($directorateLabel !== '') {
+            $query->whereIn('owner_directorate_id', $this->directorateIdsForLabel($directorateLabel) ?: [0]);
         }
 
         $agingBucket = trim((string) $request->input('aging_bucket', ''));
@@ -882,10 +905,11 @@ class ReportController extends Controller
             });
         }
 
-        $directorateId = (int) $request->input('directorate_id', 0);
-        if ($directorateId > 0) {
-            $query->whereHas('program', function ($programQuery) use ($directorateId) {
-                $programQuery->where('directorate_id', $directorateId);
+        $directorateLabel = trim((string) $request->input('directorate_id', ''));
+        if ($directorateLabel !== '') {
+            $directorateIds = $this->directorateIdsForLabel($directorateLabel) ?: [0];
+            $query->whereHas('program', function ($programQuery) use ($directorateIds) {
+                $programQuery->whereIn('directorate_id', $directorateIds);
             });
         }
 
