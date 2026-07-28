@@ -164,11 +164,7 @@ class CorsecPermissionService
     public function isEoCorpAffairActor(?User $user): bool
     {
         if (!$user || !$this->hasAnyStageAction($user, ['checker_action', 'approver_action'])) {
-<<<<<<< HEAD
-             return false;
-=======
             return false;
->>>>>>> a9ffbcb4303082f03373542873e743757c99707a
         }
 
         return $this->isCorpSecretaryDirectorate($user);
