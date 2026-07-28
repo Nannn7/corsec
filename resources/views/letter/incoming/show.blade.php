@@ -723,8 +723,7 @@
             </div>
         </div>
 
-        @if ($canCorsecUpdateAction)
-            @if ($canDirectorateUpdate)
+        @if ($canDirectorateUpdate)
                 <div class="card">
                     <div class="card-header">
                         <h3 class="card-title">Input Tindak Lanjut Direktorat</h3>
@@ -1106,7 +1105,6 @@
                     </div>
                 </div>
             @endif
-        @endif
 
         @if ($approvals->count() > 0)
             <div class="card">

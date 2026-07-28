@@ -973,7 +973,36 @@ class IncomingLetterController extends Controller
     // Staff Direktorat update tindak lanjut + upload bukti
     public function directorateUpdate(Request $request, IncomingLetter $incomingLetter)
     {
-        $this->authorizeNonViewerUpdate();
+        $user = Auth::user();
+        if (!$user || !$user->can('letter.read')) {
+            abort(403, 'Anda tidak memiliki akses untuk melihat surat masuk.');
+        }
+        if ($this->permissionService->isViewerRole($user)) {
+            abort(403, 'Role viewer tidak memiliki akses untuk aksi update ini.');
+        }
+
+        // Get approvals to evaluate flags
+        $approvals = $incomingLetter->approvals()
+            ->with(['actor.directorate', 'actor.position'])
+            ->orderByDesc('acted_at')
+            ->orderByDesc('created_at')
+            ->get();
+        $responseOutgoingLetter = $incomingLetter
+            ->responseOutgoingLetters()
+            ->where('status', '!=', OutgoingLetter::STATUS_CANCELLED)
+            ->latest('id')
+            ->first();
+
+        $permissionFlags = $this->permissionService->incomingDetailFlags(
+            $incomingLetter,
+            $approvals,
+            $user,
+            $responseOutgoingLetter
+        );
+
+        if (!($permissionFlags['can_directorate_update'] ?? false)) {
+            abort(403, 'Anda tidak memiliki akses untuk melakukan tindak lanjut pada surat masuk ini.');
+        }
 
         $submitForApproval = $request->boolean('submit_for_approval', true);
         $followupActionInput = $request->string('followup_action')->toString();
