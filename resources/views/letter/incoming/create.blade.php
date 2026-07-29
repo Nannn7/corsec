@@ -330,7 +330,6 @@
                                     </button>
                                 @endif
                             @endcan
-<<<<<<< HEAD
                         @else
                             @can('letter.create')
                                 <button type="button" id="save-draft" class="btn btn-light">
@@ -518,195 +517,6 @@
             if (form) {
                 if (window.jQuery && window.CorsecIncomingValidation) {
                     const $document = window.jQuery(document);
-=======
-                        @else
-                            @can('letter.create')
-                                <button type="button" id="save-draft" class="btn btn-light">
-                                    <i class="ki-filled ki-archive"></i> Save Draft
-                                </button>
-                                <button type="submit" id="submit-approval" class="btn btn-primary">
-                                    <i class="ki-filled ki-check"></i> Submit
-                                </button>
-                            @endcan
-                        @endif
-                    </div>
-
-                </form>
-            </div>
-        </div>
-    </div>
-@endsection
-
-@push('scripts')
-    <script src="{{ asset('js/corsec/incoming-validation.js') }}"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const form = document.getElementById('incoming-letter-form');
-            const approvalInput = document.getElementById('submit_for_approval');
-            const saveDraftButton = document.getElementById('save-draft');
-            const submitApprovalButton = document.getElementById('submit-approval');
-            const circulationDropdown = document.getElementById('circulation-dropdown');
-            const circulationOptions = document.getElementById('circulation-options');
-            const circulationSelectedText = document.getElementById('circulation-selected-text');
-            const senderSelect = document.getElementById('sender_id');
-            const senderOtherWrapper = document.getElementById('sender-other-wrapper');
-            const senderOtherInput = document.getElementById('sender_other');
-            const customerBranchWrapper = document.getElementById('customer-branch-wrapper');
-            const customerBranchSelect = document.getElementById('customer_branch_id');
-            const customerSenderId = @json($customerSenderId ? (string) $customerSenderId : null);
-            const targetDirectorateSelect = form ? form.querySelector('select[name="target_directorate_id"]') :
-                null;
-            const targetDirectorateOptions = targetDirectorateSelect ? Array.from(targetDirectorateSelect.options) :
-                [];
-            const letterTypeSelect = document.getElementById('letter_type_id');
-            const letterTypeOtherWrapper = document.getElementById('letter-type-other-wrapper');
-            const letterTypeOtherInput = document.getElementById('letter_type_other');
-            const registerDueDateInput = document.getElementById('register_due_date');
-
-            if (saveDraftButton) {
-                saveDraftButton.addEventListener('click', function() {
-                    approvalInput.value = '0';
-                    if (form.requestSubmit) {
-                        form.requestSubmit();
-                    } else {
-                        form.submit();
-                    }
-                });
-            }
-
-            if (submitApprovalButton) {
-                submitApprovalButton.addEventListener('click', function() {
-                    approvalInput.value = '1';
-                });
-            }
-
-            function toggleSenderOther() {
-                if (!senderSelect || !senderOtherWrapper || !senderOtherInput) return;
-                if (senderSelect.value === 'other') {
-                    senderOtherWrapper.style.display = 'flex';
-                    senderOtherInput.required = true;
-                } else {
-                    senderOtherWrapper.style.display = 'none';
-                    senderOtherInput.required = false;
-                    senderOtherInput.value = '';
-                }
-            }
-
-            function toggleCustomerBranch() {
-                if (!senderSelect || !customerBranchWrapper || !customerBranchSelect) return;
-                if (customerSenderId && senderSelect.value === customerSenderId) {
-                    customerBranchWrapper.style.display = 'flex';
-                    customerBranchSelect.required = true;
-                } else {
-                    customerBranchWrapper.style.display = 'none';
-                    customerBranchSelect.required = false;
-                    customerBranchSelect.value = '';
-                }
-            }
-
-            if (senderSelect) {
-                senderSelect.addEventListener('change', toggleSenderOther);
-                senderSelect.addEventListener('change', toggleCustomerBranch);
-                toggleSenderOther();
-                toggleCustomerBranch();
-            }
-
-            function toggleLetterTypeOther() {
-                if (!letterTypeSelect || !letterTypeOtherWrapper || !letterTypeOtherInput) return;
-                if (letterTypeSelect.value === 'other') {
-                    letterTypeOtherWrapper.style.display = 'flex';
-                    letterTypeOtherInput.required = true;
-                } else {
-                    letterTypeOtherWrapper.style.display = 'none';
-                    letterTypeOtherInput.required = false;
-                    letterTypeOtherInput.value = '';
-                }
-            }
-
-            function isInvitationLetter() {
-                const subjectValue = form ? (form.querySelector('[name="subject"]')?.value || '').toLowerCase() :
-                    '';
-                const letterTypeLabel = letterTypeSelect && letterTypeSelect.selectedIndex >= 0 ?
-                    (letterTypeSelect.options[letterTypeSelect.selectedIndex]?.text || '').toLowerCase() : '';
-                const letterTypeOtherValue = letterTypeOtherInput ? (letterTypeOtherInput.value || '')
-                    .toLowerCase() : '';
-
-                return subjectValue.includes('undangan') ||
-                    letterTypeLabel.includes('undangan') ||
-                    letterTypeOtherValue.includes('undangan');
-            }
-
-            if (letterTypeSelect) {
-                letterTypeSelect.addEventListener('change', toggleLetterTypeOther);
-                toggleLetterTypeOther();
-            }
-
-            function updateCirculationLabel() {
-                if (!circulationSelectedText || !circulationOptions) return;
-                const checkboxes = circulationOptions.querySelectorAll('input[type="checkbox"]:checked');
-                const names = Array.from(checkboxes).map((item) => {
-                    const label = item.closest('label');
-                    return label ? label.textContent.trim() : '';
-                }).filter(Boolean);
-                circulationSelectedText.textContent = names.length > 0 ? names.join(', ') : 'Pilih sirkulasi...';
-            }
-
-            function updateLeaderOptions() {
-                if (!targetDirectorateSelect || !circulationOptions || targetDirectorateOptions.length === 0)
-                    return;
-
-                const selectedValue = targetDirectorateSelect.value;
-                const checked = circulationOptions.querySelectorAll('input[type="checkbox"]:checked');
-                const allowedIds = new Set(Array.from(checked).map((item) => item.value));
-
-                targetDirectorateSelect.innerHTML = '';
-                const placeholder = targetDirectorateOptions[0];
-                if (placeholder) {
-                    targetDirectorateSelect.appendChild(placeholder.cloneNode(true));
-                }
-
-                let hasSelected = false;
-                targetDirectorateOptions.slice(1).forEach((option) => {
-                    if (allowedIds.has(option.value)) {
-                        const clone = option.cloneNode(true);
-                        if (option.value === selectedValue) {
-                            clone.selected = true;
-                            hasSelected = true;
-                        }
-                        targetDirectorateSelect.appendChild(clone);
-                    }
-                });
-
-                targetDirectorateSelect.disabled = allowedIds.size === 0;
-                if (!hasSelected) {
-                    targetDirectorateSelect.value = '';
-                }
-            }
-
-            if (circulationDropdown && circulationOptions) {
-                circulationDropdown.addEventListener('click', function() {
-                    circulationOptions.classList.toggle('hidden');
-                });
-
-                document.addEventListener('click', function(event) {
-                    if (!circulationDropdown.contains(event.target) && !circulationOptions.contains(event
-                            .target)) {
-                        circulationOptions.classList.add('hidden');
-                    }
-                });
-
-                circulationOptions.addEventListener('change', function() {
-                    updateCirculationLabel();
-                    updateLeaderOptions();
-                });
-                updateCirculationLabel();
-                updateLeaderOptions();
-            }
-
-            if (form) {
-                if (window.jQuery && window.CorsecIncomingValidation) {
-                    const $document = window.jQuery(document);
->>>>>>> a9ffbcb4303082f03373542873e743757c99707a
                     const {
                         clearValidation,
                         showFieldError,
@@ -848,14 +658,15 @@
                                     }, 600);
                                     return;
                                 }
-                                Swal.fire('Berhasil', 'Data berhasil disimpan.', 'success').then(
-                                    function() {
-                                        if (approvalInput && approvalInput.value === '1') {
-                                            window.location.href = indexUrl;
-                                            return;
-                                        }
-                                        window.location.reload();
-                                    });
+                                Swal.fire('Berhasil', 'Data berhasil disimpan.', 'success')
+                                    .then(
+                                        function() {
+                                            if (approvalInput && approvalInput.value === '1') {
+                                                window.location.href = indexUrl;
+                                                return;
+                                            }
+                                            window.location.reload();
+                                        });
                                 return;
                             },
                             error: function(xhr) {
@@ -868,7 +679,8 @@
                                     });
                                 } else {
                                     Swal.fire('Error!', uploadFailureMessage(xhr,
-                                        'Gagal memproses surat masuk.', uploadSizeOptions), 'error');
+                                        'Gagal memproses surat masuk.',
+                                        uploadSizeOptions), 'error');
                                 }
                                 $form.data('submitting', false);
                                 $submitButtons.prop('disabled', false).removeClass('disabled');

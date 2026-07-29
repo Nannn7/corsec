@@ -426,7 +426,7 @@ class ReportController extends Controller
 
     private function scopeIncomingVisibility(Builder $query, User $user): void
     {
-        if ($this->permissionService->canViewAllCorsec($user)) {
+        if ($this->permissionService->canViewAllLetters($user)) {
             return;
         }
 
@@ -596,7 +596,7 @@ class ReportController extends Controller
 
     private function scopeOutgoingVisibility(Builder $query, User $user): void
     {
-        if ($this->permissionService->canViewAllCorsec($user)) {
+        if ($this->permissionService->canViewAllLetters($user)) {
             return;
         }
 

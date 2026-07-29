@@ -317,7 +317,6 @@
                                     </button>
                                 @endif
                             @endcan
-<<<<<<< HEAD
                         @else
                             @can('letter.create')
                                 <button type="button" id="save-draft" class="btn btn-light">
@@ -345,35 +344,6 @@
             const form = document.getElementById('outgoing-letter-form');
             const approvalInput = document.getElementById('submit_for_approval');
             const saveDraftButton = document.getElementById('save-draft');
-=======
-                        @else
-                            @can('letter.create')
-                                <button type="button" id="save-draft" class="btn btn-light">
-                                    <i class="ki-filled ki-archive"></i> Save Draft
-                                </button>
-                                <button type="button" id="submit-bulk-request" class="btn btn-warning hidden">
-                                    <i class="ki-filled ki-document"></i> Submit Request No
-                                </button>
-                                <button type="submit" id="submit-approval" class="btn btn-primary">
-                                    <i class="ki-filled ki-check"></i> Submit Approval
-                                </button>
-                            @endcan
-                        @endif
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-@endsection
-
-@push('scripts')
-    <script src="{{ asset('js/corsec/incoming-validation.js') }}"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const form = document.getElementById('outgoing-letter-form');
-            const approvalInput = document.getElementById('submit_for_approval');
-            const saveDraftButton = document.getElementById('save-draft');
->>>>>>> a9ffbcb4303082f03373542873e743757c99707a
             const submitApprovalButton = document.getElementById('submit-approval');
             const isEdit = {{ isset($outgoingLetter) ? 'true' : 'false' }};
             const hasDraftAttachment = {{ $outgoingLetter?->draft_attachment_id ? 'true' : 'false' }};
