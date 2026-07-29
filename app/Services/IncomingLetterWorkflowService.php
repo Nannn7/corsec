@@ -314,9 +314,10 @@ class IncomingLetterWorkflowService
         ?string $followupNote,
         array $evidenceFiles,
         $socialMaterialFile,
-        bool $submitForApproval
+        bool $submitForApproval,
+        $lainnyaFile = null
     ): array {
-        return DB::transaction(function () use ($incomingLetter, $actor, $targetDate, $followupAction, $followupDetail, $followupNote, $evidenceFiles, $socialMaterialFile, $submitForApproval) {
+        return DB::transaction(function () use ($incomingLetter, $actor, $targetDate, $followupAction, $followupDetail, $followupNote, $evidenceFiles, $socialMaterialFile, $submitForApproval, $lainnyaFile) {
             $isAdmin = $actor->hasRole('administrator');
 
             // User direktorat biasa hanya boleh update surat untuk direktorat tujuannya.
@@ -377,6 +378,28 @@ class IncomingLetterWorkflowService
                     'attachable_type' => IncomingLetter::class,
                     'attachable_id' => $incomingLetter->id,
                     'category' => 'social_material',
+                    'created_by' => $actor->id,
+                ]);
+            }
+
+            if ($lainnyaFile) {
+                $path = $lainnyaFile->store('corsec/incoming/lainnya', 'public');
+
+                $att = Attachment::create([
+                    'disk' => 'public',
+                    'path' => $path,
+                    'original_name' => $lainnyaFile->getClientOriginalName(),
+                    'file_name' => basename($path),
+                    'mime' => $lainnyaFile->getClientMimeType(),
+                    'size' => $lainnyaFile->getSize(),
+                    'created_by' => $actor->id,
+                ]);
+
+                Attachable::create([
+                    'attachment_id' => $att->id,
+                    'attachable_type' => IncomingLetter::class,
+                    'attachable_id' => $incomingLetter->id,
+                    'category' => 'lainnya_evidence',
                     'created_by' => $actor->id,
                 ]);
             }
