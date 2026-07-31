@@ -973,9 +973,6 @@ class IncomingLetterController extends Controller
     // Staff Direktorat update tindak lanjut + upload bukti
     public function directorateUpdate(Request $request, IncomingLetter $incomingLetter)
     {
-<<<<<<< HEAD
-        $this->authorizeNonViewerFollowupAction();
-=======
         $user = Auth::user();
         if (!$user || !$user->can('letter.read')) {
             abort(403, 'Anda tidak memiliki akses untuk melihat surat masuk.');
@@ -1006,7 +1003,6 @@ class IncomingLetterController extends Controller
         if (!($permissionFlags['can_directorate_update'] ?? false)) {
             abort(403, 'Anda tidak memiliki akses untuk melakukan tindak lanjut pada surat masuk ini.');
         }
->>>>>>> 7e84cce245b01817c83717d179fd74b0a8e5fcf2
 
         $submitForApproval = $request->boolean('submit_for_approval', true);
         $followupActionInput = $request->string('followup_action')->toString();
