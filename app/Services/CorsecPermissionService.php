@@ -447,8 +447,8 @@ class CorsecPermissionService
         $status = (string) ($outgoingLetter->status ?? '');
 
         $isAdmin = (bool) ($user?->hasRole('administrator') ?? false);
-        $isChecker = $isAdmin || $this->isStageAction($user, 'letter', 'checker_action');
-        $isApprover = $isAdmin || $this->isStageAction($user, 'letter', 'approver_action');
+        $isChecker = $isAdmin || $this->isStageAction($user, 'letter', 'checker_action') || $this->isExecutiveOfficer($user);
+        $isApprover = $isAdmin || $this->isStageAction($user, 'letter', 'approver_action') || $this->isDeputyDirector($user);
 
         $isRequesterDirectorate = $user
             && (int) ($outgoingLetter->requester_directorate_id ?? 0) === (int) ($user->directorate_id ?? 0);

@@ -1424,11 +1424,18 @@ class OutgoingLetterController extends Controller
 
         $directorateId = (int) ($user->directorate_id ?? $user->directorateid ?? 0);
         $canAccessComplianceQueue = $this->canAccessComplianceQueue($user);
+        $canAccessApprovalQueue = $this->canAccessApprovalQueue($user);
 
-        $query->where(function ($builder) use ($user, $directorateId, $canAccessComplianceQueue) {
+        $query->where(function ($builder) use ($user, $directorateId, $canAccessComplianceQueue, $canAccessApprovalQueue) {
             $builder->where('created_by', $user->id);
             if ($directorateId > 0) {
                 $builder->orWhere('requester_directorate_id', $directorateId);
+            }
+            if ($canAccessApprovalQueue) {
+                $builder->orWhereIn('status', [
+                    OutgoingLetter::STATUS_WAITING_DIR_APPROVAL,
+                    OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL,
+                ]);
             }
             if ($canAccessComplianceQueue) {
                 $builder->orWhere(function ($complianceQuery) {
@@ -1460,9 +1467,17 @@ class OutgoingLetterController extends Controller
             return true;
         }
 
-        return $this->canAccessComplianceQueue($user)
+        return (
+            $this->canAccessComplianceQueue($user)
             && in_array((string) $outgoingLetter->status, $this->complianceQueueStatuses(), true)
-            && (bool) $outgoingLetter->need_compliance_review;
+            && (bool) $outgoingLetter->need_compliance_review
+        ) || (
+            $this->canAccessApprovalQueue($user)
+            && in_array((string) $outgoingLetter->status, [
+                OutgoingLetter::STATUS_WAITING_DIR_APPROVAL,
+                OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL,
+            ], true)
+        );
     }
 
     private function canAccessComplianceQueue($user): bool
@@ -1475,6 +1490,20 @@ class OutgoingLetterController extends Controller
             $user->can('letter.maker_action')
             || $user->can('letter.checker_action')
             || $user->can('letter.approver_action')
+        );
+    }
+
+    private function canAccessApprovalQueue($user): bool
+    {
+        if (!$user || $this->permissionService->isViewerRole($user)) {
+            return false;
+        }
+
+        return (bool) (
+            $user->can('letter.checker_action')
+            || $user->can('letter.approver_action')
+            || $this->permissionService->isExecutiveOfficer($user)
+            || $this->permissionService->isDeputyDirector($user)
         );
     }
 
