@@ -973,7 +973,40 @@ class IncomingLetterController extends Controller
     // Staff Direktorat update tindak lanjut + upload bukti
     public function directorateUpdate(Request $request, IncomingLetter $incomingLetter)
     {
+<<<<<<< HEAD
         $this->authorizeNonViewerFollowupAction();
+=======
+        $user = Auth::user();
+        if (!$user || !$user->can('letter.read')) {
+            abort(403, 'Anda tidak memiliki akses untuk melihat surat masuk.');
+        }
+        if ($this->permissionService->isViewerRole($user)) {
+            abort(403, 'Role viewer tidak memiliki akses untuk aksi update ini.');
+        }
+
+        // Get approvals to evaluate flags
+        $approvals = $incomingLetter->approvals()
+            ->with(['actor.directorate', 'actor.position'])
+            ->orderByDesc('acted_at')
+            ->orderByDesc('created_at')
+            ->get();
+        $responseOutgoingLetter = $incomingLetter
+            ->responseOutgoingLetters()
+            ->where('status', '!=', OutgoingLetter::STATUS_CANCELLED)
+            ->latest('id')
+            ->first();
+
+        $permissionFlags = $this->permissionService->incomingDetailFlags(
+            $incomingLetter,
+            $approvals,
+            $user,
+            $responseOutgoingLetter
+        );
+
+        if (!($permissionFlags['can_directorate_update'] ?? false)) {
+            abort(403, 'Anda tidak memiliki akses untuk melakukan tindak lanjut pada surat masuk ini.');
+        }
+>>>>>>> 7e84cce245b01817c83717d179fd74b0a8e5fcf2
 
         $submitForApproval = $request->boolean('submit_for_approval', true);
         $followupActionInput = $request->string('followup_action')->toString();
@@ -1010,10 +1043,13 @@ class IncomingLetterController extends Controller
             'followup_review_regulation_title' => ['nullable', 'string', 'max:255'],
             'followup_review_upload_date' => ['nullable', 'date'],
             'followup_review_note' => ['nullable', 'string'],
+            'followup_lainnya_date' => ['nullable', 'date'],
+            'followup_lainnya_note' => ['nullable', 'string'],
+            'followup_lainnya_file' => ['nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
             'submit_for_approval' => ['nullable', 'boolean'],
         ];
 
-        if ($submitForApproval && $followupActionInput !== 'response_letter') {
+        if ($submitForApproval && !in_array($followupActionInput, ['response_letter', 'lainnya'], true)) {
             $rules['evidence_files'] = ['required', 'array', 'min:1'];
             $rules['evidence_files.*'] = ['file', UploadRule::maxRule()];
         } else {
@@ -1051,6 +1087,12 @@ class IncomingLetterController extends Controller
                 'upload_date' => $request->followup_review_upload_date,
                 'note' => $request->followup_review_note,
             ],
+            'lainnya' => [
+                'date' => $request->followup_lainnya_date ?: now()->format('Y-m-d'),
+                'note' => $request->followup_lainnya_note,
+                'file' => $request->file('followup_lainnya_file')?->getClientOriginalName()
+                    ?? ($incomingLetter->followup_detail['file'] ?? null),
+            ],
             default => [],
         };
 
@@ -1078,6 +1120,12 @@ class IncomingLetterController extends Controller
         if ($followupAction === 'review' && (!$request->followup_review_regulation_number || !$request->followup_review_regulation_title || !$request->followup_review_upload_date)) {
             return back()->withErrors(['followup_action' => 'Detail review/new ketentuan wajib diisi.'])->withInput();
         }
+        if ($followupAction === 'lainnya' && (
+            !$request->followup_lainnya_note ||
+            (!$request->file('followup_lainnya_file') && empty($incomingLetter->followup_detail['file'] ?? null))
+        )) {
+            return back()->withErrors(['followup_action' => 'Catatan dan upload surat wajib diisi untuk tindak lanjut Lainnya.'])->withInput();
+        }
 
         $submitResult = $this->workflow->directorateUpdate(
             incomingLetter: $incomingLetter,
@@ -1088,6 +1136,7 @@ class IncomingLetterController extends Controller
             followupNote: $request->followup_note,
             evidenceFiles: $request->file('evidence_files', []),
             socialMaterialFile: $request->file('followup_social_material'),
+            lainnyaFile: $request->file('followup_lainnya_file'),
             submitForApproval: $submitForApproval
         );
 

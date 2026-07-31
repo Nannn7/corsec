@@ -432,8 +432,7 @@
                         <div class="flex flex-col">
                             <label class="form-label">Komentar Viewer (Direksi / Sekdir / Corporate Secretary) <span
                                     class="text-danger">*</span></label>
-                            <textarea class="textarea w-full" name="note" rows="3"
-                                placeholder="Tambahkan komentar viewer..." required></textarea>
+                            <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan komentar viewer..." required></textarea>
                         </div>
                         <div class="flex justify-end">
                             <button class="btn btn-primary" type="submit">Simpan Komentar</button>
@@ -463,7 +462,8 @@
                                     <tr>
                                         <td>{{ $comment->body ?? '-' }}</td>
                                         <td>{{ $comment->createdBy?->name ?? '-' }}</td>
-                                        <td>{{ $comment->created_at ? $comment->created_at->format('Y-m-d H:i:s') : '-' }}</td>
+                                        <td>{{ $comment->created_at ? $comment->created_at->format('Y-m-d H:i:s') : '-' }}
+                                        </td>
                                     </tr>
                                 @endforeach
                             </tbody>

@@ -288,8 +288,8 @@
             return `<div class="flex flex-col gap-1">${list.map((attachment) => {
                 if (!attachment?.view_url) return '';
                 return `<a class="btn btn-xs btn-light justify-start" target="_blank" href="${attachment.view_url}">
-                        <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
-                    </a>`;
+                            <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
+                        </a>`;
             }).join('')}</div>`;
         };
 
@@ -297,9 +297,9 @@
             const comments = Array.isArray(data.comments) ? data.comments : [];
             const commentList = comments.length > 0 ?
                 `<div class="mb-2 space-y-1">${comments.map((comment) => `<div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs">
-                        <div>${escapeHtml(comment.body || '-')}</div>
-                        <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
-                    </div>`).join('')}</div>` :
+                            <div>${escapeHtml(comment.body || '-')}</div>
+                            <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
+                        </div>`).join('')}</div>` :
                 '<div class="mb-2 text-xs text-gray-500">Belum ada komentar.</div>';
 
             if (!canComment || !data.comment_url) return commentList;

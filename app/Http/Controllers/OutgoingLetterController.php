@@ -1418,7 +1418,7 @@ class OutgoingLetterController extends Controller
 
     private function scopeOutgoingVisibility($query, $user): void
     {
-        if (!$user || $this->permissionService->canViewAllCorsec($user)) {
+        if (!$user || $this->permissionService->canViewAllLetters($user)) {
             return;
         }
 
@@ -1446,7 +1446,7 @@ class OutgoingLetterController extends Controller
             return false;
         }
 
-        if ($this->permissionService->canViewAllCorsec($user)) {
+        if ($this->permissionService->canViewAllLetters($user)) {
             return true;
         }
 

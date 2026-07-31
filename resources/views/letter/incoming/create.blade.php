@@ -658,14 +658,15 @@
                                     }, 600);
                                     return;
                                 }
-                                Swal.fire('Berhasil', 'Data berhasil disimpan.', 'success').then(
-                                    function() {
-                                        if (approvalInput && approvalInput.value === '1') {
-                                            window.location.href = indexUrl;
-                                            return;
-                                        }
-                                        window.location.reload();
-                                    });
+                                Swal.fire('Berhasil', 'Data berhasil disimpan.', 'success')
+                                    .then(
+                                        function() {
+                                            if (approvalInput && approvalInput.value === '1') {
+                                                window.location.href = indexUrl;
+                                                return;
+                                            }
+                                            window.location.reload();
+                                        });
                                 return;
                             },
                             error: function(xhr) {
@@ -678,7 +679,8 @@
                                     });
                                 } else {
                                     Swal.fire('Error!', uploadFailureMessage(xhr,
-                                        'Gagal memproses surat masuk.', uploadSizeOptions), 'error');
+                                        'Gagal memproses surat masuk.',
+                                        uploadSizeOptions), 'error');
                                 }
                                 $form.data('submitting', false);
                                 $submitButtons.prop('disabled', false).removeClass('disabled');

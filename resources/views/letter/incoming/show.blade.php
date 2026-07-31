@@ -34,6 +34,7 @@
         $evidenceFiles = $incomingLetter->attachables?->where('category', 'evidence')->values() ?? collect();
         $socialMaterialFiles =
             $incomingLetter->attachables?->where('category', 'social_material')->values() ?? collect();
+        $lainnyaFiles = $incomingLetter->attachables?->where('category', 'lainnya_evidence')->values() ?? collect();
         $directorateMap = $directorates?->keyBy('id') ?? collect();
         $responseOutgoingLetter = $responseOutgoingLetter ?? null;
         $canCreateOutgoingFromIncoming = (bool) ($permissionFlags['can_create_outgoing_from_incoming'] ?? false);
@@ -339,6 +340,7 @@
                                         'socialization' => 'Sosialisasi',
                                         'invitation' => 'Peserta Undangan',
                                         'review' => 'Review / New Ketentuan',
+                                        'lainnya' => 'Lainnya (Ditindaklanjuti di Luar Aplikasi)',
                                     ];
                                 @endphp
                                 {{ $followupLabels[$incomingLetter->followup_action] ?? $incomingLetter->followup_action }}
@@ -610,6 +612,38 @@
                                 <span class="text-gray-600">Catatan:</span>
                                 <span class="font-medium">{{ $followupDetail['note'] ?? '-' }}</span>
                             </div>
+                        @elseif ($incomingLetter->followup_action === 'lainnya')
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Tanggal Tindak Lanjut:</span>
+                                <span class="font-medium">{{ $followupDetail['date'] ?? '-' }}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Catatan:</span>
+                                <span class="font-medium">{{ $followupDetail['note'] ?? '-' }}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Upload Surat:</span>
+                                <span class="font-medium">
+                                    @if ($lainnyaFiles->count() > 0)
+                                        <span class="flex flex-col gap-1 items-end">
+                                            @foreach ($lainnyaFiles as $lainnyaFile)
+                                                @php
+                                                    $lainnyaAttachment = $lainnyaFile->attachment;
+                                                @endphp
+                                                @if ($lainnyaAttachment)
+                                                    <a class="text-primary hover:underline"
+                                                        href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($lainnyaAttachment->path) }}"
+                                                        target="_blank" rel="noopener">
+                                                        {{ $lainnyaAttachment->original_name ?? $lainnyaAttachment->file_name }}
+                                                    </a>
+                                                @endif
+                                            @endforeach
+                                        </span>
+                                    @else
+                                        {{ $followupDetail['file'] ?? '-' }}
+                                    @endif
+                                </span>
+                            </div>
                         @endif
                         <div class="flex justify-between items-center">
                             <span class="text-gray-600">Catatan:</span>
@@ -621,10 +655,10 @@
         @endif
 
         @if ($validationRequested || $incomingLetter->corp_secretary_validated_at)
-                <div class="card">
-                    <div class="card-header">
+            <div class="card">
+                <div class="card-header">
                     <h3 class="card-title">Corporate Secretary</h3>
-                    </div>
+                </div>
                 <div class="card-body">
                     <div class="grid gap-4">
                         <div class="flex justify-between items-center">
@@ -723,6 +757,7 @@
         </div>
 
         @if ($canDirectorateUpdate)
+<<<<<<< HEAD
                 <div class="card">
                     <div class="card-header">
                         <h3 class="card-title">Input Tindak Lanjut Direktorat</h3>
@@ -754,355 +789,413 @@
                                             Review / New Ketentuan</option>
                                     </select>
                                 </div>
+=======
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Input Tindak Lanjut Direktorat</h3>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ route('letter.incoming.directorate.update', $incomingLetter) }}"
+                        enctype="multipart/form-data" class="grid gap-4 js-ajax-form" data-form-type="followup"
+                        id="followup-form">
+                        @csrf
+                        <div class="grid gap-4 lg:grid-cols-2">
+                            <div class="flex flex-col lg:col-span-2">
+                                <label class="form-label">Tindak Lanjut <span class="text-danger">*</span></label>
+                                <select class="select" name="followup_action" id="followup_action" required>
+                                    <option value="">- Pilih Tindak Lanjut -</option>
+                                    <option value="meeting"
+                                        {{ old('followup_action', $incomingLetter->followup_action) === 'meeting' ? 'selected' : '' }}>
+                                        Meeting Koordinasi</option>
+                                    <option value="response_letter"
+                                        {{ old('followup_action', $incomingLetter->followup_action) === 'response_letter' ? 'selected' : '' }}>
+                                        Surat Jawaban</option>
+                                    <option value="socialization"
+                                        {{ old('followup_action', $incomingLetter->followup_action) === 'socialization' ? 'selected' : '' }}>
+                                        Sosialisasi</option>
+                                    <option value="invitation"
+                                        {{ old('followup_action', $incomingLetter->followup_action) === 'invitation' ? 'selected' : '' }}>
+                                        Peserta Undangan</option>
+                                    <option value="review"
+                                        {{ old('followup_action', $incomingLetter->followup_action) === 'review' ? 'selected' : '' }}>
+                                        Review / New Ketentuan</option>
+                                    <option value="lainnya"
+                                        {{ old('followup_action', $incomingLetter->followup_action) === 'lainnya' ? 'selected' : '' }}>
+                                        Lainnya</option>
+                                </select>
+                            </div>
+>>>>>>> 7e84cce245b01817c83717d179fd74b0a8e5fcf2
 
-                                <div class="flex flex-col followup-field hidden" data-followup="meeting"
-                                    data-field="followup_meeting_participants">
-                                    <label class="form-label">Peserta Meeting <span class="text-danger">*</span></label>
-                                    @php
-                                        $meetingParticipants = old(
-                                            'followup_meeting_participants',
-                                            $incomingLetter->followup_detail['participants'] ?? [],
+                            <div class="flex flex-col followup-field hidden" data-followup="meeting"
+                                data-field="followup_meeting_participants">
+                                <label class="form-label">Peserta Meeting <span class="text-danger">*</span></label>
+                                @php
+                                    $meetingParticipants = old(
+                                        'followup_meeting_participants',
+                                        $incomingLetter->followup_detail['participants'] ?? [],
+                                    );
+                                    if (!is_array($meetingParticipants)) {
+                                        $meetingParticipants = array_filter(
+                                            array_map('trim', explode(',', (string) $meetingParticipants)),
                                         );
-                                        if (!is_array($meetingParticipants)) {
-                                            $meetingParticipants = array_filter(
-                                                array_map('trim', explode(',', (string) $meetingParticipants)),
-                                            );
-                                        }
-                                        $meetingParticipantIds = array_map('strval', $meetingParticipants);
-                                    @endphp
-                                    <div class="relative">
-                                        <button type="button"
-                                            class="select w-full flex items-center justify-between text-left bg-white text-gray-800"
-                                            style="text-align: left; justify-content: flex-start;"
-                                            id="meeting-participants-dropdown">
-                                            <span id="meeting-participants-selected-text"
-                                                class="block truncate text-left w-full" style="text-align: left;">Pilih
-                                                peserta...</span>
-                                        </button>
-                                        <div id="meeting-participants-options"
-                                            class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
-                                            style="background-color: #ffffff; max-height: 16rem; overflow-y: auto;">
-                                            <div class="p-3 space-y-2 bg-white">
-                                                @foreach ($directorates ?? [] as $directorate)
-                                                    <label class="flex items-center gap-2">
-                                                        <input type="checkbox" name="followup_meeting_participants[]"
-                                                            value="{{ $directorate->id }}"
-                                                            {{ in_array((string) $directorate->id, $meetingParticipantIds, true) ? 'checked' : '' }}>
-                                                        <span>{{ $directorate->name }}</span>
-                                                    </label>
-                                                @endforeach
-                                            </div>
+                                    }
+                                    $meetingParticipantIds = array_map('strval', $meetingParticipants);
+                                @endphp
+                                <div class="relative">
+                                    <button type="button"
+                                        class="select w-full flex items-center justify-between text-left bg-white text-gray-800"
+                                        style="text-align: left; justify-content: flex-start;"
+                                        id="meeting-participants-dropdown">
+                                        <span id="meeting-participants-selected-text"
+                                            class="block truncate text-left w-full" style="text-align: left;">Pilih
+                                            peserta...</span>
+                                    </button>
+                                    <div id="meeting-participants-options"
+                                        class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
+                                        style="background-color: #ffffff; max-height: 16rem; overflow-y: auto;">
+                                        <div class="p-3 space-y-2 bg-white">
+                                            @foreach ($directorates ?? [] as $directorate)
+                                                <label class="flex items-center gap-2">
+                                                    <input type="checkbox" name="followup_meeting_participants[]"
+                                                        value="{{ $directorate->id }}"
+                                                        {{ in_array((string) $directorate->id, $meetingParticipantIds, true) ? 'checked' : '' }}>
+                                                    <span>{{ $directorate->name }}</span>
+                                                </label>
+                                            @endforeach
                                         </div>
                                     </div>
                                 </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="meeting">
-                                    <label class="form-label">Tanggal Meeting <span class="text-danger">*</span></label>
-                                    <input class="input" type="date" name="followup_meeting_date"
-                                        value="{{ old('followup_meeting_date', $incomingLetter->followup_detail['date'] ?? '') }}">
-                                </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="meeting">
-                                    <label class="form-label">Waktu Meeting <span class="text-danger">*</span></label>
-                                    <input class="input" type="time" name="followup_meeting_time"
-                                        value="{{ old('followup_meeting_time', $incomingLetter->followup_detail['time'] ?? '') }}">
-                                </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="meeting">
-                                    <label class="form-label">Tempat Meeting <span class="text-danger">*</span></label>
-                                    <input class="input" type="text" name="followup_meeting_location"
-                                        value="{{ old('followup_meeting_location', $incomingLetter->followup_detail['location'] ?? '') }}"
-                                        placeholder="Lokasi...">
-                                </div>
+                            </div>
+                            <div class="flex flex-col followup-field hidden" data-followup="meeting">
+                                <label class="form-label">Tanggal Meeting <span class="text-danger">*</span></label>
+                                <input class="input" type="date" name="followup_meeting_date"
+                                    value="{{ old('followup_meeting_date', $incomingLetter->followup_detail['date'] ?? '') }}">
+                            </div>
+                            <div class="flex flex-col followup-field hidden" data-followup="meeting">
+                                <label class="form-label">Waktu Meeting <span class="text-danger">*</span></label>
+                                <input class="input" type="time" name="followup_meeting_time"
+                                    value="{{ old('followup_meeting_time', $incomingLetter->followup_detail['time'] ?? '') }}">
+                            </div>
+                            <div class="flex flex-col followup-field hidden" data-followup="meeting">
+                                <label class="form-label">Tempat Meeting <span class="text-danger">*</span></label>
+                                <input class="input" type="text" name="followup_meeting_location"
+                                    value="{{ old('followup_meeting_location', $incomingLetter->followup_detail['location'] ?? '') }}"
+                                    placeholder="Lokasi...">
+                            </div>
 
-                                <div class="flex flex-col followup-field hidden" data-followup="response_letter">
-                                    <label class="form-label">Target Surat Jawaban <span
-                                            class="text-danger">*</span></label>
-                                    <input class="input" type="date" name="followup_response_target_date"
-                                        min="{{ now()->format('Y-m-d') }}"
-                                        value="{{ old('followup_response_target_date', $incomingLetter->followup_detail['target_date'] ?? '') }}">
-                                </div>
+                            <div class="flex flex-col followup-field hidden" data-followup="response_letter">
+                                <label class="form-label">Target Surat Jawaban <span class="text-danger">*</span></label>
+                                <input class="input" type="date" name="followup_response_target_date"
+                                    min="{{ now()->format('Y-m-d') }}"
+                                    value="{{ old('followup_response_target_date', $incomingLetter->followup_detail['target_date'] ?? '') }}">
+                            </div>
 
-                                <div class="flex flex-col followup-field hidden" data-followup="socialization"
-                                    data-field="followup_social_participants">
-                                    <label class="form-label">Peserta Sosialisasi <span
-                                            class="text-danger">*</span></label>
-                                    @php
-                                        $socialParticipants = old(
-                                            'followup_social_participants',
-                                            $incomingLetter->followup_detail['participants'] ?? [],
+                            <div class="flex flex-col followup-field hidden" data-followup="socialization"
+                                data-field="followup_social_participants">
+                                <label class="form-label">Peserta Sosialisasi <span class="text-danger">*</span></label>
+                                @php
+                                    $socialParticipants = old(
+                                        'followup_social_participants',
+                                        $incomingLetter->followup_detail['participants'] ?? [],
+                                    );
+                                    if (!is_array($socialParticipants)) {
+                                        $socialParticipants = array_filter(
+                                            array_map('trim', explode(',', (string) $socialParticipants)),
                                         );
-                                        if (!is_array($socialParticipants)) {
-                                            $socialParticipants = array_filter(
-                                                array_map('trim', explode(',', (string) $socialParticipants)),
-                                            );
-                                        }
-                                        $socialParticipantIds = array_map('strval', $socialParticipants);
-                                    @endphp
-                                    <div class="relative">
-                                        <button type="button"
-                                            class="select w-full flex items-center justify-between text-left bg-white text-gray-800"
-                                            style="text-align: left; justify-content: flex-start;"
-                                            id="social-participants-dropdown">
-                                            <span id="social-participants-selected-text"
-                                                class="block truncate text-left w-full" style="text-align: left;">Pilih
-                                                peserta...</span>
-                                        </button>
-                                        <div id="social-participants-options"
-                                            class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
-                                            style="background-color: #ffffff; max-height: 16rem; overflow-y: auto;">
-                                            <div class="p-3 space-y-2 bg-white">
-                                                @foreach ($directorates ?? [] as $directorate)
-                                                    <label class="flex items-center gap-2">
-                                                        <input type="checkbox" name="followup_social_participants[]"
-                                                            value="{{ $directorate->id }}"
-                                                            {{ in_array((string) $directorate->id, $socialParticipantIds, true) ? 'checked' : '' }}>
-                                                        <span>{{ $directorate->name }}</span>
-                                                    </label>
-                                                @endforeach
-                                            </div>
+                                    }
+                                    $socialParticipantIds = array_map('strval', $socialParticipants);
+                                @endphp
+                                <div class="relative">
+                                    <button type="button"
+                                        class="select w-full flex items-center justify-between text-left bg-white text-gray-800"
+                                        style="text-align: left; justify-content: flex-start;"
+                                        id="social-participants-dropdown">
+                                        <span id="social-participants-selected-text"
+                                            class="block truncate text-left w-full" style="text-align: left;">Pilih
+                                            peserta...</span>
+                                    </button>
+                                    <div id="social-participants-options"
+                                        class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
+                                        style="background-color: #ffffff; max-height: 16rem; overflow-y: auto;">
+                                        <div class="p-3 space-y-2 bg-white">
+                                            @foreach ($directorates ?? [] as $directorate)
+                                                <label class="flex items-center gap-2">
+                                                    <input type="checkbox" name="followup_social_participants[]"
+                                                        value="{{ $directorate->id }}"
+                                                        {{ in_array((string) $directorate->id, $socialParticipantIds, true) ? 'checked' : '' }}>
+                                                    <span>{{ $directorate->name }}</span>
+                                                </label>
+                                            @endforeach
                                         </div>
                                     </div>
                                 </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="socialization">
-                                    <label class="form-label">Tanggal Sosialisasi <span
-                                            class="text-danger">*</span></label>
-                                    <input class="input" type="date" name="followup_social_date"
-                                        value="{{ old('followup_social_date', $incomingLetter->followup_detail['date'] ?? '') }}">
-                                </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="socialization">
-                                    <label class="form-label">Tempat Sosialisasi</label>
-                                    <input class="input" type="text" name="followup_social_location"
-                                        value="{{ old('followup_social_location', $incomingLetter->followup_detail['location'] ?? '') }}"
-                                        placeholder="Lokasi...">
-                                </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="socialization">
-                                    <label class="form-label">Bahan Sosialisasi</label>
-                                    <input class="file-input" type="file" name="followup_social_material"
-                                        accept=".pdf,.jpg,.jpeg,.png">
-                                </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="socialization">
-                                    <label class="form-label">Koordinasi Direktorat</label>
-                                    @php
-                                        $coordinatedDirectorates = old(
-                                            'followup_social_directorate',
-                                            $incomingLetter->followup_detail['coordinated_directorate'] ?? [],
+                            </div>
+                            <div class="flex flex-col followup-field hidden" data-followup="socialization">
+                                <label class="form-label">Tanggal Sosialisasi <span class="text-danger">*</span></label>
+                                <input class="input" type="date" name="followup_social_date"
+                                    value="{{ old('followup_social_date', $incomingLetter->followup_detail['date'] ?? '') }}">
+                            </div>
+                            <div class="flex flex-col followup-field hidden" data-followup="socialization">
+                                <label class="form-label">Tempat Sosialisasi</label>
+                                <input class="input" type="text" name="followup_social_location"
+                                    value="{{ old('followup_social_location', $incomingLetter->followup_detail['location'] ?? '') }}"
+                                    placeholder="Lokasi...">
+                            </div>
+                            <div class="flex flex-col followup-field hidden" data-followup="socialization">
+                                <label class="form-label">Bahan Sosialisasi</label>
+                                <input class="file-input" type="file" name="followup_social_material"
+                                    accept=".pdf,.jpg,.jpeg,.png">
+                            </div>
+                            <div class="flex flex-col followup-field hidden" data-followup="socialization">
+                                <label class="form-label">Koordinasi Direktorat</label>
+                                @php
+                                    $coordinatedDirectorates = old(
+                                        'followup_social_directorate',
+                                        $incomingLetter->followup_detail['coordinated_directorate'] ?? [],
+                                    );
+                                    if (!is_array($coordinatedDirectorates)) {
+                                        $coordinatedDirectorates = array_filter(
+                                            array_map('trim', explode(',', (string) $coordinatedDirectorates)),
                                         );
-                                        if (!is_array($coordinatedDirectorates)) {
-                                            $coordinatedDirectorates = array_filter(
-                                                array_map('trim', explode(',', (string) $coordinatedDirectorates)),
-                                            );
-                                        }
-                                        $coordinatedDirectorateIds = array_map('strval', $coordinatedDirectorates);
-                                    @endphp
-                                    <div class="relative">
-                                        <button type="button"
-                                            class="select w-full flex items-center justify-between text-left bg-white text-gray-800"
-                                            style="text-align: left; justify-content: flex-start;"
-                                            id="social-coordination-dropdown">
-                                            <span id="social-coordination-selected-text"
-                                                class="block truncate text-left w-full" style="text-align: left;">Pilih
-                                                direktorat...</span>
-                                        </button>
-                                        <div id="social-coordination-options"
-                                            class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
-                                            style="background-color: #ffffff; max-height: 16rem; overflow-y: auto;">
-                                            <div class="p-3 space-y-2 bg-white">
-                                                @foreach ($directorates ?? [] as $directorate)
-                                                    <label class="flex items-center gap-2">
-                                                        <input type="checkbox" name="followup_social_directorate[]"
-                                                            value="{{ $directorate->id }}"
-                                                            {{ in_array((string) $directorate->id, $coordinatedDirectorateIds, true) ? 'checked' : '' }}>
-                                                        <span>{{ $directorate->name }}</span>
-                                                    </label>
-                                                @endforeach
-                                            </div>
+                                    }
+                                    $coordinatedDirectorateIds = array_map('strval', $coordinatedDirectorates);
+                                @endphp
+                                <div class="relative">
+                                    <button type="button"
+                                        class="select w-full flex items-center justify-between text-left bg-white text-gray-800"
+                                        style="text-align: left; justify-content: flex-start;"
+                                        id="social-coordination-dropdown">
+                                        <span id="social-coordination-selected-text"
+                                            class="block truncate text-left w-full" style="text-align: left;">Pilih
+                                            direktorat...</span>
+                                    </button>
+                                    <div id="social-coordination-options"
+                                        class="absolute z-20 mt-1 left-0 right-0 max-h-64 overflow-auto bg-white border border-gray-200 rounded shadow-lg hidden"
+                                        style="background-color: #ffffff; max-height: 16rem; overflow-y: auto;">
+                                        <div class="p-3 space-y-2 bg-white">
+                                            @foreach ($directorates ?? [] as $directorate)
+                                                <label class="flex items-center gap-2">
+                                                    <input type="checkbox" name="followup_social_directorate[]"
+                                                        value="{{ $directorate->id }}"
+                                                        {{ in_array((string) $directorate->id, $coordinatedDirectorateIds, true) ? 'checked' : '' }}>
+                                                    <span>{{ $directorate->name }}</span>
+                                                </label>
+                                            @endforeach
                                         </div>
                                     </div>
                                 </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="socialization">
-                                    <label class="form-label">Catatan Sosialisasi</label>
-                                    <textarea class="textarea w-full" name="followup_social_note" rows="3" placeholder="Catatan sosialisasi...">{{ old('followup_social_note', $incomingLetter->followup_detail['note'] ?? '') }}</textarea>
-                                </div>
+                            </div>
+                            <div class="flex flex-col followup-field hidden" data-followup="socialization">
+                                <label class="form-label">Catatan Sosialisasi</label>
+                                <textarea class="textarea w-full" name="followup_social_note" rows="3" placeholder="Catatan sosialisasi...">{{ old('followup_social_note', $incomingLetter->followup_detail['note'] ?? '') }}</textarea>
+                            </div>
 
-                                <div class="flex flex-col followup-field hidden lg:col-span-2" data-followup="invitation">
-                                    <div class="flex items-center justify-between gap-3">
-                                        <label class="form-label">Peserta Undangan <span
-                                                class="text-danger">*</span></label>
-                                        <button class="btn btn-sm btn-success" type="button"
-                                            id="add-invitation-participant">
-                                            Tambah Peserta
-                                        </button>
-                                    </div>
-                                    @php
-                                        $defaultInvitationParticipants =
-                                            $incomingLetter->followup_detail['participants'] ?? [];
-                                        if (
-                                            !is_array($defaultInvitationParticipants) ||
-                                            $defaultInvitationParticipants === []
-                                        ) {
-                                            $defaultInvitationParticipants = [
-                                                [
-                                                    'nik' => $incomingLetter->followup_detail['nik'] ?? '',
-                                                    'name' => $incomingLetter->followup_detail['name'] ?? '',
-                                                    'directorate' =>
-                                                        $incomingLetter->followup_detail['directorate'] ?? '',
-                                                    'position' => $incomingLetter->followup_detail['position'] ?? '',
-                                                    'registration_status' =>
-                                                        $incomingLetter->followup_detail['registration'] ?? '',
-                                                    'pic_name' => '',
-                                                    'pic_contact' => '',
-                                                    'registration_deadline' => '',
-                                                    'note' => $incomingLetter->followup_detail['note'] ?? '',
-                                                ],
-                                            ];
-                                        }
-                                        $invitationParticipants = old(
-                                            'followup_invitation_participants',
-                                            $defaultInvitationParticipants,
-                                        );
-                                    @endphp
-                                    <div id="invitation-participants-container" class="mt-4 grid gap-4">
-                                        @foreach ($invitationParticipants as $participantIndex => $participant)
-                                            <div class="rounded border border-gray-200 p-4 invitation-participant-item"
-                                                data-index="{{ $participantIndex }}">
-                                                <div class="mb-3 flex items-center justify-between gap-3">
-                                                    <div class="font-semibold text-gray-800">Peserta
-                                                        {{ $participantIndex + 1 }}</div>
-                                                    <button class="btn btn-xs btn-danger remove-invitation-participant"
-                                                        type="button">
-                                                        Hapus
-                                                    </button>
+                            <div class="flex flex-col followup-field hidden lg:col-span-2" data-followup="invitation">
+                                <div class="flex items-center justify-between gap-3">
+                                    <label class="form-label">Peserta Undangan <span class="text-danger">*</span></label>
+                                    <button class="btn btn-sm btn-success" type="button"
+                                        id="add-invitation-participant">
+                                        Tambah Peserta
+                                    </button>
+                                </div>
+                                @php
+                                    $defaultInvitationParticipants =
+                                        $incomingLetter->followup_detail['participants'] ?? [];
+                                    if (
+                                        !is_array($defaultInvitationParticipants) ||
+                                        $defaultInvitationParticipants === []
+                                    ) {
+                                        $defaultInvitationParticipants = [
+                                            [
+                                                'nik' => $incomingLetter->followup_detail['nik'] ?? '',
+                                                'name' => $incomingLetter->followup_detail['name'] ?? '',
+                                                'directorate' => $incomingLetter->followup_detail['directorate'] ?? '',
+                                                'position' => $incomingLetter->followup_detail['position'] ?? '',
+                                                'registration_status' =>
+                                                    $incomingLetter->followup_detail['registration'] ?? '',
+                                                'pic_name' => '',
+                                                'pic_contact' => '',
+                                                'registration_deadline' => '',
+                                                'note' => $incomingLetter->followup_detail['note'] ?? '',
+                                            ],
+                                        ];
+                                    }
+                                    $invitationParticipants = old(
+                                        'followup_invitation_participants',
+                                        $defaultInvitationParticipants,
+                                    );
+                                @endphp
+                                <div id="invitation-participants-container" class="mt-4 grid gap-4">
+                                    @foreach ($invitationParticipants as $participantIndex => $participant)
+                                        <div class="rounded border border-gray-200 p-4 invitation-participant-item"
+                                            data-index="{{ $participantIndex }}">
+                                            <div class="mb-3 flex items-center justify-between gap-3">
+                                                <div class="font-semibold text-gray-800">Peserta
+                                                    {{ $participantIndex + 1 }}</div>
+                                                <button class="btn btn-xs btn-danger remove-invitation-participant"
+                                                    type="button">
+                                                    Hapus
+                                                </button>
+                                            </div>
+                                            <div class="grid gap-4 lg:grid-cols-2">
+                                                <div class="flex flex-col">
+                                                    <label class="form-label">NIK</label>
+                                                    <input class="input invitation-nik-input" type="text"
+                                                        name="followup_invitation_participants[{{ $participantIndex }}][nik]"
+                                                        maxlength="16" inputmode="numeric" pattern="[0-9]*"
+                                                        value="{{ $participant['nik'] ?? '' }}"
+                                                        placeholder="NIK peserta...">
                                                 </div>
-                                                <div class="grid gap-4 lg:grid-cols-2">
-                                                    <div class="flex flex-col">
-                                                        <label class="form-label">NIK</label>
-                                                        <input class="input invitation-nik-input" type="text"
-                                                            name="followup_invitation_participants[{{ $participantIndex }}][nik]"
-                                                            maxlength="16" inputmode="numeric" pattern="[0-9]*"
-                                                            value="{{ $participant['nik'] ?? '' }}"
-                                                            placeholder="NIK peserta...">
-                                                    </div>
-                                                    <div class="flex flex-col">
-                                                        <label class="form-label">Nama Peserta <span
-                                                                class="text-danger">*</span></label>
-                                                        <input class="input invitation-name-input" type="text"
-                                                            name="followup_invitation_participants[{{ $participantIndex }}][name]"
-                                                            value="{{ $participant['name'] ?? '' }}"
-                                                            placeholder="Nama peserta...">
-                                                    </div>
-                                                    <div class="flex flex-col">
-                                                        <label class="form-label">Direktorat</label>
-                                                        <input class="input invitation-directorate-input" type="text"
-                                                            name="followup_invitation_participants[{{ $participantIndex }}][directorate]"
-                                                            value="{{ $participant['directorate'] ?? '' }}"
-                                                            placeholder="Direktorat peserta...">
-                                                    </div>
-                                                    <div class="flex flex-col">
-                                                        <label class="form-label">Jabatan</label>
-                                                        <input class="input invitation-position-input" type="text"
-                                                            name="followup_invitation_participants[{{ $participantIndex }}][position]"
-                                                            value="{{ $participant['position'] ?? '' }}"
-                                                            placeholder="Jabatan peserta...">
-                                                    </div>
-                                                    <div class="flex flex-col">
-                                                        <label class="form-label">Status Pendaftaran</label>
-                                                        <select class="select invitation-registration-status"
-                                                            name="followup_invitation_participants[{{ $participantIndex }}][registration_status]">
-                                                            <option value="">- Pilih -</option>
-                                                            <option value="sudah"
-                                                                {{ ($participant['registration_status'] ?? '') === 'sudah' ? 'selected' : '' }}>
-                                                                Sudah</option>
-                                                            <option value="belum"
-                                                                {{ ($participant['registration_status'] ?? '') === 'belum' ? 'selected' : '' }}>
-                                                                Belum</option>
-                                                        </select>
-                                                    </div>
-                                                    <div class="flex flex-col">
-                                                        <label class="form-label">Nama PIC</label>
-                                                        <input class="input invitation-pic-name-input" type="text"
-                                                            name="followup_invitation_participants[{{ $participantIndex }}][pic_name]"
-                                                            value="{{ $participant['pic_name'] ?? '' }}"
-                                                            placeholder="Nama PIC...">
-                                                    </div>
-                                                    <div class="flex flex-col">
-                                                        <label class="form-label">Nomor Contact PIC</label>
-                                                        <input class="input invitation-pic-contact-input" type="text"
-                                                            name="followup_invitation_participants[{{ $participantIndex }}][pic_contact]"
-                                                            value="{{ $participant['pic_contact'] ?? '' }}"
-                                                            placeholder="Nomor contact PIC...">
-                                                    </div>
-                                                    <div class="flex flex-col">
-                                                        <label class="form-label">Tanggal Deadline Pendaftaran</label>
-                                                        <input class="input invitation-registration-deadline-input"
-                                                            type="date"
-                                                            name="followup_invitation_participants[{{ $participantIndex }}][registration_deadline]"
-                                                            value="{{ $participant['registration_deadline'] ?? '' }}">
-                                                    </div>
-                                                    <div class="flex flex-col lg:col-span-2">
-                                                        <label class="form-label">Catatan</label>
-                                                        <textarea class="textarea w-full" name="followup_invitation_participants[{{ $participantIndex }}][note]"
-                                                            rows="3" placeholder="Catatan peserta...">{{ $participant['note'] ?? '' }}</textarea>
-                                                    </div>
+                                                <div class="flex flex-col">
+                                                    <label class="form-label">Nama Peserta <span
+                                                            class="text-danger">*</span></label>
+                                                    <input class="input invitation-name-input" type="text"
+                                                        name="followup_invitation_participants[{{ $participantIndex }}][name]"
+                                                        value="{{ $participant['name'] ?? '' }}"
+                                                        placeholder="Nama peserta...">
+                                                </div>
+                                                <div class="flex flex-col">
+                                                    <label class="form-label">Direktorat</label>
+                                                    <input class="input invitation-directorate-input" type="text"
+                                                        name="followup_invitation_participants[{{ $participantIndex }}][directorate]"
+                                                        value="{{ $participant['directorate'] ?? '' }}"
+                                                        placeholder="Direktorat peserta...">
+                                                </div>
+                                                <div class="flex flex-col">
+                                                    <label class="form-label">Jabatan</label>
+                                                    <input class="input invitation-position-input" type="text"
+                                                        name="followup_invitation_participants[{{ $participantIndex }}][position]"
+                                                        value="{{ $participant['position'] ?? '' }}"
+                                                        placeholder="Jabatan peserta...">
+                                                </div>
+                                                <div class="flex flex-col">
+                                                    <label class="form-label">Status Pendaftaran</label>
+                                                    <select class="select invitation-registration-status"
+                                                        name="followup_invitation_participants[{{ $participantIndex }}][registration_status]">
+                                                        <option value="">- Pilih -</option>
+                                                        <option value="sudah"
+                                                            {{ ($participant['registration_status'] ?? '') === 'sudah' ? 'selected' : '' }}>
+                                                            Sudah</option>
+                                                        <option value="belum"
+                                                            {{ ($participant['registration_status'] ?? '') === 'belum' ? 'selected' : '' }}>
+                                                            Belum</option>
+                                                    </select>
+                                                </div>
+                                                <div class="flex flex-col">
+                                                    <label class="form-label">Nama PIC</label>
+                                                    <input class="input invitation-pic-name-input" type="text"
+                                                        name="followup_invitation_participants[{{ $participantIndex }}][pic_name]"
+                                                        value="{{ $participant['pic_name'] ?? '' }}"
+                                                        placeholder="Nama PIC...">
+                                                </div>
+                                                <div class="flex flex-col">
+                                                    <label class="form-label">Nomor Contact PIC</label>
+                                                    <input class="input invitation-pic-contact-input" type="text"
+                                                        name="followup_invitation_participants[{{ $participantIndex }}][pic_contact]"
+                                                        value="{{ $participant['pic_contact'] ?? '' }}"
+                                                        placeholder="Nomor contact PIC...">
+                                                </div>
+                                                <div class="flex flex-col">
+                                                    <label class="form-label">Tanggal Deadline Pendaftaran</label>
+                                                    <input class="input invitation-registration-deadline-input"
+                                                        type="date"
+                                                        name="followup_invitation_participants[{{ $participantIndex }}][registration_deadline]"
+                                                        value="{{ $participant['registration_deadline'] ?? '' }}">
+                                                </div>
+                                                <div class="flex flex-col lg:col-span-2">
+                                                    <label class="form-label">Catatan</label>
+                                                    <textarea class="textarea w-full" name="followup_invitation_participants[{{ $participantIndex }}][note]"
+                                                        rows="3" placeholder="Catatan peserta...">{{ $participant['note'] ?? '' }}</textarea>
                                                 </div>
                                             </div>
-                                        @endforeach
-                                    </div>
+                                        </div>
+                                    @endforeach
                                 </div>
+                            </div>
 
-                                <div class="flex flex-col followup-field hidden" data-followup="review">
-                                    <label class="form-label">Nomor Peraturan <span class="text-danger">*</span></label>
-                                    <input class="input" type="text" name="followup_review_regulation_number"
-                                        value="{{ old('followup_review_regulation_number', $incomingLetter->followup_detail['regulation_number'] ?? '') }}"
-                                        placeholder="Nomor peraturan...">
-                                </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="review">
-                                    <label class="form-label">Judul Peraturan <span class="text-danger">*</span></label>
-                                    <input class="input" type="text" name="followup_review_regulation_title"
-                                        value="{{ old('followup_review_regulation_title', $incomingLetter->followup_detail['regulation_title'] ?? '') }}"
-                                        placeholder="Judul peraturan...">
-                                </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="review">
-                                    <label class="form-label">Tanggal Upload <span class="text-danger">*</span></label>
-                                    <input class="input" type="date" name="followup_review_upload_date"
-                                        value="{{ old('followup_review_upload_date', $incomingLetter->followup_detail['upload_date'] ?? '') }}">
-                                </div>
-                                <div class="flex flex-col followup-field hidden" data-followup="review">
-                                    <label class="form-label">Catatan</label>
-                                    <textarea class="textarea w-full" name="followup_review_note" rows="3" placeholder="Catatan review...">{{ old('followup_review_note', $incomingLetter->followup_detail['note'] ?? '') }}</textarea>
-                                </div>
+                            <div class="flex flex-col followup-field hidden" data-followup="review">
+                                <label class="form-label">Nomor Peraturan <span class="text-danger">*</span></label>
+                                <input class="input" type="text" name="followup_review_regulation_number"
+                                    value="{{ old('followup_review_regulation_number', $incomingLetter->followup_detail['regulation_number'] ?? '') }}"
+                                    placeholder="Nomor peraturan...">
+                            </div>
+                            <div class="flex flex-col followup-field hidden" data-followup="review">
+                                <label class="form-label">Judul Peraturan <span class="text-danger">*</span></label>
+                                <input class="input" type="text" name="followup_review_regulation_title"
+                                    value="{{ old('followup_review_regulation_title', $incomingLetter->followup_detail['regulation_title'] ?? '') }}"
+                                    placeholder="Judul peraturan...">
+                            </div>
+                            <div class="flex flex-col followup-field hidden" data-followup="review">
+                                <label class="form-label">Tanggal Upload <span class="text-danger">*</span></label>
+                                <input class="input" type="date" name="followup_review_upload_date"
+                                    value="{{ old('followup_review_upload_date', $incomingLetter->followup_detail['upload_date'] ?? '') }}">
+                            </div>
+                            <div class="flex flex-col followup-field hidden" data-followup="review">
+                                <label class="form-label">Catatan</label>
+                                <textarea class="textarea w-full" name="followup_review_note" rows="3" placeholder="Catatan review...">{{ old('followup_review_note', $incomingLetter->followup_detail['note'] ?? '') }}</textarea>
+                            </div>
 
-                                <div class="flex flex-col">
-                                    <label class="form-label">Due Date</label>
-                                    <input class="input" type="date" name="target_date"
-                                        value="{{ old('target_date', $incomingLetter->target_date?->format('Y-m-d')) }}">
-                                </div>
+                            <div class="flex flex-col followup-field hidden" data-followup="lainnya">
+                                <label class="form-label">Tanggal Tindak Lanjut <span class="text-danger">*</span></label>
+                                <input class="input" type="date" name="followup_lainnya_date"
+                                    id="followup_lainnya_date"
+                                    value="{{ old('followup_lainnya_date', $incomingLetter->followup_detail['date'] ?? now()->format('Y-m-d')) }}">
+                            </div>
+                            <div class="flex flex-col followup-field hidden" data-followup="lainnya">
+                                <label class="form-label">Catatan <span class="text-danger">*</span></label>
+                                <textarea class="textarea w-full" name="followup_lainnya_note" rows="3"
+                                    placeholder="Jelaskan tindak lanjut yang sudah dilakukan di luar aplikasi...">{{ old('followup_lainnya_note', $incomingLetter->followup_detail['note'] ?? '') }}</textarea>
+                            </div>
+                            <div class="flex flex-col followup-field hidden lg:col-span-2" data-followup="lainnya">
+                                <label class="form-label">Upload Surat <span class="text-danger">*</span></label>
+                                <input class="file-input" type="file" name="followup_lainnya_file"
+                                    accept=".pdf,.jpg,.jpeg,.png">
+                                @if (!empty($incomingLetter->followup_detail['file'] ?? null))
+                                    <small class="text-xs text-gray-500 mt-1">
+                                        File saat ini: {{ $incomingLetter->followup_detail['file'] }}
+                                    </small>
+                                @endif
                             </div>
 
                             <div class="flex flex-col">
-                                <label class="form-label">Catatan</label>
-                                <textarea class="textarea w-full" name="followup_note" rows="3" placeholder="Tambahkan catatan...">{{ old('followup_note', $incomingLetter->followup_note) }}</textarea>
+                                <label class="form-label">Due Date</label>
+                                <input class="input" type="date" name="target_date"
+                                    value="{{ old('target_date', $incomingLetter->target_date?->format('Y-m-d')) }}">
                             </div>
+                        </div>
 
-                            <div class="flex flex-col" id="evidence-upload-wrapper">
-                                <label class="form-label">Upload Draft/Hasil (PDF/JPG/PNG)</label>
-                                <input class="file-input" type="file" name="evidence_files[]" multiple
-                                    accept=".pdf,.jpg,.jpeg,.png">
-                                <small class="text-xs text-gray-500 mt-1" id="evidence-upload-note"
-                                    style="display:none;">
-                                    Untuk tindak lanjut Surat Jawaban, final dokumen diselesaikan lewat form Surat Keluar.
-                                </small>
-                            </div>
+                        <div class="flex flex-col">
+                            <label class="form-label">Catatan</label>
+                            <textarea class="textarea w-full" name="followup_note" rows="3" placeholder="Tambahkan catatan...">{{ old('followup_note', $incomingLetter->followup_note) }}</textarea>
+                        </div>
 
-                            <div class="flex justify-end gap-2">
-                                <button class="btn btn-light" type="submit" name="submit_for_approval" value="0">
-                                    Simpan Draft
-                                </button>
-                                <button class="btn btn-primary" type="submit" name="submit_for_approval"
-                                    value="1">
-                                    Submit Approval Direktorat
-                                </button>
-                            </div>
-                        </form>
-                    </div>
+                        <div class="flex flex-col" id="evidence-upload-wrapper">
+                            <label class="form-label">Upload Draft/Hasil (PDF/JPG/PNG)</label>
+                            <input class="file-input" type="file" name="evidence_files[]" multiple
+                                accept=".pdf,.jpg,.jpeg,.png">
+                            <small class="text-xs text-gray-500 mt-1" id="evidence-upload-note" style="display:none;">
+                                Untuk tindak lanjut Surat Jawaban, final dokumen diselesaikan lewat form Surat Keluar.
+                            </small>
+                            <small class="text-xs text-gray-500 mt-1" id="evidence-upload-note-lainnya"
+                                style="display:none;">
+                                Untuk tindak lanjut Lainnya, upload bukti pada kolom "Upload Surat" di atas.
+                            </small>
+                        </div>
+
+                        <div class="flex justify-end gap-2">
+                            <button class="btn btn-light" type="submit" name="submit_for_approval" value="0">
+                                Simpan Draft
+                            </button>
+                            <button class="btn btn-primary" type="submit" name="submit_for_approval" value="1">
+                                Submit Approval Direktorat
+                            </button>
+                        </div>
+                    </form>
                 </div>
+<<<<<<< HEAD
+=======
+            </div>
+>>>>>>> 7e84cce245b01817c83717d179fd74b0a8e5fcf2
         @endif
 
         @if ($approvals->count() > 0)
@@ -1252,8 +1345,10 @@
             const socialCoordinationSelectedText = document.getElementById('social-coordination-selected-text');
             const evidenceUploadWrapper = document.getElementById('evidence-upload-wrapper');
             const evidenceUploadNote = document.getElementById('evidence-upload-note');
+            const evidenceUploadNoteLainnya = document.getElementById('evidence-upload-note-lainnya');
             const evidenceFileInput = evidenceUploadWrapper ? evidenceUploadWrapper.querySelector(
                 'input[name="evidence_files[]"]') : null;
+            const lainnyaDateInput = document.getElementById('followup_lainnya_date');
             const invitationParticipantsContainer = document.getElementById('invitation-participants-container');
             const addInvitationParticipantButton = document.getElementById('add-invitation-participant');
             const invitationLookupUrl = @json(route('letter.incoming.lookup-user'));
@@ -1277,17 +1372,36 @@
                     evidenceUploadNote.style.display = selected === 'response_letter' ? '' : 'none';
                 }
 
+                if (evidenceUploadNoteLainnya) {
+                    evidenceUploadNoteLainnya.style.display = selected === 'lainnya' ? '' : 'none';
+                }
+
                 if (evidenceFileInput) {
-                    evidenceFileInput.style.display = selected === 'response_letter' ? 'none' : '';
-                    if (selected === 'response_letter') {
+                    const hideEvidenceInput = selected === 'response_letter' || selected === 'lainnya';
+                    evidenceFileInput.style.display = hideEvidenceInput ? 'none' : '';
+                    if (hideEvidenceInput) {
                         evidenceFileInput.value = '';
                     }
+                }
+
+                if (lainnyaDateInput && selected === 'lainnya' && !lainnyaDateInput.value) {
+                    const today = new Date();
+                    const yyyy = today.getFullYear();
+                    const mm = String(today.getMonth() + 1).padStart(2, '0');
+                    const dd = String(today.getDate()).padStart(2, '0');
+                    lainnyaDateInput.value = `${yyyy}-${mm}-${dd}`;
                 }
             }
 
             if (followupSelect) {
                 toggleFollowupFields();
                 followupSelect.addEventListener('change', toggleFollowupFields);
+            }
+
+            const followupFormEl = document.getElementById('followup-form');
+            if (followupFormEl && window.jQuery) {
+                window.jQuery(followupFormEl).data('hasExistingLainnyaFile',
+                    @json(!empty($incomingLetter->followup_detail['file'] ?? null)));
             }
 
             function updateMeetingParticipantsLabel() {
@@ -1642,8 +1756,19 @@
                         }
                     }
 
+                    if (action === 'lainnya') {
+                        if (!$form.find('[name="followup_lainnya_note"]').val()) {
+                            errors.followup_lainnya_note = 'Field ini tidak boleh kosong.';
+                        }
+                        const lainnyaFileInput = $form.find('[name="followup_lainnya_file"]')[0];
+                        const hasExistingLainnyaFile = $form.data('hasExistingLainnyaFile') === true;
+                        if ((!lainnyaFileInput || lainnyaFileInput.files.length === 0) && !hasExistingLainnyaFile) {
+                            errors.followup_lainnya_file = 'Harap upload surat.';
+                        }
+                    }
+
                     const submitForApproval = $form.data('submitForApproval');
-                    if (submitForApproval === '1' && action !== 'response_letter') {
+                    if (submitForApproval === '1' && action !== 'response_letter' && action !== 'lainnya') {
                         const filesInput = $form.find('[name="evidence_files[]"]')[0];
                         if (!filesInput || filesInput.files.length === 0) {
                             errors['evidence_files[]'] = 'Harap upload file.';
@@ -1729,7 +1854,8 @@
                                 return;
                             }
                             Swal.fire('Error!', uploadFailureMessage(xhr,
-                                'Gagal memproses surat masuk.', uploadSizeOptions), 'error');
+                                    'Gagal memproses surat masuk.', uploadSizeOptions),
+                                'error');
                         }
                     });
                 });

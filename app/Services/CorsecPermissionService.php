@@ -191,6 +191,26 @@ class CorsecPermissionService
             || $this->isAllCorsecDataDirectorate($user);
     }
 
+    /**
+     * Narrower visibility rule used specifically for Incoming Letter and Outgoing
+     * Letter (list, detail access, report, and export). Unlike canViewAllCorsec(),
+     * this intentionally excludes Assistant Director+, Compliance, and SKAI —
+     * only Administrator, Corporate Secretary, and Sekretaris (Sekretariat Direksi)
+     * may see letters across all directorates here. Every other user only sees
+     * letters belonging to their own directorate. This does not affect the
+     * separate compliance-queue visibility, which is scoped independently.
+     */
+    public function canViewAllLetters(?User $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        return $user->hasRole('administrator')
+            || $this->isCorpSecretaryDirectorate($user)
+            || $this->isSekretariatDireksi($user);
+    }
+
     public function canAddDirectorNote(?User $user, string $abilityPrefix = 'corsec'): bool
     {
         if (!$user || !(bool) ($user?->can($abilityPrefix . '.read') ?? false)) {
@@ -998,7 +1018,7 @@ class CorsecPermissionService
 
     private function scopeIncomingDashboardVisibility($query, User $user): void
     {
-        if ($this->canViewAllCorsec($user)) {
+        if ($this->canViewAllLetters($user)) {
             return;
         }
 
@@ -1016,7 +1036,7 @@ class CorsecPermissionService
 
     private function scopeOutgoingDashboardVisibility($query, User $user): void
     {
-        if ($this->canViewAllCorsec($user)) {
+        if ($this->canViewAllLetters($user)) {
             return;
         }
 

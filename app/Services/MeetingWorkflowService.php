@@ -145,12 +145,12 @@ class MeetingWorkflowService
                 [$meeting->created_by],
                 'meeting_corsec_action',
                 $this->meetingNotificationData(
-                        $meeting,
-                        $actor,
-                        'Approval Corsec',
-                        'Rencana rapat dikembalikan Corporate Secretary.'
-                    )
-                );
+                    $meeting,
+                    $actor,
+                    'Approval Corsec',
+                    'Rencana rapat dikembalikan Corporate Secretary.'
+                )
+            );
         });
     }
 
@@ -744,7 +744,7 @@ class MeetingWorkflowService
     {
         return DirectorateApprovalFlow::isDeputyDirector($user);
     }
- 
+
     public function startMinutes(Meeting $meeting, User $actor): void
     {
         DB::transaction(function () use ($meeting, $actor) {
