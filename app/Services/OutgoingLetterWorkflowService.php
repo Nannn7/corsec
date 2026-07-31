@@ -911,7 +911,7 @@ class OutgoingLetterWorkflowService
             return true;
         }
 
-        if (!$user->hasRole('letter.maker_action')) {
+        if (!$user->can('letter.maker_action')) {
             return false;
         }
 
@@ -997,9 +997,7 @@ class OutgoingLetterWorkflowService
 
         return User::query()
             ->where('directorate_id', $letter->requester_directorate_id)
-            ->whereHas('roles', function ($query) {
-                $query->where('name', 'maker');
-            })
+            ->where($this->stageActionPermissionQuery('letter.maker_action'))
             ->whereHas('position', function ($query) {
                 $query->where('name', 'ilike', '%staff%');
             })
@@ -1014,9 +1012,7 @@ class OutgoingLetterWorkflowService
 
         return User::query()
             ->where('directorate_id', $directorateId)
-            ->whereHas('roles', function ($query) {
-                $query->where('name', 'checker');
-            })
+            ->where($this->stageActionPermissionQuery('letter.checker_action'))
             ->pluck('id');
     }
 
@@ -1028,9 +1024,7 @@ class OutgoingLetterWorkflowService
 
         return User::query()
             ->where('directorate_id', $directorateId)
-            ->whereHas('roles', function ($query) {
-                $query->where('name', 'approver');
-            })
+            ->where($this->stageActionPermissionQuery('letter.approver_action'))
             ->pluck('id');
     }
 
@@ -1043,9 +1037,7 @@ class OutgoingLetterWorkflowService
 
         return User::query()
             ->where('directorate_id', $directorateId)
-            ->whereHas('roles', function ($query) {
-                $query->where('name', 'maker');
-            })
+            ->where($this->stageActionPermissionQuery('letter.maker_action'))
             ->whereHas('position', function ($query) {
                 $query->where('name', 'ilike', '%staff%');
             })
@@ -1061,9 +1053,7 @@ class OutgoingLetterWorkflowService
 
         return User::query()
             ->where('directorate_id', $directorateId)
-            ->whereHas('roles', function ($query) {
-                $query->where('name', 'checker');
-            })
+            ->where($this->stageActionPermissionQuery('letter.checker_action'))
             ->pluck('id');
     }
 
@@ -1076,10 +1066,19 @@ class OutgoingLetterWorkflowService
 
         return User::query()
             ->where('directorate_id', $directorateId)
-            ->whereHas('roles', function ($query) {
-                $query->where('name', 'approver');
-            })
+            ->where($this->stageActionPermissionQuery('letter.approver_action'))
             ->pluck('id');
+    }
+
+    private function stageActionPermissionQuery(string $permissionName): \Closure
+    {
+        return function ($query) use ($permissionName) {
+            $query->whereHas('permissions', function ($permissionQuery) use ($permissionName) {
+                $permissionQuery->where('name', $permissionName);
+            })->orWhereHas('roles.permissions', function ($permissionQuery) use ($permissionName) {
+                $permissionQuery->where('name', $permissionName);
+            });
+        };
     }
 
     private function isComplianceDirectorate(User $user): bool

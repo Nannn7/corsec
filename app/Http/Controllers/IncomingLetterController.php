@@ -973,7 +973,7 @@ class IncomingLetterController extends Controller
     // Staff Direktorat update tindak lanjut + upload bukti
     public function directorateUpdate(Request $request, IncomingLetter $incomingLetter)
     {
-        $this->authorizeNonViewerUpdate();
+        $this->authorizeNonViewerFollowupAction();
 
         $submitForApproval = $request->boolean('submit_for_approval', true);
         $followupActionInput = $request->string('followup_action')->toString();
@@ -1096,7 +1096,7 @@ class IncomingLetterController extends Controller
 
     public function lookupUserByNik(Request $request)
     {
-        $this->authorizeNonViewerUpdate();
+        $this->authorizeNonViewerFollowupAction();
 
         $validated = $request->validate([
             'nik' => ['required', 'string', 'max:50'],
@@ -1402,6 +1402,20 @@ class IncomingLetterController extends Controller
         }
         if ($this->permissionService->isViewerRole($user)) {
             abort(403, 'Role viewer tidak memiliki akses untuk aksi update ini.');
+        }
+    }
+
+    private function authorizeNonViewerFollowupAction(): void
+    {
+        $user = Auth::user();
+        if (
+            !$user
+            || (!$user->can('letter.update') && !$user->can('letter.maker_action'))
+        ) {
+            abort(403, 'Anda tidak memiliki akses untuk mengubah tindak lanjut surat masuk.');
+        }
+        if ($this->permissionService->isViewerRole($user)) {
+            abort(403, 'Role viewer tidak memiliki akses untuk aksi tindak lanjut ini.');
         }
     }
 

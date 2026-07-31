@@ -45,7 +45,7 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () us
             Route::get('/datatables', [IncomingLetterController::class, 'datatables'])->middleware(['permission:letter.read', $datatablesThrottle])->name('datatables');
             Route::get('/export', [IncomingLetterController::class, 'export'])->middleware('permission:letter.export')->name('export');
             Route::post('/delete-multiple', [IncomingLetterController::class, 'deleteMultiple'])->middleware(['permission:letter.delete', $writeHeavyThrottle])->name('delete_multiple');
-            Route::get('/lookup-user', [IncomingLetterController::class, 'lookupUserByNik'])->middleware(['permission:letter.update', $previewThrottle])->name('lookup-user');
+            Route::get('/lookup-user', [IncomingLetterController::class, 'lookupUserByNik'])->middleware(['permission:letter.update|letter.maker_action', $previewThrottle])->name('lookup-user');
             // CREATE
             Route::get('/create', [IncomingLetterController::class, 'create'])->middleware('permission:letter.create')->name('create');
             Route::post('/', [IncomingLetterController::class, 'store'])->middleware(['permission:letter.create', $writeHeavyThrottle])->name('store');
@@ -57,7 +57,7 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () us
             Route::post('/{incomingLetter}/submit', [IncomingLetterController::class, 'submit'])->middleware(['permission:letter.create|letter.update', $writeHeavyThrottle])->name('submit');
             Route::post('/{incomingLetter}/circulate', [IncomingLetterController::class, 'circulate'])->middleware(['permission:letter.update', $writeHeavyThrottle])->name('circulate');
             Route::post('/{incomingLetter}/approval', [IncomingLetterController::class, 'approvalAction'])->middleware(['permission:letter.authorize', $writeHeavyThrottle])->name('approval.action');
-            Route::post('/{incomingLetter}/directorate-update', [IncomingLetterController::class, 'directorateUpdate'])->middleware(['permission:letter.update', $writeHeavyThrottle])->name('directorate.update');
+            Route::post('/{incomingLetter}/directorate-update', [IncomingLetterController::class, 'directorateUpdate'])->middleware(['permission:letter.update|letter.maker_action', $writeHeavyThrottle])->name('directorate.update');
             Route::post('/{incomingLetter}/monitoring', [IncomingLetterController::class, 'addMonitoringDirectorates'])->middleware(['permission:letter.update', $writeHeavyThrottle])->name('monitoring.add');
             Route::post('/{incomingLetter}/verify', [IncomingLetterController::class, 'verifyAction'])->middleware(['permission:letter.read|letter.authorize|letter.update', $writeHeavyThrottle])->name('verify.action');
             Route::post('/{incomingLetter}/note', [IncomingLetterController::class, 'directorNote'])->middleware(['permission:letter.read', $writeHeavyThrottle])->name('director.note');

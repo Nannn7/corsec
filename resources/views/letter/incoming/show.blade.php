@@ -9,7 +9,6 @@
         $permissionFlags = $permissionFlags ?? [];
         $status = $incomingLetter->status;
         $canViewerNote = (bool) ($permissionFlags['can_viewer_note'] ?? false);
-        $canCorsecUpdateAction = (bool) ($permissionFlags['can_corsec_update_action'] ?? false);
         $canDirectorateUpdate = (bool) ($permissionFlags['can_directorate_update'] ?? false);
         $canCheckerDirApproval = (bool) ($permissionFlags['can_checker_dir_approval'] ?? false);
         $canApproverApproval = (bool) ($permissionFlags['can_approver_approval'] ?? false);
@@ -723,8 +722,7 @@
             </div>
         </div>
 
-        @if ($canCorsecUpdateAction)
-            @if ($canDirectorateUpdate)
+        @if ($canDirectorateUpdate)
                 <div class="card">
                     <div class="card-header">
                         <h3 class="card-title">Input Tindak Lanjut Direktorat</h3>
@@ -1105,7 +1103,6 @@
                         </form>
                     </div>
                 </div>
-            @endif
         @endif
 
         @if ($approvals->count() > 0)

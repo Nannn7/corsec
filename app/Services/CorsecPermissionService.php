@@ -306,6 +306,13 @@ class CorsecPermissionService
         $isExecutiveOfficer = $this->isExecutiveOfficer($user);
         $isSekretariatDireksi = $this->isSekretariatDireksi($user);
         $isEoCorpSecretaryChecker = $isChecker && $isEoCorpAffairDirectorate && $isExecutiveOfficer;
+        $canFollowupAction = $isAdmin || (
+            !$this->isViewerRole($user)
+            && (
+                (bool) ($user?->can('letter.update') ?? false)
+                || $this->isStageAction($user, 'letter', 'maker_action')
+            )
+        );
 
         $actorDirectorateId = (int) ($user?->directorate_id ?? $user?->directorateid ?? 0);
         $isTargetDirectorate = $actorDirectorateId > 0
@@ -349,6 +356,7 @@ class CorsecPermissionService
             IncomingLetter::STATUS_RETURNED,
         ], true)
             && !$isEoCorpAffairActor
+            && $canFollowupAction
             && ($isAdmin || ($isTargetDirectorate && (string) $incomingLetter->authorized_status === 'authorized'));
 
         $canCheckerDirApproval = $status === IncomingLetter::STATUS_WAITING_DIR_APPROVAL
@@ -427,7 +435,6 @@ class CorsecPermissionService
 
         $isComplianceDirectorate = $this->isComplianceDirectorate($user);
 
-        $roleNames = $this->normalizedRoleNames($user);
         $positionName = $this->normalizedPositionName($user);
 
         $latestPendingDirectorateApproval = $approvals
@@ -475,17 +482,13 @@ class CorsecPermissionService
         ]);
 
         $isComplianceMakerStaff = $isComplianceDirectorate
-            && $roleNames->contains(function (string $name) {
-                return Str::contains($name, 'maker');
-            })
+            && $this->isStageAction($user, 'letter', 'maker_action')
             && $positionName !== ''
             && Str::contains($positionName, 'staff');
 
         $isRequesterDirectorateMakerStaff = $user
             && (int) ($outgoingLetter->requester_directorate_id ?? 0) === (int) ($user->directorate_id ?? 0)
-            && $roleNames->contains(function (string $name) {
-                return Str::contains($name, 'maker');
-            })
+            && $this->isStageAction($user, 'letter', 'maker_action')
             && $positionName !== ''
             && Str::contains($positionName, 'staff');
 

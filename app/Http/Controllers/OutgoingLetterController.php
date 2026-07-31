@@ -1467,12 +1467,15 @@ class OutgoingLetterController extends Controller
 
     private function canAccessComplianceQueue($user): bool
     {
-        if (!$user || !$user->hasRole('letter.maker_action')) {
+        if (!$user || !$this->permissionService->isComplianceDirectorate($user)) {
             return false;
         }
 
-        return $this->permissionService->isComplianceDirectorate($user)
-            && $this->permissionService->isStaffPosition($user);
+        return (bool) (
+            $user->can('letter.maker_action')
+            || $user->can('letter.checker_action')
+            || $user->can('letter.approver_action')
+        );
     }
 
     private function complianceQueueStatuses(): array
