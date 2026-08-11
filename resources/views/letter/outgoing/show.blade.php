@@ -447,7 +447,13 @@
                 const {
                     clearValidation,
                     showFieldError,
+                    validateFileSizes,
+                    uploadFailureMessage,
                 } = window.CorsecIncomingValidation;
+                const uploadSizeOptions = {
+                    maxBytes: @json(\Modules\Corsec\Support\UploadRule::maxFileSizeKb() * 1024),
+                    label: @json(\Modules\Corsec\Support\UploadRule::label()),
+                };
 
                 function validateSimpleRequired($form, fields) {
                     const errors = {};
@@ -503,6 +509,8 @@
                         }
                     }
 
+                    Object.assign(errors, validateFileSizes($form, uploadSizeOptions));
+
                     if (Object.keys(errors).length > 0) {
                         Object.keys(errors).forEach((field) => {
                             showFieldError($form, field, errors[field]);
@@ -552,8 +560,8 @@
                                 });
                                 return;
                             }
-                            Swal.fire('Error!', window.corsecAjaxMessage(xhr,
-                                'Gagal memproses surat keluar.'), 'error');
+                            Swal.fire('Error!', uploadFailureMessage(xhr,
+                                'Gagal memproses surat keluar.', uploadSizeOptions), 'error');
                         }
                     });
                 });

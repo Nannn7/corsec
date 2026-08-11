@@ -317,7 +317,11 @@ class IncomingLetterWorkflowService
         bool $submitForApproval,
         $lainnyaFile = null
     ): array {
+<<<<<<< HEAD
         return DB::transaction(function () use ($incomingLetter, $actor, $targetDate, $followupAction, $followupDetail, $followupNote, $evidenceFiles, $socialMaterialFile, $submitForApproval, $lainnyaFile) {
+=======
+        return DB::transaction(function () use ($incomingLetter, $actor, $targetDate, $followupAction, $followupDetail, $followupNote, $evidenceFiles, $socialMaterialFile, $submitForApproval) {
+>>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
             $isAdmin = $actor->hasRole('administrator');
 
             // User direktorat biasa hanya boleh update surat untuk direktorat tujuannya.

@@ -1609,6 +1609,12 @@ class OutgoingLetterController extends Controller
                     OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL,
                 ]);
             }
+            if ($canAccessApprovalQueue) {
+                $builder->orWhereIn('status', [
+                    OutgoingLetter::STATUS_WAITING_DIR_APPROVAL,
+                    OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL,
+                ]);
+            }
             if ($canAccessComplianceQueue) {
                 $builder->orWhere(function ($complianceQuery) {
                     $complianceQuery
@@ -1639,6 +1645,7 @@ class OutgoingLetterController extends Controller
             return true;
         }
 
+<<<<<<< HEAD
         if (
             $directorateId > 0
             && $outgoingLetter->perihalIncomingLetter()
@@ -1653,6 +1660,8 @@ class OutgoingLetterController extends Controller
             return true;
         }
 
+=======
+>>>>>>> 4773762663b025baff535a4ccf0a0ba07c294817
         return (
             $this->canAccessComplianceQueue($user)
             && in_array((string) $outgoingLetter->status, $this->complianceQueueStatuses(), true)

@@ -186,8 +186,11 @@ class CorsecPermissionService
         }
 
         return $user->hasRole('administrator')
+<<<<<<< HEAD
             || $this->hasAnyStageAction($user, ['checker_action', 'approver_action'])
             || $this->isAssistantDirectorOrAbove($user)
+=======
+>>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
             || $this->isAllCorsecDataDirectorate($user);
     }
 
@@ -244,7 +247,15 @@ class CorsecPermissionService
         }
 
         if ($this->isCorpSecretaryDirectorate($user)) {
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+            // return $user->hasRole('maker');
+>>>>>>> 4773762663b025baff535a4ccf0a0ba07c294817
             return $user->hasRole('administrator') || $this->isStageAction($user, 'letter', 'maker_action');
+=======
+            return $user->hasRole('maker');
+>>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
         }
 
         return true;
@@ -308,7 +319,11 @@ class CorsecPermissionService
             'can_create' => $canCreateIncoming,
             'can_export' => (bool) ($user?->can('letter.export') ?? false),
             'can_delete' => (bool) ($user?->can('letter.delete') ?? false),
+<<<<<<< HEAD
             'can_edit_action' => (bool) (($user?->hasRole('administrator') ?? false) || $canCreateIncoming || $this->isCorpSecretaryDirectorate($user) && $this->canCorsecUpdateAction($user, 'letter')),
+=======
+            'can_edit_action' => (bool) (($user?->hasRole('administrator') ?? false) || $canCreateIncoming),
+>>>>>>> 4773762663b025baff535a4ccf0a0ba07c294817
             'can_comment' => $this->canAddDirectorNote($user),
         ];
     }
@@ -406,8 +421,12 @@ class CorsecPermissionService
             (string) ($incomingLetter->followup_action ?? '') === 'response_letter'
             && $status === IncomingLetter::STATUS_WAITING_RESPONSE_LETTER
             && !$responseOutgoingLetter
+<<<<<<< HEAD
             && (bool) ($user?->can('letter.create') ?? false)
             && !$isEoCorpAffairDirectorate;
+=======
+            && $this->canCreateOutgoing($user);
+>>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
 
         return [
             'can_edit' => $this->canEditIncomingLetter($incomingLetter, $user),
@@ -442,8 +461,14 @@ class CorsecPermissionService
             'can_delete' => (bool) ($user?->can('letter.delete') ?? false),
             'can_export' => (bool) ($user?->can('letter.export') ?? false),
             'can_create_outgoing' => $this->canCreateOutgoing($user),
+<<<<<<< HEAD
             'can_create_or_update' => $this->canCorsecCreateOrUpdateAction($user, 'letter'),
             'can_edit_action' => (bool) ($isAdmin || $this->canCorsecUpdateAction($user, 'letter')),
+=======
+            'can_create_or_update' => $this->canCorsecCreateOrUpdateAction($user),
+            'can_edit_action' => (bool) ($isAdmin || $this->canCorsecUpdateAction($user)),
+            'can_comment' => $this->canAddDirectorNote($user),
+>>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
         ];
     }
 
@@ -1044,7 +1069,11 @@ class CorsecPermissionService
 
     private function scopeIncomingDashboardVisibility($query, User $user): void
     {
+<<<<<<< HEAD
         if ($this->canViewAllLetters($user)) {
+=======
+        if ($this->canViewAllCorsec($user)) {
+>>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
             return;
         }
 
@@ -1062,7 +1091,11 @@ class CorsecPermissionService
 
     private function scopeOutgoingDashboardVisibility($query, User $user): void
     {
+<<<<<<< HEAD
         if ($this->canViewAllLetters($user)) {
+=======
+        if ($this->canViewAllCorsec($user)) {
+>>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
             return;
         }
 
