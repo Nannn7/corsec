@@ -232,7 +232,13 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
             $query->where(function ($builder) use ($u, $directorateId) {
                 $builder->where('created_by', $u->id);
                 if ($directorateId > 0) {
-                    $builder->orWhere('requester_directorate_id', $directorateId);
+                    $builder->orWhere('requester_directorate_id', $directorateId)
+                        ->orWhereHas('perihalIncomingLetter', function ($incomingQuery) use ($directorateId) {
+                            $incomingQuery->where('target_directorate_id', $directorateId)
+                                ->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
+                                    $circulationQuery->where('directorate_id', $directorateId);
+                                });
+                        });
                 }
             });
         }

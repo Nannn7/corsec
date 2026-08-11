@@ -349,6 +349,14 @@ class IncomingLetterController extends Controller
     {
         $this->authorizeNonViewerUpdate();
 
+        $user = Auth::user();
+        if ($incomingLetter->status === IncomingLetter::STATUS_VERIFIED) {
+            abort(403, 'Surat masuk ini sudah terverifikasi. Anda tidak dapat mengeditnya.');
+        }
+        if (!$user->hasRole('administrator') && !$this->permissionService->isCorpSecretaryDirectorate($user)) {
+            abort(403, 'Anda tidak memiliki akses untuk mengedit surat masuk ini.');
+        }
+
         $directorates = $this->getCachedDirectorates();
         $senders = $this->getCachedSenders();
         $letterTypes = $this->getCachedLetterTypes();
@@ -363,6 +371,14 @@ class IncomingLetterController extends Controller
     public function update(Request $request, IncomingLetter $incomingLetter)
     {
         $this->authorizeNonViewerUpdate();
+
+        $user = Auth::user();
+        if ($incomingLetter->status === IncomingLetter::STATUS_VERIFIED) {
+            abort(403, 'Surat masuk ini sudah terverifikasi. Anda tidak dapat mengeditnya.');
+        }
+        if (!$user->hasRole('administrator') && !$this->permissionService->isCorpSecretaryDirectorate($user)) {
+            abort(403, 'Anda tidak memiliki akses untuk mengedit surat masuk ini.');
+        }
 
         $request->validate([
             'external_letter_no' => ['required', 'string', 'max:255'],
@@ -387,11 +403,8 @@ class IncomingLetterController extends Controller
 
         $user = auth()->user();
         $submitForApproval = $request->boolean('submit_for_approval', false);
-        if ($submitForApproval && !in_array((string) $incomingLetter->status, [
-            IncomingLetter::STATUS_DRAFT,
-            IncomingLetter::STATUS_RETURNED,
-        ], true)) {
-            abort(422, 'Surat masuk hanya bisa disubmit dari status Draft atau Returned.');
+        if ($submitForApproval && $incomingLetter->status === IncomingLetter::STATUS_VERIFIED) {
+            abort(422, 'Surat masuk yang sudah verified tidak bisa disubmit ulang.');
         }
 
         $circulationDirectorateIds = array_values(array_filter(

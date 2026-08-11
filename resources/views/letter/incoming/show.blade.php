@@ -15,6 +15,7 @@
         $canCheckerApproval = (bool) ($permissionFlags['can_checker_approval'] ?? false);
         $canCorsecValidation = (bool) ($permissionFlags['can_corsec_validation'] ?? false);
         $canAddMonitoring = (bool) ($permissionFlags['can_add_monitoring'] ?? false);
+        $canEdit = (bool) ($permissionFlags['can_edit'] ?? false);
         $validationRequested = (bool) $incomingLetter->corp_secretary_validation_requested_at;
         $validationOverdue = $incomingLetter->isCorpSecretaryValidationOverdue();
         $validationCompletedLate = $incomingLetter->isCorpSecretaryValidatedLate();
@@ -77,6 +78,11 @@
                     <a href="{{ route('letter.incoming.index') }}" class="btn btn-sm btn-light">
                         <i class="ki-filled ki-arrow-left"></i> Kembali
                     </a>
+                    @if ($canEdit)
+                        <a href="{{ route('letter.incoming.edit', $incomingLetter) }}" class="btn btn-sm btn-info">
+                            <i class="ki-filled ki-notepad-edit"></i> Edit Surat
+                        </a>
+                    @endif
                 </div>
             </div>
         </div>
@@ -757,39 +763,6 @@
         </div>
 
         @if ($canDirectorateUpdate)
-<<<<<<< HEAD
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Input Tindak Lanjut Direktorat</h3>
-                    </div>
-                    <div class="card-body">
-                        <form method="POST" action="{{ route('letter.incoming.directorate.update', $incomingLetter) }}"
-                            enctype="multipart/form-data" class="grid gap-4 js-ajax-form" data-form-type="followup"
-                            id="followup-form">
-                            @csrf
-                            <div class="grid gap-4 lg:grid-cols-2">
-                                <div class="flex flex-col lg:col-span-2">
-                                    <label class="form-label">Tindak Lanjut <span class="text-danger">*</span></label>
-                                    <select class="select" name="followup_action" id="followup_action" required>
-                                        <option value="">- Pilih Tindak Lanjut -</option>
-                                        <option value="meeting"
-                                            {{ old('followup_action', $incomingLetter->followup_action) === 'meeting' ? 'selected' : '' }}>
-                                            Meeting Koordinasi</option>
-                                        <option value="response_letter"
-                                            {{ old('followup_action', $incomingLetter->followup_action) === 'response_letter' ? 'selected' : '' }}>
-                                            Surat Jawaban</option>
-                                        <option value="socialization"
-                                            {{ old('followup_action', $incomingLetter->followup_action) === 'socialization' ? 'selected' : '' }}>
-                                            Sosialisasi</option>
-                                        <option value="invitation"
-                                            {{ old('followup_action', $incomingLetter->followup_action) === 'invitation' ? 'selected' : '' }}>
-                                            Peserta Undangan</option>
-                                        <option value="review"
-                                            {{ old('followup_action', $incomingLetter->followup_action) === 'review' ? 'selected' : '' }}>
-                                            Review / New Ketentuan</option>
-                                    </select>
-                                </div>
-=======
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Input Tindak Lanjut Direktorat</h3>
@@ -824,7 +797,6 @@
                                         Lainnya</option>
                                 </select>
                             </div>
->>>>>>> 7e84cce245b01817c83717d179fd74b0a8e5fcf2
 
                             <div class="flex flex-col followup-field hidden" data-followup="meeting"
                                 data-field="followup_meeting_participants">

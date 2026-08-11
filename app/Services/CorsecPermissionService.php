@@ -90,7 +90,7 @@ class CorsecPermissionService
             return false;
         }
 
-        $sekretarisDireksiCode = (string) config('corsec.sekretaris_direksi_directorate_code', '');
+        $sekretarisDireksiCode = (string) config('corsec.sekretaris_direksi_directorate_code', '004');
         if ($sekretarisDireksiCode === '') {
             return false;
         }
@@ -106,7 +106,7 @@ class CorsecPermissionService
             return false;
         }
 
-        $eoDirectorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+        $eoDirectorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '006');
 
         $user->loadMissing('directorate');
         $directorateCode = (string) ($user->directorate?->code ?? '');
@@ -125,7 +125,7 @@ class CorsecPermissionService
             return false;
         }
 
-        $complianceCode = (string) config('corsec.compliance_directorate_code', '');
+        $complianceCode = (string) config('corsec.compliance_directorate_code', '015');
 
         $user->loadMissing('directorate');
         $directorateCode = (string) ($user->directorate?->code ?? '');
@@ -207,7 +207,10 @@ class CorsecPermissionService
         }
 
         return $user->hasRole('administrator')
+            || $this->isViewerRole($user)
             || $this->isCorpSecretaryDirectorate($user)
+            || $this->isComplianceDirectorate($user)
+            || $this->isSkaiDirectorate($user)
             || $this->isSekretariatDireksi($user);
     }
 
@@ -241,7 +244,6 @@ class CorsecPermissionService
         }
 
         if ($this->isCorpSecretaryDirectorate($user)) {
-            // return $user->hasRole('maker');
             return $user->hasRole('administrator') || $this->isStageAction($user, 'letter', 'maker_action');
         }
 
@@ -301,11 +303,13 @@ class CorsecPermissionService
 
         return [
             'is_admin' => (bool) ($user?->hasRole('administrator') ?? false),
+            'is_corp_secretary' => $this->isCorpSecretaryDirectorate($user),
             'can_read' => (bool) ($user?->can('letter.read') ?? false),
             'can_create' => $canCreateIncoming,
             'can_export' => (bool) ($user?->can('letter.export') ?? false),
             'can_delete' => (bool) ($user?->can('letter.delete') ?? false),
-            'can_edit_action' => (bool) (($user?->hasRole('administrator') ?? false) || $canCreateIncoming),
+            'can_edit_action' => (bool) (($user?->hasRole('administrator') ?? false) || $canCreateIncoming || $this->isCorpSecretaryDirectorate($user) && $this->canCorsecUpdateAction($user, 'letter')),
+            'can_comment' => $this->canAddDirectorNote($user),
         ];
     }
 
@@ -406,6 +410,7 @@ class CorsecPermissionService
             && !$isEoCorpAffairDirectorate;
 
         return [
+            'can_edit' => $this->canEditIncomingLetter($incomingLetter, $user),
             'can_viewer_note' => $this->canAddDirectorNote($user, 'letter'),
             'can_corsec_update_action' => $this->canCorsecUpdateAction($user, 'letter'),
             'can_directorate_update' => $canDirectorateUpdate,
@@ -447,8 +452,8 @@ class CorsecPermissionService
         $status = (string) ($outgoingLetter->status ?? '');
 
         $isAdmin = (bool) ($user?->hasRole('administrator') ?? false);
-        $isChecker = $isAdmin || $this->isStageAction($user, 'letter', 'checker_action');
-        $isApprover = $isAdmin || $this->isStageAction($user, 'letter', 'approver_action');
+        $isChecker = $isAdmin || $this->isStageAction($user, 'letter', 'checker_action') || $this->isExecutiveOfficer($user);
+        $isApprover = $isAdmin || $this->isStageAction($user, 'letter', 'approver_action') || $this->isDeputyDirector($user);
 
         $isRequesterDirectorate = $user
             && (int) ($outgoingLetter->requester_directorate_id ?? 0) === (int) ($user->directorate_id ?? 0);
@@ -935,6 +940,27 @@ class CorsecPermissionService
             'maxCount' => $maxCount,
             'dominant' => $dominant,
         ];
+    }
+
+    public function canEditIncomingLetter(IncomingLetter $incomingLetter, ?User $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        if ($user->hasRole('administrator')) {
+            return $incomingLetter->status !== IncomingLetter::STATUS_VERIFIED;
+        }
+
+        if (!$this->isCorpSecretaryDirectorate($user)) {
+            return false;
+        }
+
+        if (!$user->can('letter.update') || $this->isViewerRole($user)) {
+            return false;
+        }
+
+        return $incomingLetter->status !== IncomingLetter::STATUS_VERIFIED;
     }
 
     private function normalizedPositionName(?User $user): string
