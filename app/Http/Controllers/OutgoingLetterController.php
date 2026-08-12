@@ -1645,7 +1645,6 @@ class OutgoingLetterController extends Controller
             return true;
         }
 
-<<<<<<< HEAD
         if (
             $directorateId > 0
             && $outgoingLetter->perihalIncomingLetter()
@@ -1660,8 +1659,6 @@ class OutgoingLetterController extends Controller
             return true;
         }
 
-=======
->>>>>>> 4773762663b025baff535a4ccf0a0ba07c294817
         return (
             $this->canAccessComplianceQueue($user)
             && in_array((string) $outgoingLetter->status, $this->complianceQueueStatuses(), true)
