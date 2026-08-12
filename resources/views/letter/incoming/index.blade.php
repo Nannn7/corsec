@@ -162,11 +162,7 @@
 
                                 <th class="min-w-[260px]" data-datatable-column="comments">Komentar</th>
 
-<<<<<<< HEAD
                                 <th class="min-w-[150px]" data-datatable-column="attachments">Attachment</th>
-=======
-                                <th class="min-w-[220px]" data-datatable-column="attachments">Attachment</th>
->>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
 
                                 <th class="min-w-[200px]" data-datatable-column="targetDirectorate">
                                     <span class="sort">
@@ -312,7 +308,6 @@
         const canComment = @json((bool) ($permissionFlags['can_comment'] ?? false));
         const isCorpSecretary = @json((bool) ($permissionFlags['is_corp_secretary'] ?? false));
 
-<<<<<<< HEAD
         // --- Filter panel (Status, Pengirim, rentang Tanggal Surat & Tanggal Diterima) ---
         const filterElements = {
             status: document.getElementById('filter-status'),
@@ -360,8 +355,6 @@
 
         applyFiltersFromUrl();
 
-=======
->>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
         const escapeHtml = (value) => {
             const div = document.createElement('div');
             div.textContent = value ?? '';
@@ -380,33 +373,19 @@
             return `<div class="flex flex-col gap-1">${list.map((attachment) => {
                 if (!attachment?.view_url) return '';
                 return `<a class="btn btn-xs btn-light justify-start" target="_blank" href="${attachment.view_url}">
-<<<<<<< HEAD
                             <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
                         </a>`;
-=======
-                    <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
-                </a>`;
->>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
             }).join('')}</div>`;
         };
 
         const renderComments = (data) => {
             const comments = Array.isArray(data.comments) ? data.comments : [];
-<<<<<<< HEAD
             const commentList = comments.length > 0 ?
                 `<div class="mb-2 space-y-1">${comments.map((comment) => `<div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs">
                             <div>${escapeHtml(comment.body || '-')}</div>
                             <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
                         </div>`).join('')}</div>` :
                 '<div class="mb-2 text-xs text-gray-500">Belum ada komentar.</div>';
-=======
-            const commentList = comments.length > 0
-                ? `<div class="mb-2 space-y-1">${comments.map((comment) => `<div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs">
-                    <div>${escapeHtml(comment.body || '-')}</div>
-                    <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
-                </div>`).join('')}</div>`
-                : '<div class="mb-2 text-xs text-gray-500">Belum ada komentar.</div>';
->>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
 
             if (!canComment || !data.comment_url) return commentList;
 
@@ -625,13 +604,9 @@
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     },
-<<<<<<< HEAD
                     body: JSON.stringify({
                         note
                     })
-=======
-                    body: JSON.stringify({ note })
->>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
                 });
                 if (!response.ok) throw response;
                 if (typeof dataTable.reload === 'function') dataTable.reload();

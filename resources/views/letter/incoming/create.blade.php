@@ -679,12 +679,8 @@
                                     });
                                 } else {
                                     Swal.fire('Error!', uploadFailureMessage(xhr,
-<<<<<<< HEAD
                                         'Gagal memproses surat masuk.',
                                         uploadSizeOptions), 'error');
-=======
-                                        'Gagal memproses surat masuk.', uploadSizeOptions), 'error');
->>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
                                 }
                                 $form.data('submitting', false);
                                 $submitButtons.prop('disabled', false).removeClass('disabled');

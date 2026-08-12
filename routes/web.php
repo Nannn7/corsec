@@ -26,11 +26,7 @@ Route::get('/storage/{path}', SecureStorageController::class)
     ->where('path', '.*')
     ->name('storage.secure');
 
-<<<<<<< HEAD
 Route::middleware(['auth', 'permission:corsec.read|letter.read|meeting.read|workplan.read|report.read|library.read'])->group(function () {
-=======
-Route::middleware(['auth', 'permission:corsec.read'])->group(function () {
->>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
     Route::get('/attachment/{attachment}/view', [SecureStorageController::class, 'viewAttachment'])->name('attachment.view');
     Route::get('/attachment/{attachment}/download', [SecureStorageController::class, 'downloadAttachment'])->name('attachment.download');
 });

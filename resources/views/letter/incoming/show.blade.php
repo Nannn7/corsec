@@ -1164,10 +1164,6 @@
                         </div>
                     </form>
                 </div>
-<<<<<<< HEAD
-=======
-            </div>
->>>>>>> 7e84cce245b01817c83717d179fd74b0a8e5fcf2
         @endif
 
         @if ($approvals->count() > 0)
@@ -1826,12 +1822,8 @@
                                 return;
                             }
                             Swal.fire('Error!', uploadFailureMessage(xhr,
-<<<<<<< HEAD
                                     'Gagal memproses surat masuk.', uploadSizeOptions),
                                 'error');
-=======
-                                'Gagal memproses surat masuk.', uploadSizeOptions), 'error');
->>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
                         }
                     });
                 });
