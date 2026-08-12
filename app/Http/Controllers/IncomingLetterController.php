@@ -1341,6 +1341,123 @@ class IncomingLetterController extends Controller
         return back()->with('success', 'Direktorat monitoring berhasil ditambahkan.');
     }
 
+    public function updateLeader(Request $request, IncomingLetter $incomingLetter)
+    {
+        $this->authorizeNonViewerUpdate();
+
+        $user = Auth::user();
+        $directorateId = $user?->directorate_id ?? $user?->directorateid;
+        $isAdmin = $user?->hasRole('administrator');
+        $isTargetDirectorate = $user && (int) $incomingLetter->target_directorate_id === (int) $directorateId;
+        $isExecutiveOfficer = $this->permissionService->isExecutiveOfficer($user);
+        $isSekretariatDireksi = $this->permissionService->isSekretariatDireksi($user);
+        $isEoCorpSecretaryChecker =
+            $user && $user->can('letter.checker_action') && $this->permissionService->isCorpSecretaryDirectorate($user) && $isExecutiveOfficer;
+
+        if (!$user || (!$isAdmin && !$isTargetDirectorate && !$isEoCorpSecretaryChecker && !$isSekretariatDireksi)) {
+            abort(403, 'Anda tidak memiliki akses untuk mengubah leader.');
+        }
+
+        $request->validate([
+            'new_target_directorate_id' => ['required', 'exists:corsec_directorates,id'],
+            'leader_note' => ['nullable', 'string'],
+        ]);
+
+        $oldTargetDirectorateId = (int) $incomingLetter->target_directorate_id;
+        $newTargetDirectorateId = (int) $request->input('new_target_directorate_id');
+
+        if ($newTargetDirectorateId === $oldTargetDirectorateId) {
+            return back()->withErrors(['new_target_directorate_id' => 'Leader baru harus berbeda dari leader saat ini.'])->withInput();
+        }
+
+        DB::transaction(function () use ($incomingLetter, $newTargetDirectorateId, $oldTargetDirectorateId, $request, $user) {
+            // Leader wajib tetap termasuk di daftar sirkulasi (invariant yang sama dipakai di store/update).
+            $incomingLetter->circulationDirectorates()->syncWithoutDetaching([$newTargetDirectorateId]);
+
+            $incomingLetter->target_directorate_id = $newTargetDirectorateId;
+            $incomingLetter->save();
+
+            $oldDirectorateName = Directorate::find($oldTargetDirectorateId)?->name ?? "#{$oldTargetDirectorateId}";
+            $newDirectorateName = Directorate::find($newTargetDirectorateId)?->name ?? "#{$newTargetDirectorateId}";
+
+            $note = $request->string('leader_note')->toString();
+            $body = "[LEADER CHANGE] Diubah dari {$oldDirectorateName} ke {$newDirectorateName} oleh {$user->name}";
+            if ($note !== '') {
+                $body .= " - {$note}";
+            }
+
+            Comment::create([
+                'commentable_type' => IncomingLetter::class,
+                'commentable_id' => $incomingLetter->id,
+                'body' => $body,
+                'created_by' => $user->id,
+            ]);
+        });
+
+        $this->notifyIncomingDirectorates([$newTargetDirectorateId], $incomingLetter, $user);
+
+        return back()->with('success', 'Leader surat berhasil diubah.');
+    }
+
+    public function removeMonitoringDirectorate(Request $request, IncomingLetter $incomingLetter)
+    {
+        $this->authorizeNonViewerUpdate();
+
+        $user = Auth::user();
+        $directorateId = $user?->directorate_id ?? $user?->directorateid;
+        $isAdmin = $user?->hasRole('administrator');
+        $isTargetDirectorate = $user && (int) $incomingLetter->target_directorate_id === (int) $directorateId;
+        $isExecutiveOfficer = $this->permissionService->isExecutiveOfficer($user);
+        $isSekretariatDireksi = $this->permissionService->isSekretariatDireksi($user);
+        $isEoCorpSecretaryChecker =
+            $user && $user->can('letter.checker_action') && $this->permissionService->isCorpSecretaryDirectorate($user) && $isExecutiveOfficer;
+
+        if (!$user || (!$isAdmin && !$isTargetDirectorate && !$isEoCorpSecretaryChecker && !$isSekretariatDireksi)) {
+            abort(403, 'Anda tidak memiliki akses untuk menghapus monitoring.');
+        }
+
+        $request->validate([
+            'monitoring_directorate_id' => ['required', 'exists:corsec_directorates,id'],
+            'removal_note' => ['nullable', 'string'],
+        ]);
+
+        $removeId = (int) $request->input('monitoring_directorate_id');
+
+        // Leader tidak boleh di-remove dari sirkulasi selagi masih menjabat sebagai leader.
+        // Harus ganti leader dulu lewat updateLeader() sebelum direktorat ini bisa dilepas dari monitoring.
+        if ($removeId === (int) $incomingLetter->target_directorate_id) {
+            return back()->withErrors([
+                'monitoring_directorate_id' => 'Direktorat ini adalah leader surat saat ini. Ubah leader terlebih dahulu sebelum menghapusnya dari monitoring.',
+            ])->withInput();
+        }
+
+        $isCurrentlyInCirculation = $incomingLetter->circulationDirectorates()
+            ->where('corsec_directorates.id', $removeId)
+            ->exists();
+
+        if (!$isCurrentlyInCirculation) {
+            return back()->withErrors(['monitoring_directorate_id' => 'Direktorat ini tidak ada di daftar monitoring.'])->withInput();
+        }
+
+        $incomingLetter->circulationDirectorates()->detach([$removeId]);
+
+        $directorateName = Directorate::find($removeId)?->name ?? "#{$removeId}";
+        $note = $request->string('removal_note')->toString();
+        $body = "[MONITORING REMOVED] {$directorateName} dihapus dari daftar monitoring oleh {$user->name}";
+        if ($note !== '') {
+            $body .= " - {$note}";
+        }
+
+        Comment::create([
+            'commentable_type' => IncomingLetter::class,
+            'commentable_id' => $incomingLetter->id,
+            'body' => $body,
+            'created_by' => $user->id,
+        ]);
+
+        return back()->with('success', 'Direktorat monitoring berhasil dihapus.');
+    }
+
     private function notifyIncomingDirectorates(iterable $directorateIds, IncomingLetter $incomingLetter, User $actor): void
     {
         $ids = collect($directorateIds)->filter()->unique()->values();

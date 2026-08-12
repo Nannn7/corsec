@@ -419,6 +419,8 @@ class CorsecPermissionService
             'can_checker_approval' => $canCheckerApproval,
             'can_corsec_validation' => $canCheckerApproval,
             'can_add_monitoring' => (bool) ($isAdmin || $isTargetDirectorate || $isEoCorpSecretaryChecker || $isSekretariatDireksi),
+            'can_edit_leader' => (bool) ($isAdmin || $isTargetDirectorate || $isEoCorpSecretaryChecker || $isSekretariatDireksi),
+            'can_remove_monitoring' => (bool) ($isAdmin || $isTargetDirectorate || $isEoCorpSecretaryChecker || $isSekretariatDireksi),
             'can_create_outgoing_from_incoming' => $canCreateOutgoingFromIncoming,
         ];
     }
