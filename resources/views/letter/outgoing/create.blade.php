@@ -891,12 +891,8 @@
                                 return;
                             }
                             Swal.fire('Error!', uploadFailureMessage(xhr,
-<<<<<<< HEAD
                                     'Gagal memproses surat keluar.', uploadSizeOptions),
                                 'error');
-=======
-                                'Gagal memproses surat keluar.', uploadSizeOptions), 'error');
->>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
                         }
                     });
                 });

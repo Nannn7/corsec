@@ -150,7 +150,6 @@
                                     <th class="min-w-[220px]" data-datatable-column="summary">Ringkasan</th>
                                     <th class="min-w-[180px]" data-datatable-column="recipient">Penerima</th>
                                     <th class="min-w-[180px]" data-datatable-column="letter_type">Jenis Surat</th>
-<<<<<<< HEAD
                                     <th class="min-w-[120px]" data-datatable-column="perihal_type">Jenis Perihal</th>
                                     <th class="min-w-[170px]" data-datatable-column="requester_directorate">Direktorat
                                     </th>
@@ -163,15 +162,6 @@
                                             <span class="sort-icon"></span>
                                         </span>
                                     </th>
-=======
-                                    <th class="min-w-[170px]" data-datatable-column="perihal_type">Jenis Perihal</th>
-                                    <th class="min-w-[170px]" data-datatable-column="requester_directorate">Direktorat</th>
-                                    <th class="min-w-[220px]" data-datatable-column="circulation">Sirkulasi</th>
-                                    <th class="min-w-[260px]" data-datatable-column="comments">Komentar</th>
-                                    <th class="min-w-[220px]" data-datatable-column="attachments">Attachment</th>
-                                    <th class="min-w-[140px]" data-datatable-column="status">Status</th>
-                                    <th class="min-w-[180px]" data-datatable-column="created_at">Dibuat</th>
->>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
                                     <th class="min-w-[70px] text-center" data-datatable-column="actions">Action</th>
                                 </tr>
                             </thead>
