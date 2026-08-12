@@ -228,6 +228,7 @@
                         <div class="flex flex-col">
                             <label class="form-label">Tanggal Upload Final (wajib jika Simpan Draft)</label>
                             <input class="input" type="date" name="final_upload_date"
+                                min="{{ now()->format('Y-m-d') }}"
                                 value="{{ old('final_upload_date', optional($outgoingLetter->final_upload_date)->format('Y-m-d')) }}">
                         </div>
                         <div class="flex flex-col">
@@ -284,8 +285,7 @@
                         <div class="flex flex-col">
                             <label class="form-label">Komentar Viewer (Direksi / Sekdir / Corporate Secretary) <span
                                     class="text-danger">*</span></label>
-                            <textarea class="textarea w-full" name="note" rows="3"
-                                placeholder="Tambahkan komentar viewer..." required></textarea>
+                            <textarea class="textarea w-full" name="note" rows="3" placeholder="Tambahkan komentar viewer..." required></textarea>
                         </div>
                         <div class="flex justify-end">
                             <button class="btn btn-primary" type="submit">Simpan Komentar</button>
@@ -337,7 +337,7 @@
 
         <div class="card">
             <div class="card-header">
-                    <h3 class="card-title">Riwayat Komentar</h3>
+                <h3 class="card-title">Riwayat Komentar</h3>
             </div>
             <div class="card-body">
                 @if ($sortedComments->count() > 0)
@@ -447,7 +447,13 @@
                 const {
                     clearValidation,
                     showFieldError,
+                    validateFileSizes,
+                    uploadFailureMessage,
                 } = window.CorsecIncomingValidation;
+                const uploadSizeOptions = {
+                    maxBytes: @json(\Modules\Corsec\Support\UploadRule::maxFileSizeKb() * 1024),
+                    label: @json(\Modules\Corsec\Support\UploadRule::label()),
+                };
 
                 function validateSimpleRequired($form, fields) {
                     const errors = {};
@@ -503,6 +509,8 @@
                         }
                     }
 
+                    Object.assign(errors, validateFileSizes($form, uploadSizeOptions));
+
                     if (Object.keys(errors).length > 0) {
                         Object.keys(errors).forEach((field) => {
                             showFieldError($form, field, errors[field]);
@@ -552,8 +560,8 @@
                                 });
                                 return;
                             }
-                            Swal.fire('Error!', window.corsecAjaxMessage(xhr,
-                                'Gagal memproses surat keluar.'), 'error');
+                            Swal.fire('Error!', uploadFailureMessage(xhr,
+                                'Gagal memproses surat keluar.', uploadSizeOptions), 'error');
                         }
                     });
                 });

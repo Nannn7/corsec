@@ -86,8 +86,8 @@ class IncomingLetterWorkflowService
             $roundStartedAt = $approval?->created_at;
 
             $isAdmin = $actor->hasRole('administrator');
-            $isChecker = $actor->hasRole('checker');
-            $isApprover = $actor->hasRole('approver');
+            $isChecker = $isAdmin || $actor->can('letter.checker_action');
+            $isApprover = $isAdmin || $actor->can('letter.approver_action');
             $isEoCorpAffairActor = $this->isEoCorpAffairActor($actor);
 
             if ($incomingLetter->authorized_status === 'pending' || $incomingLetter->status === IncomingLetter::STATUS_ON_APPROVAL) {
@@ -314,9 +314,14 @@ class IncomingLetterWorkflowService
         ?string $followupNote,
         array $evidenceFiles,
         $socialMaterialFile,
-        bool $submitForApproval
+        bool $submitForApproval,
+        $lainnyaFile = null
     ): array {
+<<<<<<< HEAD
+        return DB::transaction(function () use ($incomingLetter, $actor, $targetDate, $followupAction, $followupDetail, $followupNote, $evidenceFiles, $socialMaterialFile, $submitForApproval, $lainnyaFile) {
+=======
         return DB::transaction(function () use ($incomingLetter, $actor, $targetDate, $followupAction, $followupDetail, $followupNote, $evidenceFiles, $socialMaterialFile, $submitForApproval) {
+>>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
             $isAdmin = $actor->hasRole('administrator');
 
             // User direktorat biasa hanya boleh update surat untuk direktorat tujuannya.
@@ -377,6 +382,28 @@ class IncomingLetterWorkflowService
                     'attachable_type' => IncomingLetter::class,
                     'attachable_id' => $incomingLetter->id,
                     'category' => 'social_material',
+                    'created_by' => $actor->id,
+                ]);
+            }
+
+            if ($lainnyaFile) {
+                $path = $lainnyaFile->store('corsec/incoming/lainnya', 'public');
+
+                $att = Attachment::create([
+                    'disk' => 'public',
+                    'path' => $path,
+                    'original_name' => $lainnyaFile->getClientOriginalName(),
+                    'file_name' => basename($path),
+                    'mime' => $lainnyaFile->getClientMimeType(),
+                    'size' => $lainnyaFile->getSize(),
+                    'created_by' => $actor->id,
+                ]);
+
+                Attachable::create([
+                    'attachment_id' => $att->id,
+                    'attachable_type' => IncomingLetter::class,
+                    'attachable_id' => $incomingLetter->id,
+                    'category' => 'lainnya_evidence',
                     'created_by' => $actor->id,
                 ]);
             }
@@ -541,8 +568,8 @@ class IncomingLetterWorkflowService
 
     private function isEoCorpAffairActor(User $actor): bool
     {
-        $isChecker = $actor->hasRole('checker');
-        $isApprover = $actor->hasRole('approver');
+        $isChecker = $actor->can('letter.checker_action');
+        $isApprover = $actor->can('letter.approver_action');
         if (!$isChecker && !$isApprover) {
             return false;
         }

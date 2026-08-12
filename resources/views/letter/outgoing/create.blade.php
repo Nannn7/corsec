@@ -218,11 +218,27 @@
                                 <option value="">- Pilih Surat Masuk -</option>
                                 @foreach ($incomingLetters as $incomingLetter)
                                     <option value="{{ $incomingLetter->id }}"
-                                        {{ (string) $selectedPerihalIncomingLetterId === (string) $incomingLetter->id ? 'selected' : '' }}>
+                                        {{ (string) $selectedPerihalIncomingLetterId === (string) $incomingLetter->id ? 'selected' : '' }}
+                                        {{ !$incomingLetter->is_eligible ? 'disabled' : '' }}>
+                                        [{{ $incomingLetter->status_label }}]
                                         {{ $incomingLetter->external_letter_no }} - {{ $incomingLetter->subject }}
+                                        {{ !$incomingLetter->is_eligible ? '(belum bisa dipilih)' : '' }}
                                     </option>
                                 @endforeach
                             </select>
+                            <div class="mt-1 text-xs text-gray-500">
+                                Hanya surat dengan status <strong>"Waiting Response Letter"</strong> yang bisa
+                                dipilih (opsi lain ditampilkan tapi tidak bisa diklik). Kalau surat yang kamu
+                                cari belum bisa dipilih, cek dulu status &amp; tindak lanjutnya di menu Incoming
+                                Letter — surat harus diproses sampai statusnya
+                                <strong>"Waiting Response Letter"</strong> dengan tindak lanjut
+                                <strong>"Surat Jawaban"</strong> terlebih dahulu.
+                            </div>
+                            @if ($incomingLetters->isEmpty())
+                                <div class="mt-1 text-xs text-warning">
+                                    Belum ada data surat masuk sama sekali.
+                                </div>
+                            @endif
                             @error('perihal_incoming_letter_id')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
                             @enderror
@@ -853,7 +869,8 @@
                             }
 
                             Swal.fire('Berhasil', successMessage, 'success').then(function() {
-                                if (bulkRequestMode || (approvalInput && approvalInput.value ===
+                                if (bulkRequestMode || (approvalInput && approvalInput
+                                        .value ===
                                         '1')) {
                                     window.location.href = indexUrl;
                                     return;
@@ -867,13 +884,19 @@
                                 .errors) {
                                 const serverErrors = xhr.responseJSON.errors;
                                 Object.keys(serverErrors).forEach((field) => {
-                                    showFieldError($form, resolveOutgoingErrorField(field),
+                                    showFieldError($form, resolveOutgoingErrorField(
+                                            field),
                                         serverErrors[field][0]);
                                 });
                                 return;
                             }
                             Swal.fire('Error!', uploadFailureMessage(xhr,
+<<<<<<< HEAD
+                                    'Gagal memproses surat keluar.', uploadSizeOptions),
+                                'error');
+=======
                                 'Gagal memproses surat keluar.', uploadSizeOptions), 'error');
+>>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
                         }
                     });
                 });

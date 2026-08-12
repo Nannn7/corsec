@@ -91,15 +91,15 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
             'Referensi Surat Masuk',
             'Keterangan Perihal',
             'Catatan',
-                'Nomor Surat',
-                'Status Internal',
-                'Status Tampilan',
-                'Tanggal Final Upload',
-                'Draft Attachment',
-                'Compliance Attachment',
-                'Final Attachment',
-                'Attachment Tambahan',
-                'Number Request Info',
+            'Nomor Surat',
+            'Status Internal',
+            'Status Tampilan',
+            'Tanggal Final Upload',
+            'Draft Attachment',
+            'Compliance Attachment',
+            'Final Attachment',
+            'Attachment Tambahan',
+            'Number Request Info',
             'Cancel Info',
             'Komentar',
             'Approval',
@@ -164,7 +164,7 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
             });
         }
 
-        if ($this->user && !$permissionService->canViewAllCorsec($this->user)) {
+        if ($this->user && !$permissionService->canViewAllLetters($this->user)) {
             $u = $this->user;
             $directorateId = $u->directorate_id ?? $u->directorateid;
             $isEoCorpAffairActor = $permissionService->isEoCorpAffairActor($u);
@@ -225,14 +225,20 @@ class LetterExport implements FromCollection, WithHeadings, WithMapping
             });
         }
 
-        if ($this->user && !$permissionService->canViewAllCorsec($this->user)) {
+        if ($this->user && !$permissionService->canViewAllLetters($this->user)) {
             $u = $this->user;
             $directorateId = (int) ($u->directorate_id ?? $u->directorateid ?? 0);
 
             $query->where(function ($builder) use ($u, $directorateId) {
                 $builder->where('created_by', $u->id);
                 if ($directorateId > 0) {
-                    $builder->orWhere('requester_directorate_id', $directorateId);
+                    $builder->orWhere('requester_directorate_id', $directorateId)
+                        ->orWhereHas('perihalIncomingLetter', function ($incomingQuery) use ($directorateId) {
+                            $incomingQuery->where('target_directorate_id', $directorateId)
+                                ->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
+                                    $circulationQuery->where('directorate_id', $directorateId);
+                                });
+                        });
                 }
             });
         }

@@ -355,8 +355,7 @@ class OutgoingLetterWorkflowService
         User $actor,
         Attachment $attachment,
         ?string $finalUploadDate = null
-    ): void
-    {
+    ): void {
         DB::transaction(function () use ($letter, $actor, $attachment, $finalUploadDate) {
             if ($letter->status !== OutgoingLetter::STATUS_WAITING_FINAL_UPLOAD) {
                 abort(403, 'Upload final surat hanya untuk status waiting final upload.');
@@ -437,8 +436,8 @@ class OutgoingLetterWorkflowService
             ? $this->approvalExistsByNotePrefixInRound($letter, 'EO Direktorat Approved', $roundStartedAt)
             : false;
 
-        $isChecker = $actor->hasRole('checker') || $actor->hasRole('administrator');
-        $isApprover = $actor->hasRole('approver') || $actor->hasRole('administrator');
+        $isChecker = $actor->hasRole('administrator') || $actor->can('letter.checker_action') || $this->isExecutiveOfficer($actor);
+        $isApprover = $actor->hasRole('administrator') || $actor->can('letter.approver_action') || $this->isDeputyDirector($actor);
 
         if ($action === 'approve') {
             if ($requiresCheckerApproval && !$checkerApproved) {
@@ -506,7 +505,7 @@ class OutgoingLetterWorkflowService
         }
 
         $fallbackLabel = 'DD Direktorat Returned';
-        if ($requiresCheckerApproval && !$checkerApproved && $actor->hasRole('checker')) {
+        if ($requiresCheckerApproval && !$checkerApproved && $isChecker) {
             $fallbackLabel = 'EO Direktorat Returned';
         }
 
@@ -528,7 +527,7 @@ class OutgoingLetterWorkflowService
 
         $this->addOutgoingComment($letter, $actor, 'RETURN APPROVAL DIREKTORAT', $note);
 
-        return ($requiresCheckerApproval && !$checkerApproved && $actor->hasRole('checker'))
+        return ($requiresCheckerApproval && !$checkerApproved && $isChecker)
             ? 'Approval EO Direktorat dikembalikan.'
             : 'Approval DD Direktorat dikembalikan.';
     }
@@ -542,8 +541,8 @@ class OutgoingLetterWorkflowService
         $approval = $this->latestPendingApproval($letter);
         $checkerApproved = $this->approvalExistsByNotePrefix($letter, 'EO Kepatuhan Approved');
 
-        $isChecker = $actor->hasRole('checker') || $actor->hasRole('administrator');
-        $isApprover = $actor->hasRole('approver') || $actor->hasRole('administrator');
+        $isChecker = $actor->hasRole('administrator') || $actor->can('letter.checker_action') || $this->isExecutiveOfficer($actor);
+        $isApprover = $actor->hasRole('administrator') || $actor->can('letter.approver_action') || $this->isDeputyDirector($actor);
 
         if ($action === 'approve') {
             if (!$checkerApproved) {
@@ -619,9 +618,9 @@ class OutgoingLetterWorkflowService
         }
 
         $fallbackLabel = 'EO+DD Kepatuhan Returned';
-        if (!$checkerApproved && $actor->hasRole('checker')) {
+        if (!$checkerApproved && $isChecker) {
             $fallbackLabel = 'EO Kepatuhan Returned';
-        } elseif ($checkerApproved && $actor->hasRole('approver')) {
+        } elseif ($checkerApproved && $isApprover) {
             $fallbackLabel = 'DD Kepatuhan Returned';
         }
 
@@ -643,7 +642,7 @@ class OutgoingLetterWorkflowService
 
         $this->addOutgoingComment($letter, $actor, 'RETURN APPROVAL KEPATUHAN', $note);
 
-        return (!$checkerApproved && $actor->hasRole('checker'))
+        return (!$checkerApproved && $isChecker)
             ? 'Approval EO Kepatuhan dikembalikan.'
             : 'Approval DD Kepatuhan dikembalikan.';
     }
@@ -741,7 +740,7 @@ class OutgoingLetterWorkflowService
                 }
             }
             return false;
-            });
+        });
     }
 
     private function actorAlreadyActedInRound(OutgoingLetter $letter, User $actor, array $notePrefixes, $roundStartedAt): bool
@@ -911,7 +910,7 @@ class OutgoingLetterWorkflowService
             return true;
         }
 
-        if (!$user->hasRole('maker')) {
+        if (!$user->can('letter.maker_action')) {
             return false;
         }
 
@@ -948,7 +947,7 @@ class OutgoingLetterWorkflowService
             return false;
         }
 
-        return $user->hasRole('checker');
+        return $user->can('letter.checker_action') || $this->isExecutiveOfficer($user);
     }
 
     private function cancellableRequestStatuses(): array
@@ -979,7 +978,7 @@ class OutgoingLetterWorkflowService
             return true;
         }
 
-        if (!$user->hasRole('maker') || !$this->isComplianceDirectorate($user)) {
+        if (!$user->can('letter.maker_action') || !$this->isComplianceDirectorate($user)) {
             return false;
         }
 
@@ -997,9 +996,7 @@ class OutgoingLetterWorkflowService
 
         return User::query()
             ->where('directorate_id', $letter->requester_directorate_id)
-            ->whereHas('roles', function ($query) {
-                $query->where('name', 'maker');
-            })
+            ->where($this->stageActionPermissionQuery('letter.maker_action'))
             ->whereHas('position', function ($query) {
                 $query->where('name', 'ilike', '%staff%');
             })
@@ -1014,9 +1011,7 @@ class OutgoingLetterWorkflowService
 
         return User::query()
             ->where('directorate_id', $directorateId)
-            ->whereHas('roles', function ($query) {
-                $query->where('name', 'checker');
-            })
+            ->where($this->stageActionPermissionQuery('letter.checker_action'))
             ->pluck('id');
     }
 
@@ -1028,9 +1023,7 @@ class OutgoingLetterWorkflowService
 
         return User::query()
             ->where('directorate_id', $directorateId)
-            ->whereHas('roles', function ($query) {
-                $query->where('name', 'approver');
-            })
+            ->where($this->stageActionPermissionQuery('letter.approver_action'))
             ->pluck('id');
     }
 
@@ -1043,9 +1036,7 @@ class OutgoingLetterWorkflowService
 
         return User::query()
             ->where('directorate_id', $directorateId)
-            ->whereHas('roles', function ($query) {
-                $query->where('name', 'maker');
-            })
+            ->where($this->stageActionPermissionQuery('letter.maker_action'))
             ->whereHas('position', function ($query) {
                 $query->where('name', 'ilike', '%staff%');
             })
@@ -1061,9 +1052,7 @@ class OutgoingLetterWorkflowService
 
         return User::query()
             ->where('directorate_id', $directorateId)
-            ->whereHas('roles', function ($query) {
-                $query->where('name', 'checker');
-            })
+            ->where($this->stageActionPermissionQuery('letter.checker_action'))
             ->pluck('id');
     }
 
@@ -1076,10 +1065,36 @@ class OutgoingLetterWorkflowService
 
         return User::query()
             ->where('directorate_id', $directorateId)
-            ->whereHas('roles', function ($query) {
-                $query->where('name', 'approver');
-            })
+            ->where($this->stageActionPermissionQuery('letter.approver_action'))
             ->pluck('id');
+    }
+
+    private function stageActionPermissionQuery(string $permissionName): \Closure
+    {
+        return function ($query) use ($permissionName) {
+            $query->whereHas('permissions', function ($permissionQuery) use ($permissionName) {
+                $permissionQuery->where('name', $permissionName);
+            })->orWhereHas('roles.permissions', function ($permissionQuery) use ($permissionName) {
+                $permissionQuery->where('name', $permissionName);
+            });
+        };
+    }
+
+    private function isExecutiveOfficer(User $user): bool
+    {
+        return Str::contains($this->normalizedPositionName($user), 'executive officer');
+    }
+
+    private function isDeputyDirector(User $user): bool
+    {
+        return Str::contains($this->normalizedPositionName($user), 'deputy director');
+    }
+
+    private function normalizedPositionName(User $user): string
+    {
+        $user->loadMissing('position');
+
+        return Str::lower(trim((string) ($user->position?->name ?? '')));
     }
 
     private function isComplianceDirectorate(User $user): bool
@@ -1121,5 +1136,4 @@ class OutgoingLetterWorkflowService
             })
             ->value('id');
     }
-
 }

@@ -5,6 +5,7 @@ namespace Modules\Corsec\Services;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 use Modules\Corsec\Models\ApprovalRequest;
 use Modules\Corsec\Models\LetterType;
 use Modules\Usermanagement\Models\Permission;
@@ -78,9 +79,12 @@ class ApprovalRequestService
                 $model->update($payload);
                 $this->applyApprovedRelations($model, $requestNew);
             } elseif ($approvalRequest->action === ApprovalRequest::ACTION_DELETE) {
-                $modelClass::query()
-                    ->where('id', $approvalRequest->target_id)
-                    ->delete();
+                $query = $modelClass::query()->where('id', $approvalRequest->target_id);
+
+                if (Schema::hasColumn((new $modelClass())->getTable(), 'deleted_by')) {
+                    $query->update(['deleted_by' => $actor->id]);
+                }
+                $query->delete();
             }
 
             if ($modelClass === LetterType::class) {

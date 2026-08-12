@@ -143,7 +143,8 @@ class IncomingLetterController extends Controller
         $isInvitationLetter = $this->isInvitationLetterPayload($request, $letterTypeId);
         if ($isInvitationLetter) {
             $request->validate([
-                'register_due_date' => ['required', 'date'],
+                'register_due_date' => ['nullable', 'date'],
+                // 'register_due_date' => ['required', 'date'],
             ]);
         }
 
@@ -348,6 +349,14 @@ class IncomingLetterController extends Controller
     {
         $this->authorizeNonViewerUpdate();
 
+        $user = Auth::user();
+        if ($incomingLetter->status === IncomingLetter::STATUS_VERIFIED) {
+            abort(403, 'Surat masuk ini sudah terverifikasi. Anda tidak dapat mengeditnya.');
+        }
+        if (!$user->hasRole('administrator') && !$this->permissionService->isCorpSecretaryDirectorate($user)) {
+            abort(403, 'Anda tidak memiliki akses untuk mengedit surat masuk ini.');
+        }
+
         $directorates = $this->getCachedDirectorates();
         $senders = $this->getCachedSenders();
         $letterTypes = $this->getCachedLetterTypes();
@@ -362,6 +371,14 @@ class IncomingLetterController extends Controller
     public function update(Request $request, IncomingLetter $incomingLetter)
     {
         $this->authorizeNonViewerUpdate();
+
+        $user = Auth::user();
+        if ($incomingLetter->status === IncomingLetter::STATUS_VERIFIED) {
+            abort(403, 'Surat masuk ini sudah terverifikasi. Anda tidak dapat mengeditnya.');
+        }
+        if (!$user->hasRole('administrator') && !$this->permissionService->isCorpSecretaryDirectorate($user)) {
+            abort(403, 'Anda tidak memiliki akses untuk mengedit surat masuk ini.');
+        }
 
         $request->validate([
             'external_letter_no' => ['required', 'string', 'max:255'],
@@ -386,11 +403,8 @@ class IncomingLetterController extends Controller
 
         $user = auth()->user();
         $submitForApproval = $request->boolean('submit_for_approval', false);
-        if ($submitForApproval && !in_array((string) $incomingLetter->status, [
-            IncomingLetter::STATUS_DRAFT,
-            IncomingLetter::STATUS_RETURNED,
-        ], true)) {
-            abort(422, 'Surat masuk hanya bisa disubmit dari status Draft atau Returned.');
+        if ($submitForApproval && $incomingLetter->status === IncomingLetter::STATUS_VERIFIED) {
+            abort(422, 'Surat masuk yang sudah verified tidak bisa disubmit ulang.');
         }
 
         $circulationDirectorateIds = array_values(array_filter(
@@ -439,7 +453,8 @@ class IncomingLetterController extends Controller
         $isInvitationLetter = $this->isInvitationLetterPayload($request, $letterTypeId, $incomingLetter);
         if ($isInvitationLetter) {
             $request->validate([
-                'register_due_date' => ['required', 'date'],
+                'register_due_date' => ['nullable', 'date'],
+                // 'register_due_date' => ['required', 'date'],
             ]);
         }
 
@@ -654,10 +669,37 @@ class IncomingLetterController extends Controller
 
             // optional filter kalau nanti mau dipakai dari UI
             if ($request->filled('status')) {
-                $query->where('status', $request->string('status')->toString());
+                $statusFilter = $request->string('status')->toString();
+                if ($statusFilter === 'needs_followup') {
+                    // Dipakai oleh tombol "Butuh Tindak Lanjut" di dashboard: disamakan
+                    // dengan definisi "incomingOpen" (semua status selain Verified,
+                    // Rejected, dan Returned) supaya angka dan isi listnya sinkron.
+                    $query->whereNotIn('status', [
+                        IncomingLetter::STATUS_VERIFIED,
+                        IncomingLetter::STATUS_REJECTED,
+                        IncomingLetter::STATUS_RETURNED,
+                    ]);
+                } else {
+                    $query->where('status', $statusFilter);
+                }
             }
             if ($request->filled('directorate_id')) {
                 $query->where('target_directorate_id', (int) $request->directorate_id);
+            }
+            if ($request->filled('sender_id')) {
+                $query->where('sender_id', $request->string('sender_id')->toString());
+            }
+            if ($request->filled('letter_date_from')) {
+                $query->whereDate('letter_date', '>=', $request->string('letter_date_from')->toString());
+            }
+            if ($request->filled('letter_date_to')) {
+                $query->whereDate('letter_date', '<=', $request->string('letter_date_to')->toString());
+            }
+            if ($request->filled('received_date_from')) {
+                $query->whereDate('received_date', '>=', $request->string('received_date_from')->toString());
+            }
+            if ($request->filled('received_date_to')) {
+                $query->whereDate('received_date', '<=', $request->string('received_date_to')->toString());
             }
 
             // search (sesuai template: param "search")
@@ -681,7 +723,14 @@ class IncomingLetterController extends Controller
 
             // total counts
             $totalRecords = $baseCountQuery->count();
-            $isFiltered = $search !== '' || $request->filled('status') || $request->filled('directorate_id');
+            $isFiltered = $search !== ''
+                || $request->filled('status')
+                || $request->filled('directorate_id')
+                || $request->filled('sender_id')
+                || $request->filled('letter_date_from')
+                || $request->filled('letter_date_to')
+                || $request->filled('received_date_from')
+                || $request->filled('received_date_to');
             $filteredRecords = $isFiltered ? (clone $query)->count() : $totalRecords;
 
             // sorting (KTDataTable biasanya kirim sortField/sortOrder)
@@ -937,7 +986,36 @@ class IncomingLetterController extends Controller
     // Staff Direktorat update tindak lanjut + upload bukti
     public function directorateUpdate(Request $request, IncomingLetter $incomingLetter)
     {
-        $this->authorizeNonViewerUpdate();
+        $user = Auth::user();
+        if (!$user || !$user->can('letter.read')) {
+            abort(403, 'Anda tidak memiliki akses untuk melihat surat masuk.');
+        }
+        if ($this->permissionService->isViewerRole($user)) {
+            abort(403, 'Role viewer tidak memiliki akses untuk aksi update ini.');
+        }
+
+        // Get approvals to evaluate flags
+        $approvals = $incomingLetter->approvals()
+            ->with(['actor.directorate', 'actor.position'])
+            ->orderByDesc('acted_at')
+            ->orderByDesc('created_at')
+            ->get();
+        $responseOutgoingLetter = $incomingLetter
+            ->responseOutgoingLetters()
+            ->where('status', '!=', OutgoingLetter::STATUS_CANCELLED)
+            ->latest('id')
+            ->first();
+
+        $permissionFlags = $this->permissionService->incomingDetailFlags(
+            $incomingLetter,
+            $approvals,
+            $user,
+            $responseOutgoingLetter
+        );
+
+        if (!($permissionFlags['can_directorate_update'] ?? false)) {
+            abort(403, 'Anda tidak memiliki akses untuk melakukan tindak lanjut pada surat masuk ini.');
+        }
 
         $submitForApproval = $request->boolean('submit_for_approval', true);
         $followupActionInput = $request->string('followup_action')->toString();
@@ -974,10 +1052,13 @@ class IncomingLetterController extends Controller
             'followup_review_regulation_title' => ['nullable', 'string', 'max:255'],
             'followup_review_upload_date' => ['nullable', 'date'],
             'followup_review_note' => ['nullable', 'string'],
+            'followup_lainnya_date' => ['nullable', 'date'],
+            'followup_lainnya_note' => ['nullable', 'string'],
+            'followup_lainnya_file' => ['nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
             'submit_for_approval' => ['nullable', 'boolean'],
         ];
 
-        if ($submitForApproval && $followupActionInput !== 'response_letter') {
+        if ($submitForApproval && !in_array($followupActionInput, ['response_letter', 'lainnya'], true)) {
             $rules['evidence_files'] = ['required', 'array', 'min:1'];
             $rules['evidence_files.*'] = ['file', UploadRule::maxRule()];
         } else {
@@ -1015,6 +1096,12 @@ class IncomingLetterController extends Controller
                 'upload_date' => $request->followup_review_upload_date,
                 'note' => $request->followup_review_note,
             ],
+            'lainnya' => [
+                'date' => $request->followup_lainnya_date ?: now()->format('Y-m-d'),
+                'note' => $request->followup_lainnya_note,
+                'file' => $request->file('followup_lainnya_file')?->getClientOriginalName()
+                    ?? ($incomingLetter->followup_detail['file'] ?? null),
+            ],
             default => [],
         };
 
@@ -1042,6 +1129,12 @@ class IncomingLetterController extends Controller
         if ($followupAction === 'review' && (!$request->followup_review_regulation_number || !$request->followup_review_regulation_title || !$request->followup_review_upload_date)) {
             return back()->withErrors(['followup_action' => 'Detail review/new ketentuan wajib diisi.'])->withInput();
         }
+        if ($followupAction === 'lainnya' && (
+            !$request->followup_lainnya_note ||
+            (!$request->file('followup_lainnya_file') && empty($incomingLetter->followup_detail['file'] ?? null))
+        )) {
+            return back()->withErrors(['followup_action' => 'Catatan dan upload surat wajib diisi untuk tindak lanjut Lainnya.'])->withInput();
+        }
 
         $submitResult = $this->workflow->directorateUpdate(
             incomingLetter: $incomingLetter,
@@ -1052,6 +1145,7 @@ class IncomingLetterController extends Controller
             followupNote: $request->followup_note,
             evidenceFiles: $request->file('evidence_files', []),
             socialMaterialFile: $request->file('followup_social_material'),
+            lainnyaFile: $request->file('followup_lainnya_file'),
             submitForApproval: $submitForApproval
         );
 
@@ -1060,7 +1154,7 @@ class IncomingLetterController extends Controller
 
     public function lookupUserByNik(Request $request)
     {
-        $this->authorizeNonViewerUpdate();
+        $this->authorizeNonViewerFollowupAction();
 
         $validated = $request->validate([
             'nik' => ['required', 'string', 'max:50'],
@@ -1214,7 +1308,7 @@ class IncomingLetterController extends Controller
         $isExecutiveOfficer = $this->permissionService->isExecutiveOfficer($user);
         $isSekretariatDireksi = $this->permissionService->isSekretariatDireksi($user);
         $isEoCorpSecretaryChecker =
-            $user && $user->hasRole('checker') && $this->permissionService->isCorpSecretaryDirectorate($user) && $isExecutiveOfficer;
+            $user && $user->can('letter.checker_action') && $this->permissionService->isCorpSecretaryDirectorate($user) && $isExecutiveOfficer;
 
         if (!$user || (!$isAdmin && !$isTargetDirectorate && !$isEoCorpSecretaryChecker && !$isSekretariatDireksi)) {
             abort(403, 'Anda tidak memiliki akses untuk menambahkan monitoring.');
@@ -1366,6 +1460,20 @@ class IncomingLetterController extends Controller
         }
         if ($this->permissionService->isViewerRole($user)) {
             abort(403, 'Role viewer tidak memiliki akses untuk aksi update ini.');
+        }
+    }
+
+    private function authorizeNonViewerFollowupAction(): void
+    {
+        $user = Auth::user();
+        if (
+            !$user
+            || (!$user->can('letter.update') && !$user->can('letter.maker_action'))
+        ) {
+            abort(403, 'Anda tidak memiliki akses untuk mengubah tindak lanjut surat masuk.');
+        }
+        if ($this->permissionService->isViewerRole($user)) {
+            abort(403, 'Role viewer tidak memiliki akses untuk aksi tindak lanjut ini.');
         }
     }
 

@@ -40,8 +40,10 @@ class OutgoingLetterController extends Controller
         $user = Auth::user();
         $canCreate = $this->permissionService->canCreateOutgoing($user);
         $permissionFlags = $this->permissionService->outgoingIndexFlags($user);
+        $recipients = $this->getCachedSenders();
+        $letterTypes = $this->getOutgoingLetterTypes($user);
 
-        return view('corsec::letter.outgoing.index', compact('canCreate', 'permissionFlags'));
+        return view('corsec::letter.outgoing.index', compact('canCreate', 'permissionFlags', 'recipients', 'letterTypes'));
     }
 
     public function datatables(Request $request)
@@ -75,8 +77,45 @@ class OutgoingLetterController extends Controller
         $this->scopeOutgoingVisibility($query, $user);
         $this->scopeOutgoingVisibility($baseCountQuery, $user);
 
+        $statusFilter = null;
         if ($request->filled('status')) {
-            $query->where('status', $request->string('status'));
+            $statusFilter = $request->string('status')->toString();
+            // "Final Upload" in the status badge groups 3 raw status values together
+            // (see the statusBadge() normalizer in outgoing/index.blade.php JS), so a
+            // single filter option needs to match all 3 underlying values.
+            $statusGroups = [
+                'waiting_final_upload' => ['waiting_final_upload', 'final_uploaded', 'waiting_verification'],
+            ];
+            if ($statusFilter === 'needs_followup') {
+                // Dipakai oleh tombol "Butuh Tindak Lanjut" di dashboard: disamakan
+                // dengan definisi "outgoingOpen" supaya angka dan isi listnya sinkron.
+                $query->where(function ($openQuery) {
+                    $openQuery->whereNull('status')
+                        ->orWhereNotIn('status', ['done', 'completed', 'sent', 'verified', OutgoingLetter::STATUS_CANCELLED]);
+                })->where(function ($openQuery) {
+                    $openQuery->whereNull('authorized_status')
+                        ->orWhere('authorized_status', '!=', 'cancelled');
+                })->whereNull('cancelled_at');
+            } elseif (isset($statusGroups[$statusFilter])) {
+                $query->whereIn('status', $statusGroups[$statusFilter]);
+            } else {
+                $query->where('status', $statusFilter);
+            }
+        }
+        if ($request->filled('recipient_id')) {
+            $query->where('recipient_id', $request->string('recipient_id')->toString());
+        }
+        if ($request->filled('letter_type_id')) {
+            $query->where('letter_type_id', $request->string('letter_type_id')->toString());
+        }
+        if ($request->filled('perihal_type')) {
+            $query->where('perihal_type', $request->string('perihal_type')->toString());
+        }
+        if ($request->filled('order_date_from')) {
+            $query->whereDate('order_date', '>=', $request->string('order_date_from')->toString());
+        }
+        if ($request->filled('order_date_to')) {
+            $query->whereDate('order_date', '<=', $request->string('order_date_to')->toString());
         }
 
         $search = trim((string) $request->get('search', ''));
@@ -102,9 +141,17 @@ class OutgoingLetterController extends Controller
             });
         }
 
-        $isFiltered = $search !== '' || $request->filled('status');
-        $totalRecords = $baseCountQuery->count();
-        $filteredRecords = $isFiltered ? (clone $query)->count() : $totalRecords;
+        $isFiltered = $search !== ''
+            || $request->filled('status')
+            || $request->filled('recipient_id')
+            || $request->filled('letter_type_id')
+            || $request->filled('perihal_type')
+            || $request->filled('order_date_from')
+            || $request->filled('order_date_to');
+        $pendingResponseRows = $this->pendingResponseIncomingRows($request, $user, $search, $statusFilter);
+        $pendingResponseCount = $pendingResponseRows->count();
+        $totalRecords = $baseCountQuery->count() + $pendingResponseCount;
+        $filteredRecords = ($isFiltered ? (clone $query)->count() : $baseCountQuery->count()) + $pendingResponseCount;
 
         $sortField = (string) $request->get('sortField', 'created_at');
         $sortOrder = strtolower((string) $request->get('sortOrder', 'desc'));
@@ -138,6 +185,9 @@ class OutgoingLetterController extends Controller
         $data = $query->forPage($page, $size)->get()->map(function (OutgoingLetter $letter) {
             return $this->formatOutgoingTableRow($letter);
         });
+        if ($page === 1 && $pendingResponseRows->isNotEmpty()) {
+            $data = $pendingResponseRows->concat($data)->values();
+        }
         $pageCount = (int) ceil($filteredRecords / $size);
 
         return response()->json([
@@ -283,13 +333,13 @@ class OutgoingLetterController extends Controller
         $user = Auth::user();
         $senders = $this->getCachedSenders();
         $letterTypes = $this->getOutgoingLetterTypes($user);
-        $incomingLetters = $this->getIncomingLettersForResponseLetter();
+        $incomingLetters = $this->getIncomingLettersForResponseLetter(null, $user);
         $prefillIncomingLetterId = null;
         if ($request->filled('incoming_letter_id')) {
             $candidateId = (int) $request->input('incoming_letter_id');
             if ($candidateId > 0) {
-                $prefillAllowed = $incomingLetters->contains('id', $candidateId);
-                if ($prefillAllowed) {
+                $candidateLetter = $incomingLetters->first(fn($letter) => (int) $letter->id === $candidateId);
+                if ($candidateLetter && $candidateLetter->is_eligible) {
                     $prefillIncomingLetterId = $candidateId;
                 }
             }
@@ -600,7 +650,7 @@ class OutgoingLetterController extends Controller
         }
         $senders = $this->getCachedSenders();
         $letterTypes = $this->getOutgoingLetterTypes(Auth::user());
-        $incomingLetters = $this->getIncomingLettersForResponseLetter($outgoingLetter->perihal_incoming_letter_id);
+        $incomingLetters = $this->getIncomingLettersForResponseLetter($outgoingLetter->perihal_incoming_letter_id, Auth::user());
         return view('corsec::letter.outgoing.create', compact('outgoingLetter', 'senders', 'letterTypes', 'incomingLetters'));
     }
 
@@ -883,17 +933,32 @@ class OutgoingLetterController extends Controller
             abort(403, 'Upload final surat hanya untuk staff maker dari direktorat terkait.');
         }
 
-        $request->validate([
-            'submit_action' => ['nullable', Rule::in(['draft', 'upload'])],
-            'final_upload_date' => ['nullable', 'date'],
-            'final_file' => ['nullable', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
-        ]);
+        $request->validate(
+            [
+                'submit_action' => ['nullable', Rule::in(['draft', 'upload'])],
+                'final_file' => ['required', 'file', UploadRule::maxRule(), 'mimes:pdf,jpg,jpeg,png'],
+                'final_upload_date' => ['nullable', 'date', 'after_or_equal:today'],
+            ],
+            [
+                'final_upload_date.after_or_equal' => 'Tanggal Upload Final tidak boleh kurang dari tanggal hari ini.',
+            ]
+        );
 
         $submitAction = (string) $request->input('submit_action', 'upload');
         if ($submitAction === 'draft') {
-            $request->validate([
-                'final_upload_date' => ['required', 'date'],
-            ]);
+            $request->validate(
+                [
+                    'final_upload_date' => [
+                        'required',
+                        'date',
+                        'after_or_equal:today',
+                    ],
+                ],
+                [
+                    'final_upload_date.required' => 'Tanggal Upload Final wajib diisi.',
+                    'final_upload_date.after_or_equal' => 'Tanggal Upload Final tidak boleh kurang dari tanggal hari ini.',
+                ]
+            );
 
             $outgoingLetter->update([
                 'final_upload_date' => $request->input('final_upload_date'),
@@ -958,24 +1023,88 @@ class OutgoingLetterController extends Controller
         return Sender::query()->orderBy('name')->get(['id', 'name']);
     }
 
-    private function getIncomingLettersForResponseLetter(?int $selectedIncomingLetterId = null)
+    private function getIncomingLettersForResponseLetter(?int $selectedIncomingLetterId = null, $user = null)
     {
-        return IncomingLetter::query()
-            ->where(function ($query) use ($selectedIncomingLetterId) {
-                $query->where(function ($eligibleQuery) {
-                    $eligibleQuery
-                        ->where('followup_action', 'response_letter')
-                        ->where('status', IncomingLetter::STATUS_WAITING_RESPONSE_LETTER)
-                        ->whereDoesntHave('responseOutgoingLetters', function ($outgoingQuery) {
-                            $outgoingQuery->where('status', '!=', OutgoingLetter::STATUS_CANCELLED);
-                        });
-                });
-                if ($selectedIncomingLetterId) {
-                    $query->orWhere('id', $selectedIncomingLetterId);
-                }
+        // Surat yang statusnya belum "Menunggu Surat Jawaban" tetap ditampilkan (biar user
+        // tahu suratnya ada, statusnya apa), tapi ditandai is_eligible = false supaya di
+        // blade opsinya di-disable. Validasi keras tetap dijaga di
+        // ensureIncomingLetterIsResponseLetter() saat submit.
+        $activeResponseIncomingIds = OutgoingLetter::query()
+            ->where(function ($query) {
+                $query->whereNull('status')
+                    ->orWhere('status', '!=', OutgoingLetter::STATUS_CANCELLED);
             })
+            ->whereNotNull('perihal_incoming_letter_id')
+            ->pluck('perihal_incoming_letter_id')
+            ->all();
+
+        $columns = ['id', 'external_letter_no', 'registration_no', 'subject', 'status', 'followup_action'];
+
+        $eligibleQuery = IncomingLetter::query()
+            ->where('followup_action', 'response_letter')
+            ->where('status', IncomingLetter::STATUS_WAITING_RESPONSE_LETTER)
+            ->when(!empty($activeResponseIncomingIds), function ($query) use ($activeResponseIncomingIds) {
+                $query->whereNotIn('id', $activeResponseIncomingIds);
+            });
+        $this->scopeIncomingResponseVisibility($eligibleQuery, $user);
+
+        $recentQuery = IncomingLetter::query();
+        $this->scopeIncomingResponseVisibility($recentQuery, $user);
+
+        $incomingLetters = $eligibleQuery
             ->orderByDesc('id')
-            ->get(['id', 'external_letter_no', 'registration_no', 'subject']);
+            ->limit(150)
+            ->get($columns)
+            ->merge(
+                $recentQuery
+                    ->orderByDesc('id')
+                    ->limit(50)
+                    ->get($columns)
+            )
+            ->unique('id')
+            ->values();
+
+        if ($selectedIncomingLetterId && !$incomingLetters->contains('id', $selectedIncomingLetterId)) {
+            $selectedIncomingLetterQuery = IncomingLetter::query()->whereKey($selectedIncomingLetterId);
+            $this->scopeIncomingResponseVisibility($selectedIncomingLetterQuery, $user);
+            $selectedIncomingLetter = $selectedIncomingLetterQuery->first($columns);
+            if ($selectedIncomingLetter) {
+                $incomingLetters->push($selectedIncomingLetter);
+            }
+        }
+
+        return $incomingLetters
+            ->map(function ($incomingLetter) use ($activeResponseIncomingIds, $selectedIncomingLetterId) {
+                $alreadyResponded = in_array($incomingLetter->id, $activeResponseIncomingIds, true)
+                    && (int) $incomingLetter->id !== (int) $selectedIncomingLetterId;
+
+                $incomingLetter->is_eligible = $incomingLetter->followup_action === 'response_letter'
+                    && $incomingLetter->status === IncomingLetter::STATUS_WAITING_RESPONSE_LETTER
+                    && !$alreadyResponded;
+                $incomingLetter->status_label = $this->incomingLetterStatusLabel($incomingLetter->status);
+
+                return $incomingLetter;
+            })
+            ->sortByDesc(fn($incomingLetter) => (int) $incomingLetter->is_eligible)
+            ->values();
+    }
+
+    private function incomingLetterStatusLabel(?string $status): string
+    {
+        $map = [
+            IncomingLetter::STATUS_DRAFT => 'Draft',
+            IncomingLetter::STATUS_ON_APPROVAL => 'On Approval',
+            IncomingLetter::STATUS_DISPATCHED => 'Dispatched',
+            IncomingLetter::STATUS_IN_PROGRESS => 'In Progress',
+            IncomingLetter::STATUS_WAITING_DIR_APPROVAL => 'Waiting Dir Approval',
+            IncomingLetter::STATUS_WAITING_RESPONSE_LETTER => 'Waiting Response Letter',
+            IncomingLetter::STATUS_WAITING_VERIFICATION => 'Waiting Validation',
+            IncomingLetter::STATUS_VERIFIED => 'Verified',
+            IncomingLetter::STATUS_RETURNED => 'Returned',
+            IncomingLetter::STATUS_REJECTED => 'Rejected',
+        ];
+
+        return $map[$status] ?? ($status ?? '-');
     }
 
     private function ensureIncomingLetterIsResponseLetter(int $incomingLetterId, string $field = 'perihal_incoming_letter_id'): IncomingLetter
@@ -1007,13 +1136,34 @@ class OutgoingLetterController extends Controller
         $query = OutgoingLetter::query()
             ->where('perihal_type', 'tanggapan_surat_masuk')
             ->where('perihal_incoming_letter_id', $incomingLetterId)
-            ->where('status', '!=', OutgoingLetter::STATUS_CANCELLED);
+            ->where(function ($builder) {
+                $builder->whereNull('status')
+                    ->orWhere('status', '!=', OutgoingLetter::STATUS_CANCELLED);
+            });
 
         if ($ignoreOutgoingLetterId) {
             $query->where('id', '!=', $ignoreOutgoingLetterId);
         }
 
         return $query->exists();
+    }
+
+    private function scopeIncomingResponseVisibility($query, $user): void
+    {
+        if (!$user || $this->permissionService->canViewAllLetters($user)) {
+            return;
+        }
+
+        $directorateId = (int) ($user->directorate_id ?? $user->directorateid ?? 0);
+        $query->where(function ($builder) use ($user, $directorateId) {
+            $builder->where('created_by', (int) $user->id);
+            if ($directorateId > 0) {
+                $builder->orWhere('target_directorate_id', $directorateId)
+                    ->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
+                        $circulationQuery->where('directorate_id', $directorateId);
+                    });
+            }
+        });
     }
 
     private function normalizePerihalText(Request $request): void
@@ -1279,6 +1429,121 @@ class OutgoingLetterController extends Controller
         ]);
     }
 
+    private function pendingResponseIncomingRows(Request $request, $user, string $search, ?string $statusFilter)
+    {
+        if (!$user || !$this->permissionService->canCreateOutgoing($user)) {
+            return collect();
+        }
+
+        if ($statusFilter && !in_array($statusFilter, ['needs_followup', IncomingLetter::STATUS_WAITING_RESPONSE_LETTER], true)) {
+            return collect();
+        }
+
+        if (
+            $request->filled('recipient_id')
+            || $request->filled('letter_type_id')
+            || $request->filled('order_date_from')
+            || $request->filled('order_date_to')
+        ) {
+            return collect();
+        }
+
+        if ($request->filled('perihal_type') && $request->string('perihal_type')->toString() !== 'tanggapan_surat_masuk') {
+            return collect();
+        }
+
+        $activeResponseIncomingIds = OutgoingLetter::query()
+            ->where('perihal_type', 'tanggapan_surat_masuk')
+            ->where(function ($query) {
+                $query->whereNull('status')
+                    ->orWhere('status', '!=', OutgoingLetter::STATUS_CANCELLED);
+            })
+            ->whereNotNull('perihal_incoming_letter_id')
+            ->pluck('perihal_incoming_letter_id')
+            ->all();
+
+        $query = IncomingLetter::query()
+            ->with([
+                'targetDirectorate:id,code,name',
+                'sender:id,name,code',
+                'letterType:id,name,code',
+                'attachables.attachment',
+            ])
+            ->where('followup_action', 'response_letter')
+            ->where('status', IncomingLetter::STATUS_WAITING_RESPONSE_LETTER)
+            ->whereNotIn('id', $activeResponseIncomingIds)
+            ->orderByDesc('id')
+            ->limit(20);
+
+        if (!$this->permissionService->canViewAllLetters($user)) {
+            $directorateId = (int) ($user->directorate_id ?? $user->directorateid ?? 0);
+            $query->where(function ($builder) use ($user, $directorateId) {
+                $builder->where('created_by', (int) $user->id);
+                if ($directorateId > 0) {
+                    $builder->orWhere('target_directorate_id', $directorateId)
+                        ->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
+                            $circulationQuery->where('directorate_id', $directorateId);
+                        });
+                }
+            });
+        }
+
+        if ($search !== '') {
+            $query->where(function ($builder) use ($search) {
+                $builder->where('subject', 'ilike', "%{$search}%")
+                    ->orWhere('summary', 'ilike', "%{$search}%")
+                    ->orWhere('registration_no', 'ilike', "%{$search}%")
+                    ->orWhere('external_letter_no', 'ilike', "%{$search}%")
+                    ->orWhereHas('sender', function ($senderQuery) use ($search) {
+                        $senderQuery->where('name', 'ilike', "%{$search}%");
+                    })
+                    ->orWhereHas('targetDirectorate', function ($directorateQuery) use ($search) {
+                        $directorateQuery->where('name', 'ilike', "%{$search}%")
+                            ->orWhere('code', 'ilike', "%{$search}%");
+                    });
+            });
+        }
+
+        return $query->get()->map(fn(IncomingLetter $incomingLetter) => $this->formatPendingResponseIncomingRow($incomingLetter));
+    }
+
+    private function formatPendingResponseIncomingRow(IncomingLetter $incomingLetter): array
+    {
+        $attachments = $incomingLetter->attachables
+            ->map(fn($attachable) => $attachable->attachment)
+            ->filter()
+            ->unique('id')
+            ->map(fn(Attachment $attachment) => $this->formatAttachmentRow($attachment))
+            ->values()
+            ->all();
+
+        return [
+            'id' => 'incoming-response-' . $incomingLetter->id,
+            'uuid' => null,
+            'is_pending_response_letter' => true,
+            'incoming_letter_id' => $incomingLetter->id,
+            'registration_no' => $incomingLetter->registration_no,
+            'letter_no' => $incomingLetter->external_letter_no,
+            'order_date' => optional($incomingLetter->received_date ?? $incomingLetter->letter_date)->toDateString(),
+            'subject' => $incomingLetter->subject,
+            'summary' => $incomingLetter->summary ?: 'Perlu dibuatkan surat jawaban.',
+            'recipient' => $incomingLetter->sender,
+            'recipient_other' => $incomingLetter->sender_other,
+            'letter_type' => ['name' => $incomingLetter->letterType?->name],
+            'perihal_type' => 'tanggapan_surat_masuk',
+            'requester_directorate_id' => $incomingLetter->target_directorate_id,
+            'requester_directorate' => $incomingLetter->targetDirectorate,
+            'status' => IncomingLetter::STATUS_WAITING_RESPONSE_LETTER,
+            'created_at' => optional($incomingLetter->created_at)->toDateTimeString(),
+            'created_by' => $incomingLetter->created_by,
+            'comment_url' => null,
+            'comments' => [],
+            'attachments' => $attachments,
+            'circulation_items' => collect([$incomingLetter->targetDirectorate?->name])->filter()->values()->all(),
+            'create_response_url' => route('letter.outgoing.create', ['incoming_letter_id' => $incomingLetter->id]),
+        ];
+    }
+
     private function formatCommentRows($comments): array
     {
         return $comments
@@ -1319,17 +1584,36 @@ class OutgoingLetterController extends Controller
 
     private function scopeOutgoingVisibility($query, $user): void
     {
-        if (!$user || $this->permissionService->canViewAllCorsec($user)) {
+        if (!$user || $this->permissionService->canViewAllLetters($user)) {
             return;
         }
 
         $directorateId = (int) ($user->directorate_id ?? $user->directorateid ?? 0);
         $canAccessComplianceQueue = $this->canAccessComplianceQueue($user);
+        $canAccessApprovalQueue = $this->canAccessApprovalQueue($user);
 
-        $query->where(function ($builder) use ($user, $directorateId, $canAccessComplianceQueue) {
+        $query->where(function ($builder) use ($user, $directorateId, $canAccessComplianceQueue, $canAccessApprovalQueue) {
             $builder->where('created_by', $user->id);
             if ($directorateId > 0) {
-                $builder->orWhere('requester_directorate_id', $directorateId);
+                $builder->orWhere('requester_directorate_id', $directorateId)
+                    ->orWhereHas('perihalIncomingLetter', function ($incomingQuery) use ($directorateId) {
+                        $incomingQuery->where('target_directorate_id', $directorateId)
+                            ->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
+                                $circulationQuery->where('directorate_id', $directorateId);
+                            });
+                    });
+            }
+            if ($canAccessApprovalQueue) {
+                $builder->orWhereIn('status', [
+                    OutgoingLetter::STATUS_WAITING_DIR_APPROVAL,
+                    OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL,
+                ]);
+            }
+            if ($canAccessApprovalQueue) {
+                $builder->orWhereIn('status', [
+                    OutgoingLetter::STATUS_WAITING_DIR_APPROVAL,
+                    OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL,
+                ]);
             }
             if ($canAccessComplianceQueue) {
                 $builder->orWhere(function ($complianceQuery) {
@@ -1347,7 +1631,7 @@ class OutgoingLetterController extends Controller
             return false;
         }
 
-        if ($this->permissionService->canViewAllCorsec($user)) {
+        if ($this->permissionService->canViewAllLetters($user)) {
             return true;
         }
 
@@ -1361,19 +1645,61 @@ class OutgoingLetterController extends Controller
             return true;
         }
 
-        return $this->canAccessComplianceQueue($user)
+<<<<<<< HEAD
+        if (
+            $directorateId > 0
+            && $outgoingLetter->perihalIncomingLetter()
+                ->where(function ($incomingQuery) use ($directorateId) {
+                    $incomingQuery->where('target_directorate_id', $directorateId)
+                        ->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
+                            $circulationQuery->where('directorate_id', $directorateId);
+                        });
+                })
+                ->exists()
+        ) {
+            return true;
+        }
+
+=======
+>>>>>>> 4773762663b025baff535a4ccf0a0ba07c294817
+        return (
+            $this->canAccessComplianceQueue($user)
             && in_array((string) $outgoingLetter->status, $this->complianceQueueStatuses(), true)
-            && (bool) $outgoingLetter->need_compliance_review;
+            && (bool) $outgoingLetter->need_compliance_review
+        ) || (
+            $this->canAccessApprovalQueue($user)
+            && in_array((string) $outgoingLetter->status, [
+                OutgoingLetter::STATUS_WAITING_DIR_APPROVAL,
+                OutgoingLetter::STATUS_WAITING_CANCEL_APPROVAL,
+            ], true)
+        );
     }
 
     private function canAccessComplianceQueue($user): bool
     {
-        if (!$user || !$user->hasRole('maker')) {
+        if (!$user || !$this->permissionService->isComplianceDirectorate($user)) {
             return false;
         }
 
-        return $this->permissionService->isComplianceDirectorate($user)
-            && $this->permissionService->isStaffPosition($user);
+        return (bool) (
+            $user->can('letter.maker_action')
+            || $user->can('letter.checker_action')
+            || $user->can('letter.approver_action')
+        );
+    }
+
+    private function canAccessApprovalQueue($user): bool
+    {
+        if (!$user || $this->permissionService->isViewerRole($user)) {
+            return false;
+        }
+
+        return (bool) (
+            $user->can('letter.checker_action')
+            || $user->can('letter.approver_action')
+            || $this->permissionService->isExecutiveOfficer($user)
+            || $this->permissionService->isDeputyDirector($user)
+        );
     }
 
     private function complianceQueueStatuses(): array
