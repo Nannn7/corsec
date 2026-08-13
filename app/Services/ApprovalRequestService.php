@@ -128,6 +128,12 @@ class ApprovalRequestService
             $model->syncRoles($payload['_role_names'] ?? []);
         }
 
+        if ($model instanceof User && array_key_exists('password', $payload) && !empty($payload['password'])) {
+            $model->must_change_password = true;
+            $model->password_changed_at = null;
+            $model->save();
+        }
+
         if ($model instanceof Role && array_key_exists('_permission_names', $payload)) {
             $model->syncPermissions($payload['_permission_names'] ?? []);
         }
