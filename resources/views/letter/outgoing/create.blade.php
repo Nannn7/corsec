@@ -213,7 +213,7 @@
                         <div class="flex flex-col perihal-field hidden" data-perihal="tanggapan_surat_masuk">
                             <label class="form-label">Surat Masuk</label>
                             <select
-                                class="select @error('perihal_incoming_letter_id') border-danger bg-danger-light @enderror"
+                                class="select tomselect @error('perihal_incoming_letter_id') border-danger bg-danger-light @enderror"
                                 name="perihal_incoming_letter_id" id="perihal_incoming_letter_id">
                                 <option value="">- Pilih Surat Masuk -</option>
                                 @foreach ($incomingLetters as $incomingLetter)
