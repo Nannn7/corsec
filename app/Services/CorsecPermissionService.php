@@ -125,7 +125,7 @@ class CorsecPermissionService
             return false;
         }
 
-        $complianceCode = (string) config('corsec.compliance_directorate_code', '015');
+        $complianceCode = (string) config('corsec.compliance_directorate_code', '035');
 
         $user->loadMissing('directorate');
         $directorateCode = (string) ($user->directorate?->code ?? '');
@@ -419,6 +419,8 @@ class CorsecPermissionService
             'can_checker_approval' => $canCheckerApproval,
             'can_corsec_validation' => $canCheckerApproval,
             'can_add_monitoring' => (bool) ($isAdmin || $isTargetDirectorate || $isEoCorpSecretaryChecker || $isSekretariatDireksi),
+            'can_edit_leader' => (bool) ($isAdmin || $isTargetDirectorate || $isEoCorpSecretaryChecker || $isSekretariatDireksi),
+            'can_remove_monitoring' => (bool) ($isAdmin || $isTargetDirectorate || $isEoCorpSecretaryChecker || $isSekretariatDireksi),
             'can_create_outgoing_from_incoming' => $canCreateOutgoingFromIncoming,
         ];
     }

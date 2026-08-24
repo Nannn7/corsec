@@ -59,6 +59,8 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () us
             Route::post('/{incomingLetter}/approval', [IncomingLetterController::class, 'approvalAction'])->middleware(['permission:letter.authorize', $writeHeavyThrottle])->name('approval.action');
             Route::post('/{incomingLetter}/directorate-update', [IncomingLetterController::class, 'directorateUpdate'])->middleware(['permission:letter.update|letter.maker_action', $writeHeavyThrottle])->name('directorate.update');
             Route::post('/{incomingLetter}/monitoring', [IncomingLetterController::class, 'addMonitoringDirectorates'])->middleware(['permission:letter.update', $writeHeavyThrottle])->name('monitoring.add');
+            Route::post('/{incomingLetter}/monitoring/remove', [IncomingLetterController::class, 'removeMonitoringDirectorate'])->middleware(['permission:letter.update', $writeHeavyThrottle])->name('monitoring.remove');
+            Route::post('/{incomingLetter}/leader', [IncomingLetterController::class, 'updateLeader'])->middleware(['permission:letter.update', $writeHeavyThrottle])->name('leader.update');
             Route::post('/{incomingLetter}/verify', [IncomingLetterController::class, 'verifyAction'])->middleware(['permission:letter.read|letter.authorize|letter.update', $writeHeavyThrottle])->name('verify.action');
             Route::post('/{incomingLetter}/note', [IncomingLetterController::class, 'directorNote'])->middleware(['permission:letter.read', $writeHeavyThrottle])->name('director.note');
             // DELETE (pakai model binding biar ga tabrakan)
