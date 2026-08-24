@@ -649,7 +649,7 @@ class WorkplanWorkflowService
 
     private function isCorpSecretaryDirectorate(User $user): bool
     {
-        $corpCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+        $corpCode = (string) config('corsec.eo_corp_affair_directorate_code', '006');
         $user->loadMissing('directorate');
 
         $directorateCode = (string) ($user->directorate?->code ?? '');
@@ -664,7 +664,7 @@ class WorkplanWorkflowService
 
     private function isComplianceDirectorate(User $user): bool
     {
-        $complianceCode = (string) config('corsec.compliance_directorate_code', '');
+        $complianceCode = (string) config('corsec.compliance_directorate_code', '035');
         $user->loadMissing('directorate');
 
         $directorateCode = (string) ($user->directorate?->code ?? '');

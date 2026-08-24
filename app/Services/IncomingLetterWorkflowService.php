@@ -570,7 +570,7 @@ class IncomingLetterWorkflowService
             return false;
         }
 
-        $directorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+        $directorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '006');
         if ($directorateCode === '') {
             return false;
         }
@@ -584,7 +584,7 @@ class IncomingLetterWorkflowService
     {
         $actor->loadMissing('directorate', 'position');
 
-        $directorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+        $directorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '006');
         $isCorpSecretaryDirectorate = $directorateCode !== ''
             && (string) ($actor->directorate?->code ?? '') === $directorateCode;
         $positionName = Str::lower(trim((string) ($actor->position?->name ?? '')));
@@ -717,7 +717,7 @@ class IncomingLetterWorkflowService
 
     private function corpSecretaryValidationUserIds()
     {
-        $directorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+        $directorateCode = (string) config('corsec.eo_corp_affair_directorate_code', '006');
         if ($directorateCode === '') {
             return collect();
         }

@@ -125,7 +125,7 @@ class CorsecPermissionService
             return false;
         }
 
-        $complianceCode = (string) config('corsec.compliance_directorate_code', '015');
+        $complianceCode = (string) config('corsec.compliance_directorate_code', '035');
 
         $user->loadMissing('directorate');
         $directorateCode = (string) ($user->directorate?->code ?? '');

@@ -1099,7 +1099,7 @@ class OutgoingLetterWorkflowService
 
     private function isComplianceDirectorate(User $user): bool
     {
-        $complianceCode = (string) config('corsec.compliance_directorate_code', '');
+        $complianceCode = (string) config('corsec.compliance_directorate_code', '035');
         $user->loadMissing('directorate');
 
         $directorateCode = $user->directorate?->code;
