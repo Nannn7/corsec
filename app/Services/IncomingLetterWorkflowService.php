@@ -339,10 +339,10 @@ class IncomingLetterWorkflowService
 
             // upload bukti penyelesaian
             foreach ($evidenceFiles as $file) {
-                $path = $file->store('corsec/incoming/evidence', 'public');
+                $path = $file->store('corsec/incoming/evidence', 'private');
 
                 $att = Attachment::create([
-                    'disk' => 'public',
+                    'disk' => 'private',
                     'path' => $path,
                     'original_name' => $file->getClientOriginalName(),
                     'file_name' => basename($path),
@@ -361,10 +361,10 @@ class IncomingLetterWorkflowService
             }
 
             if ($socialMaterialFile) {
-                $path = $socialMaterialFile->store('corsec/incoming/social_material', 'public');
+                $path = $socialMaterialFile->store('corsec/incoming/social_material', 'private');
 
                 $att = Attachment::create([
-                    'disk' => 'public',
+                    'disk' => 'private',
                     'path' => $path,
                     'original_name' => $socialMaterialFile->getClientOriginalName(),
                     'file_name' => basename($path),
@@ -383,10 +383,10 @@ class IncomingLetterWorkflowService
             }
 
             if ($lainnyaFile) {
-                $path = $lainnyaFile->store('corsec/incoming/lainnya', 'public');
+                $path = $lainnyaFile->store('corsec/incoming/lainnya', 'private');
 
                 $att = Attachment::create([
-                    'disk' => 'public',
+                    'disk' => 'private',
                     'path' => $path,
                     'original_name' => $lainnyaFile->getClientOriginalName(),
                     'file_name' => basename($path),

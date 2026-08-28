@@ -21,13 +21,14 @@ $datatablesThrottle = 'throttle:corsec-datatables';
 $previewThrottle = 'throttle:corsec-preview';
 $writeHeavyThrottle = 'throttle:corsec-write-heavy';
 
-Route::get('/storage/{path}', SecureStorageController::class)
-    ->middleware('auth')
-    ->where('path', '.*')
-    ->name('storage.secure');
+// Route::get('/storage/{path}', SecureStorageController::class)
+//     ->middleware('auth')
+//     ->where('path', '.*')
+//     ->name('storage.secure');
 
 Route::middleware(['auth', 'permission:corsec.read|letter.read|meeting.read|workplan.read|report.read|library.read'])->group(function () {
     Route::get('/attachment/{attachment}/view', [SecureStorageController::class, 'viewAttachment'])->name('attachment.view');
+    Route::get('/attachment/{attachment}/inline', [SecureStorageController::class, 'inlineAttachment'])->name('attachment.inline');
     Route::get('/attachment/{attachment}/download', [SecureStorageController::class, 'downloadAttachment'])->name('attachment.download');
 });
 

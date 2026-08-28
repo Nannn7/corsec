@@ -65,13 +65,13 @@ class LibraryController extends Controller
 
         $validated = $request->validated();
         $file = $request->file('file');
-        $path = $file->store('corsec/library', 'public');
+        $path = $file->store('corsec/library', 'private');
         $originalName = (string) $file->getClientOriginalName();
 
         LibraryItem::create([
             'category_code' => $validated['category_code'],
             'title' => $this->resolveTitle($originalName),
-            'file_disk' => 'public',
+            'file_disk' => 'private',
             'file_path' => $path,
             'original_name' => $originalName,
             'file_name' => basename($path),
@@ -119,12 +119,12 @@ class LibraryController extends Controller
 
         if ($request->hasFile('file')) {
             $file = $request->file('file');
-            $path = $file->store('corsec/library', 'public');
+            $path = $file->store('corsec/library', 'private');
             $originalName = (string) $file->getClientOriginalName();
 
             $payload = array_merge($payload, [
                 'title' => $this->resolveTitle($originalName),
-                'file_disk' => 'public',
+                'file_disk' => 'private',
                 'file_path' => $path,
                 'original_name' => $originalName,
                 'file_name' => basename($path),
@@ -133,7 +133,7 @@ class LibraryController extends Controller
                 'file_size' => $file->getSize(),
             ]);
 
-            $oldDisk = (string) ($libraryItem->file_disk ?: 'public');
+            $oldDisk = (string) ($libraryItem->file_disk ?: 'private');
             $oldPath = (string) ($libraryItem->file_path ?? '');
         }
 
@@ -155,7 +155,7 @@ class LibraryController extends Controller
         $user = Auth::user();
         $this->ensureCanManageLibrary($user);
 
-        $disk = (string) ($libraryItem->file_disk ?: 'public');
+        $disk = (string) ($libraryItem->file_disk ?: 'private');
         $path = (string) ($libraryItem->file_path ?? '');
 
         $libraryItem->update([
@@ -182,7 +182,7 @@ class LibraryController extends Controller
             abort(403, 'Anda tidak memiliki akses untuk mengunduh dokumen pustaka.');
         }
 
-        $disk = (string) ($libraryItem->file_disk ?: 'public');
+        $disk = (string) ($libraryItem->file_disk ?: 'private');
         $path = (string) ($libraryItem->file_path ?? '');
 
         if ($path === '' || !Storage::disk($disk)->exists($path)) {

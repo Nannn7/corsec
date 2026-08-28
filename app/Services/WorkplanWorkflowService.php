@@ -724,10 +724,10 @@ class WorkplanWorkflowService
                 continue;
             }
 
-            $path = $file->store('corsec/workplan/update', 'public');
+            $path = $file->store('corsec/workplan/update', 'private');
 
             $attachment = Attachment::create([
-                'disk' => 'public',
+                'disk' => 'private',
                 'path' => $path,
                 'original_name' => $file->getClientOriginalName(),
                 'file_name' => basename($path),

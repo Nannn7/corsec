@@ -193,10 +193,10 @@ class IncomingLetterController extends Controller
             // upload attachments
             if ($request->hasFile('files')) {
                 foreach ($request->file('files') as $file) {
-                    $path = $file->store('corsec/incoming', 'public');
+                    $path = $file->store('corsec/incoming', 'private');
 
                     $att = Attachment::create([
-                        'disk' => 'public',
+                        'disk' => 'private',
                         'path' => $path,
                         'original_name' => $file->getClientOriginalName(),
                         'file_name' => basename($path),
@@ -492,9 +492,9 @@ class IncomingLetterController extends Controller
 
             if ($request->hasFile('files')) {
                 foreach ($request->file('files') as $file) {
-                    $path = $file->store('corsec/incoming', 'public');
+                    $path = $file->store('corsec/incoming', 'private');
                     $att = Attachment::create([
-                        'disk' => 'public',
+                        'disk' => 'private',
                         'path' => $path,
                         'original_name' => $file->getClientOriginalName(),
                         'file_name' => basename($path),

@@ -512,9 +512,9 @@ class OutgoingLetterController extends Controller
 
             $draft = $request->file('draft_file');
             if ($draft) {
-                $path = $draft->store('corsec/outgoing/draft', 'public');
+                $path = $draft->store('corsec/outgoing/draft', 'private');
                 $attachment = Attachment::create([
-                    'disk' => 'public',
+                    'disk' => 'private',
                     'path' => $path,
                     'original_name' => $draft->getClientOriginalName(),
                     'file_name' => basename($path),
@@ -755,9 +755,9 @@ class OutgoingLetterController extends Controller
 
             if ($request->hasFile('draft_file')) {
                 $draft = $request->file('draft_file');
-                $path = $draft->store('corsec/outgoing/draft', 'public');
+                $path = $draft->store('corsec/outgoing/draft', 'private');
                 $attachment = Attachment::create([
-                    'disk' => 'public',
+                    'disk' => 'private',
                     'path' => $path,
                     'original_name' => $draft->getClientOriginalName(),
                     'file_name' => basename($path),
@@ -904,9 +904,9 @@ class OutgoingLetterController extends Controller
         ]);
 
         $file = $request->file('compliance_file');
-        $path = $file->store('corsec/outgoing/compliance', 'public');
+        $path = $file->store('corsec/outgoing/compliance', 'private');
         $attachment = Attachment::create([
-            'disk' => 'public',
+            'disk' => 'private',
             'path' => $path,
             'original_name' => $file->getClientOriginalName(),
             'file_name' => basename($path),
@@ -973,9 +973,9 @@ class OutgoingLetterController extends Controller
         ]);
 
         $file = $request->file('final_file');
-        $path = $file->store('corsec/outgoing/final', 'public');
+        $path = $file->store('corsec/outgoing/final', 'private');
         $attachment = Attachment::create([
-            'disk' => 'public',
+            'disk' => 'private',
             'path' => $path,
             'original_name' => $file->getClientOriginalName(),
             'file_name' => basename($path),
