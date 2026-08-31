@@ -864,9 +864,9 @@ class WorkplanController extends Controller
 
     private function storeItemAttachment(WorkProgramItem $item, $file, User $user, string $category): void
     {
-        $path = $file->store('corsec/workplan/initial', 'public');
+        $path = $file->store('corsec/workplan/initial', 'private');
         $attachment = Attachment::create([
-            'disk' => 'public',
+            'disk' => 'private',
             'path' => $path,
             'original_name' => $file->getClientOriginalName(),
             'file_name' => basename($path),
@@ -940,7 +940,7 @@ class WorkplanController extends Controller
             if ($attachment) {
                 try {
                     if ($attachment->path) {
-                        Storage::disk($attachment->disk ?? 'public')->delete($attachment->path);
+                        Storage::disk($attachment->disk ?? 'private')->delete($attachment->path);
                     }
                 } catch (Exception $e) {
                     Log::warning('Failed deleting attachment file', [
