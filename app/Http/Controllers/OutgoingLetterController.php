@@ -998,7 +998,7 @@ class OutgoingLetterController extends Controller
         $query = LetterType::query()
             ->forScope(LetterType::SCOPE_OUT);
 
-        if (!$this->permissionService->isCorpSecretaryDirectorate($user)) {
+        if (!$this->permissionService->isCorpSecretaryDirectorate($user) && !$user?->hasRole('administrator')) {
             $allowedNames = [
                 'KEPUTUSAN DIREKTUR',
                 'KEPUTUSAN DIREKSI',
@@ -1006,6 +1006,8 @@ class OutgoingLetterController extends Controller
                 'PKS',
                 'SURAT KELUAR DIRUT',
                 'SURAT KUASA',
+                'APUPPT',
+                'COMPLIANCE',
             ];
 
             $query->where(function ($builder) use ($allowedNames) {
@@ -1265,6 +1267,8 @@ class OutgoingLetterController extends Controller
             'MAK SUBDIT CORSEC' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'MAK', 'unit' => 'SUBDIT-CORP.AFFAIRS', 'pad' => 4],
             'KEPUTUSAN DIREKSI' => ['layout' => 'sequence_prefix_month_year', 'prefix' => 'KEP-DIR', 'pad' => 3],
             'MAK DIRUT' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'MAK', 'unit' => 'DIRUT', 'pad' => 4],
+            'APUPPT' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'SK', 'unit' => 'SUBDIT-AML.CFT', 'pad' => 4],
+            'COMPLIANCE' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'SK', 'unit' => 'DIR-COMP&RM', 'pad' => 4],
         ];
 
         $templatesByCode = [
@@ -1279,6 +1283,8 @@ class OutgoingLetterController extends Controller
             '011' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'MAK', 'unit' => 'SUBDIT-CORP.AFFAIRS', 'pad' => 4],
             '009' => ['layout' => 'sequence_prefix_month_year', 'prefix' => 'KEP-DIR', 'pad' => 3],
             '010' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'MAK', 'unit' => 'DIRUT', 'pad' => 4],
+            '012' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'SK', 'unit' => 'SUBDIT-AML.CFT', 'pad' => 4],
+            '013' => ['layout' => 'prefix_sequence_unit_month_year', 'prefix' => 'SK', 'unit' => 'DIR-COMP&RM', 'pad' => 4],
         ];
 
         if (isset($templatesByName[$nameKey])) {
