@@ -21,13 +21,14 @@ $datatablesThrottle = 'throttle:corsec-datatables';
 $previewThrottle = 'throttle:corsec-preview';
 $writeHeavyThrottle = 'throttle:corsec-write-heavy';
 
-Route::get('/storage/{path}', SecureStorageController::class)
-    ->middleware('auth')
-    ->where('path', '.*')
-    ->name('storage.secure');
+// Route::get('/storage/{path}', SecureStorageController::class)
+//     ->middleware('auth')
+//     ->where('path', '.*')
+//     ->name('storage.secure');
 
 Route::middleware(['auth', 'permission:corsec.read|letter.read|meeting.read|workplan.read|report.read|library.read'])->group(function () {
     Route::get('/attachment/{attachment}/view', [SecureStorageController::class, 'viewAttachment'])->name('attachment.view');
+    Route::get('/attachment/{attachment}/inline', [SecureStorageController::class, 'inlineAttachment'])->name('attachment.inline');
     Route::get('/attachment/{attachment}/download', [SecureStorageController::class, 'downloadAttachment'])->name('attachment.download');
 });
 
@@ -57,12 +58,10 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () us
             Route::post('/{incomingLetter}/submit', [IncomingLetterController::class, 'submit'])->middleware(['permission:letter.create|letter.update', $writeHeavyThrottle])->name('submit');
             Route::post('/{incomingLetter}/circulate', [IncomingLetterController::class, 'circulate'])->middleware(['permission:letter.update', $writeHeavyThrottle])->name('circulate');
             Route::post('/{incomingLetter}/approval', [IncomingLetterController::class, 'approvalAction'])->middleware(['permission:letter.authorize', $writeHeavyThrottle])->name('approval.action');
-<<<<<<< HEAD
             Route::post('/{incomingLetter}/directorate-update', [IncomingLetterController::class, 'directorateUpdate'])->middleware(['permission:letter.update|letter.maker_action', $writeHeavyThrottle])->name('directorate.update');
-=======
-            Route::post('/{incomingLetter}/directorate-update', [IncomingLetterController::class, 'directorateUpdate'])->middleware(['permission:letter.read', $writeHeavyThrottle])->name('directorate.update');
->>>>>>> 7e84cce245b01817c83717d179fd74b0a8e5fcf2
             Route::post('/{incomingLetter}/monitoring', [IncomingLetterController::class, 'addMonitoringDirectorates'])->middleware(['permission:letter.update', $writeHeavyThrottle])->name('monitoring.add');
+            Route::post('/{incomingLetter}/monitoring/remove', [IncomingLetterController::class, 'removeMonitoringDirectorate'])->middleware(['permission:letter.update', $writeHeavyThrottle])->name('monitoring.remove');
+            Route::post('/{incomingLetter}/leader', [IncomingLetterController::class, 'updateLeader'])->middleware(['permission:letter.update', $writeHeavyThrottle])->name('leader.update');
             Route::post('/{incomingLetter}/verify', [IncomingLetterController::class, 'verifyAction'])->middleware(['permission:letter.read|letter.authorize|letter.update', $writeHeavyThrottle])->name('verify.action');
             Route::post('/{incomingLetter}/note', [IncomingLetterController::class, 'directorNote'])->middleware(['permission:letter.read', $writeHeavyThrottle])->name('director.note');
             // DELETE (pakai model binding biar ga tabrakan)
@@ -102,6 +101,8 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () us
         Route::get('/guideline', [LibraryController::class, 'guidelineIndex'])->middleware('permission:library.read')->name('guideline.index');
         Route::get('/create', [LibraryController::class, 'create'])->middleware('permission:library.create')->name('create');
         Route::post('/', [LibraryController::class, 'store'])->middleware(['permission:library.create', $writeHeavyThrottle])->name('store');
+        Route::get('/{libraryItem}/preview', [LibraryController::class, 'preview'])->middleware('permission:library.read')->name('preview');
+        Route::get('/{libraryItem}/inline', [LibraryController::class, 'inline'])->middleware('permission:library.read')->name('inline');
         Route::get('/{libraryItem}/download', [LibraryController::class, 'download'])->middleware('permission:library.read')->name('download');
         Route::get('/{libraryItem}/edit', [LibraryController::class, 'edit'])->middleware('permission:library.create')->name('edit');
         Route::put('/{libraryItem}', [LibraryController::class, 'update'])->middleware(['permission:library.create', $writeHeavyThrottle])->name('update');

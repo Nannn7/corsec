@@ -604,7 +604,13 @@ class ReportController extends Controller
         $query->where(function ($builder) use ($user, $directorateId) {
             $builder->where('corsec_outgoing_letters.created_by', $user->id);
             if ($directorateId > 0) {
-                $builder->orWhere('corsec_outgoing_letters.requester_directorate_id', $directorateId);
+                $builder->orWhere('corsec_outgoing_letters.requester_directorate_id', $directorateId)
+                    ->orWhereHas('perihalIncomingLetter', function ($incomingQuery) use ($directorateId) {
+                        $incomingQuery->where('target_directorate_id', $directorateId)
+                            ->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
+                                $circulationQuery->where('directorate_id', $directorateId);
+                            });
+                    });
             }
         });
     }

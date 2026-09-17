@@ -11,20 +11,16 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class SecureStorageController extends Controller
 {
-    public function __invoke(Request $request, string $path): BinaryFileResponse
+    public function inlineAttachment(Request $request, Attachment $attachment): BinaryFileResponse
     {
-        $path = $this->normalizePath($path);
-
-        Log::info('storage.secure.request', [
-            'path' => $path,
-            'user_id' => $request->user()?->id,
-            'ip' => $request->ip(),
-        ]);
-
-        $disk = Storage::disk('public');
+        $path = $this->normalizePath((string) $attachment->path);
+        $diskName = (string) ($attachment->disk ?: 'private');
+        $disk = Storage::disk($diskName);
 
         if (!$disk->exists($path)) {
-            Log::warning('storage.secure.not_found', [
+            Log::warning('attachment.inline.not_found', [
+                'attachment_id' => $attachment->id,
+                'disk' => $diskName,
                 'path' => $path,
                 'user_id' => $request->user()?->id,
                 'ip' => $request->ip(),
@@ -34,14 +30,13 @@ class SecureStorageController extends Controller
         }
 
         $mimeType = $disk->mimeType($path) ?: 'application/octet-stream';
-        $filename = $this->safeFilename(basename($path));
+        $filename = $this->safeFilename((string) ($attachment->original_name ?: $attachment->file_name ?: basename($path)));
 
-        Log::info('storage.secure.serve', [
-            'path' => $path,
-            'filename' => $filename,
-            'mime_type' => $mimeType,
+        Log::info('attachment.inline.serve', [
+            'attachment_id' => $attachment->id,
+            'disk' => $diskName,
             'user_id' => $request->user()?->id,
-        ]);
+         ]);
 
         return response()->file($disk->path($path), [
             'Content-Type' => $mimeType,
@@ -55,7 +50,7 @@ class SecureStorageController extends Controller
     public function viewAttachment(Request $request, Attachment $attachment)
     {
         $path = $this->normalizePath((string) $attachment->path);
-        $diskName = (string) ($attachment->disk ?: 'public');
+        $diskName = (string) ($attachment->disk ?: 'private');
         $disk = Storage::disk($diskName);
 
         if (!$disk->exists($path)) {
@@ -63,7 +58,7 @@ class SecureStorageController extends Controller
         }
 
         $fileName = $this->safeFilename((string) ($attachment->original_name ?: $attachment->file_name ?: basename($path)));
-        $inlineUrl = route('storage.secure', ['path' => $path]);
+        $inlineUrl = route('attachment.inline', $attachment);
         $downloadUrl = route('attachment.download', $attachment);
 
         return view('corsec::attachment.viewer', compact('attachment', 'fileName', 'inlineUrl', 'downloadUrl'));
@@ -72,7 +67,7 @@ class SecureStorageController extends Controller
     public function downloadAttachment(Request $request, Attachment $attachment)
     {
         $path = $this->normalizePath((string) $attachment->path);
-        $diskName = (string) ($attachment->disk ?: 'public');
+        $diskName = (string) ($attachment->disk ?: 'private');
         $disk = Storage::disk($diskName);
 
         if (!$disk->exists($path)) {

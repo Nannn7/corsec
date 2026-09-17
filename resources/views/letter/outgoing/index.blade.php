@@ -9,7 +9,7 @@
     <div class="container-fluid">
         <div class="grid">
             <div class="min-w-full card card-grid" data-datatable="false" data-datatable-page-size="10"
-                data-datatable-state-save="true" id="outgoing-letter-table"
+                data-datatable-state-save="false" id="outgoing-letter-table"
                 data-api-url="{{ route('letter.outgoing.datatables') }}" data-base-url="{{ url('letter/outgoing') }}">
                 <div class="flex-wrap py-5 card-header">
                     <h3 class="card-title">
@@ -464,19 +464,19 @@
             return `<div class="flex flex-col gap-1">${list.map((attachment) => {
                 if (!attachment?.view_url) return '';
                 return `<a class="btn btn-xs btn-light justify-start" target="_blank" href="${attachment.view_url}">
-                            <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
-                        </a>`;
+                    <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
+                </a>`;
             }).join('')}</div>`;
         };
 
         const renderComments = (data) => {
             const comments = Array.isArray(data.comments) ? data.comments : [];
-            const commentList = comments.length > 0 ?
-                `<div class="mb-2 space-y-1">${comments.map((comment) => `<div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs">
-                            <div>${escapeHtml(comment.body || '-')}</div>
-                            <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
-                        </div>`).join('')}</div>` :
-                '<div class="mb-2 text-xs text-gray-500">Belum ada komentar.</div>';
+            const commentList = comments.length > 0
+                ? `<div class="mb-2 space-y-1">${comments.map((comment) => `<div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs">
+                    <div>${escapeHtml(comment.body || '-')}</div>
+                    <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
+                </div>`).join('')}</div>`
+                : '<div class="mb-2 text-xs text-gray-500">Belum ada komentar.</div>';
 
             if (!canComment || !data.comment_url) return commentList;
 
@@ -495,6 +495,7 @@
             if (val === 'waiting_final_upload' || val === 'final_uploaded' || val === 'waiting_verification')
                 normalized = 'waiting_final_upload';
             if (val === 'waiting_cancel_approval') normalized = 'waiting_cancel_approval';
+            if (val === 'waiting_response_letter') normalized = 'waiting_response_letter';
             if (val === 'verified') normalized = 'done';
             if (val === 'returned') normalized = 'revisi';
             if (val === 'cancelled') normalized = 'cancelled';
@@ -506,6 +507,7 @@
                 waiting_compliance_approval: ['badge-warning', 'Approval EO dan DD Kepatuhan'],
                 waiting_final_upload: ['badge-primary', 'Final Upload'],
                 waiting_cancel_approval: ['badge-warning', 'Approval Pembatalan EO Direktorat'],
+                waiting_response_letter: ['badge-info', 'Waiting Response Letter'],
                 done: ['badge-success', 'Done'],
                 revisi: ['badge-danger', 'Revisi'],
                 cancelled: ['badge-secondary', 'Cancelled'],
@@ -538,6 +540,7 @@
         const dataTableOptions = {
             apiEndpoint: apiUrl,
             pageSize: 10,
+            stateSave: false,
             mapRequest: (params) => {
                 Object.entries(getActiveFilters()).forEach(([key, value]) => params.set(key, value));
                 return params;
@@ -545,6 +548,7 @@
             columns: {
                 select: {
                     render: (item, data) => {
+                        if (data.is_pending_response_letter) return '';
                         if (canDelete) {
                             const status = (data.status ?? '').toString().toLowerCase();
                             const deletableStatuses = ['draft', 'returned'];
@@ -623,6 +627,14 @@
                 actions: {
                     title: 'Action',
                     render: (item, data) => {
+                        if (data.is_pending_response_letter && data.create_response_url) {
+                            return `<div class="flex flex-nowrap justify-center">
+                                <a class="btn btn-sm btn-icon btn-clear btn-primary" href="${data.create_response_url}" title="Buat Surat Jawaban">
+                                    <i class="ki-outline ki-plus"></i>
+                                </a>
+                            </div>`;
+                        }
+
                         const status = (data.status ?? '').toString().toLowerCase();
                         const editableStatuses = ['draft', 'returned'];
                         const deletableStatuses = ['draft', 'returned'];
@@ -706,9 +718,7 @@
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     },
-                    body: JSON.stringify({
-                        note
-                    })
+                    body: JSON.stringify({ note })
                 });
                 if (!response.ok) throw response;
                 if (typeof dataTable.reload === 'function') dataTable.reload();

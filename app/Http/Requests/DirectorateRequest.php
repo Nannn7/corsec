@@ -16,7 +16,7 @@ class DirectorateRequest extends FormRequest
         $routeDirectorate = $this->route('directorate');
         $id = $routeDirectorate instanceof Directorate ? $routeDirectorate->id : (is_numeric($routeDirectorate) ? (int) $routeDirectorate : null);
 
-        $uniqueCode = Rule::unique('corsec_directorates', 'code');
+        $uniqueCode = Rule::unique('corsec_directorates', 'code')->whereNull('deleted_at');
         if (($this->isMethod('put') || $this->isMethod('patch')) && $id) {
             $uniqueCode = $uniqueCode->ignore($id);
         }

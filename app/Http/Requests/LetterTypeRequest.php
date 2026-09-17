@@ -27,6 +27,7 @@ class LetterTypeRequest extends FormRequest
         }
 
         $uniqueCode = Rule::unique('corsec_letter_types', 'code')
+            ->whereNull('deleted_at')
             ->where(function ($query) use ($scope) {
                 if ($scope === LetterType::SCOPE_IN) {
                     $query->where(function ($inner) {

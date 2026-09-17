@@ -11,7 +11,7 @@
 @section('content')
     @php
         $incomingLetter = $incomingLetter ?? null;
-        $isEditableStatus = !$incomingLetter || in_array($incomingLetter->status, ['draft', 'returned'], true);
+        $isEditableStatus = !$incomingLetter || $incomingLetter->status !== 'verified';
     @endphp
     <div class="grid gap-5 mx-auto w-full lg:gap-7.5">
 
@@ -58,7 +58,7 @@
                             <label class="form-label">Nomor Surat <span class="text-danger">*</span></label>
                             <input class="input @error('external_letter_no') border-danger bg-danger-light @enderror"
                                 type="text" name="external_letter_no"
-                                value="{{ old('external_letter_no', $incomingLetter?->external_letter_no) }}"
+                                value="{{ old('external_letter_no', $incomingLetter?->external_letter_no) }}" {{ isset($incomingLetter) ? 'readonly' : '' }}
                                 maxlength="255" placeholder="Contoh: 001/ABC/I/2026" required>
                             @error('external_letter_no')
                                 <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>

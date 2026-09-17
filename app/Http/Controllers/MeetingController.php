@@ -558,7 +558,7 @@ class MeetingController extends Controller
             abort(404, 'File bahan rapat tidak ditemukan.');
         }
 
-        $disk = (string) ($attachment->disk ?: 'public');
+        $disk = (string) ($attachment->disk ?: 'private');
         $path = trim((string) ($attachment->path ?? ''));
 
         if ($path === '' || !Storage::disk($disk)->exists($path)) {
@@ -2507,10 +2507,10 @@ class MeetingController extends Controller
 
     private function storeAttachment(UploadedFile $file, User $user, string $folder): Attachment
     {
-        $path = $file->store($folder, 'public');
+        $path = $file->store($folder, 'private');
 
         return Attachment::create([
-            'disk' => 'public',
+            'disk' => 'private',
             'path' => $path,
             'original_name' => $file->getClientOriginalName(),
             'file_name' => basename($path),
@@ -3172,7 +3172,7 @@ class MeetingController extends Controller
             if ($attachment) {
                 try {
                     if ($attachment->path) {
-                        Storage::disk($attachment->disk ?? 'public')->delete($attachment->path);
+                        Storage::disk($attachment->disk ?? 'private')->delete($attachment->path);
                     }
                 } catch (Exception $e) {
                     Log::warning('Failed deleting attachment file', [

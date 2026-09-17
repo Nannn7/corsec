@@ -15,6 +15,7 @@ use Modules\Corsec\Http\Requests\LibraryItemRequest;
 use Modules\Corsec\Models\LibraryItem;
 use Modules\Corsec\Services\CorsecPermissionService;
 use Modules\Usermanagement\Models\User;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LibraryController extends Controller
@@ -65,13 +66,13 @@ class LibraryController extends Controller
 
         $validated = $request->validated();
         $file = $request->file('file');
-        $path = $file->store('corsec/library', 'public');
+        $path = $file->store('corsec/library', 'private');
         $originalName = (string) $file->getClientOriginalName();
 
         LibraryItem::create([
             'category_code' => $validated['category_code'],
             'title' => $this->resolveTitle($originalName),
-            'file_disk' => 'public',
+            'file_disk' => 'private',
             'file_path' => $path,
             'original_name' => $originalName,
             'file_name' => basename($path),
@@ -119,12 +120,12 @@ class LibraryController extends Controller
 
         if ($request->hasFile('file')) {
             $file = $request->file('file');
-            $path = $file->store('corsec/library', 'public');
+            $path = $file->store('corsec/library', 'private');
             $originalName = (string) $file->getClientOriginalName();
 
             $payload = array_merge($payload, [
                 'title' => $this->resolveTitle($originalName),
-                'file_disk' => 'public',
+                'file_disk' => 'private',
                 'file_path' => $path,
                 'original_name' => $originalName,
                 'file_name' => basename($path),
@@ -133,7 +134,7 @@ class LibraryController extends Controller
                 'file_size' => $file->getSize(),
             ]);
 
-            $oldDisk = (string) ($libraryItem->file_disk ?: 'public');
+            $oldDisk = (string) ($libraryItem->file_disk ?: 'private');
             $oldPath = (string) ($libraryItem->file_path ?? '');
         }
 
@@ -155,7 +156,7 @@ class LibraryController extends Controller
         $user = Auth::user();
         $this->ensureCanManageLibrary($user);
 
-        $disk = (string) ($libraryItem->file_disk ?: 'public');
+        $disk = (string) ($libraryItem->file_disk ?: 'private');
         $path = (string) ($libraryItem->file_path ?? '');
 
         $libraryItem->update([
@@ -175,6 +176,60 @@ class LibraryController extends Controller
         );
     }
 
+    public function preview(LibraryItem $libraryItem): View
+    {
+        $user = Auth::user();
+        if (!$user || !$user->can('library.read')) {
+            abort(403, 'Anda tidak memiliki akses untuk melihat pratinjau dokumen pustaka.');
+        }
+
+        $disk = (string) ($libraryItem->file_disk ?: 'private');
+        $path = (string) ($libraryItem->file_path ?? '');
+
+        if ($path === '' || !Storage::disk($disk)->exists($path)) {
+            abort(404, 'File daftar pustaka tidak ditemukan.');
+        }
+
+        $fileName = $libraryItem->downloadFileName();
+        $inlineUrl = route('library.inline', $libraryItem);
+        $downloadUrl = route('library.download', $libraryItem);
+
+        return view('corsec::library.viewer', [
+            'libraryItem' => $libraryItem,
+            'fileName' => $fileName,
+            'inlineUrl' => $inlineUrl,
+            'downloadUrl' => $downloadUrl,
+            'breadcrumbName' => 'library.preview',
+        ]);
+    }
+
+    public function inline(LibraryItem $libraryItem): BinaryFileResponse
+    {
+        $user = Auth::user();
+        if (!$user || !$user->can('library.read')) {
+            abort(403, 'Anda tidak memiliki akses untuk melihat dokumen pustaka.');
+        }
+
+        $disk = (string) ($libraryItem->file_disk ?: 'private');
+        $path = (string) ($libraryItem->file_path ?? '');
+        $storage = Storage::disk($disk);
+
+        if ($path === '' || !$storage->exists($path)) {
+            abort(404, 'File daftar pustaka tidak ditemukan.');
+        }
+
+        $mimeType = $storage->mimeType($path) ?: ($libraryItem->file_mime ?: 'application/octet-stream');
+        $filename = $this->safeFilename($libraryItem->downloadFileName());
+
+        return response()->file($storage->path($path), [
+            'Content-Type' => $mimeType,
+            'Content-Disposition' => 'inline; filename="' . $filename . '"',
+            'Cache-Control' => 'private, no-store, no-cache, must-revalidate',
+            'Pragma' => 'no-cache',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
     public function download(LibraryItem $libraryItem): StreamedResponse
     {
         $user = Auth::user();
@@ -182,7 +237,7 @@ class LibraryController extends Controller
             abort(403, 'Anda tidak memiliki akses untuk mengunduh dokumen pustaka.');
         }
 
-        $disk = (string) ($libraryItem->file_disk ?: 'public');
+        $disk = (string) ($libraryItem->file_disk ?: 'private');
         $path = (string) ($libraryItem->file_path ?? '');
 
         if ($path === '' || !Storage::disk($disk)->exists($path)) {
@@ -319,5 +374,12 @@ class LibraryController extends Controller
                 'message' => $exception->getMessage(),
             ]);
         }
+    }
+
+    private function safeFilename(string $filename): string
+    {
+        $filename = str_replace(['\\', '/', '"', "\r", "\n"], '', $filename);
+
+        return $filename !== '' ? $filename : 'file';
     }
 }

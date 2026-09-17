@@ -15,6 +15,9 @@
         $canCheckerApproval = (bool) ($permissionFlags['can_checker_approval'] ?? false);
         $canCorsecValidation = (bool) ($permissionFlags['can_corsec_validation'] ?? false);
         $canAddMonitoring = (bool) ($permissionFlags['can_add_monitoring'] ?? false);
+        $canEditLeader = (bool) ($permissionFlags['can_edit_leader'] ?? false);
+        $canRemoveMonitoring = (bool) ($permissionFlags['can_remove_monitoring'] ?? false);
+        $canEdit = (bool) ($permissionFlags['can_edit'] ?? false);
         $validationRequested = (bool) $incomingLetter->corp_secretary_validation_requested_at;
         $validationOverdue = $incomingLetter->isCorpSecretaryValidationOverdue();
         $validationCompletedLate = $incomingLetter->isCorpSecretaryValidatedLate();
@@ -77,6 +80,11 @@
                     <a href="{{ route('letter.incoming.index') }}" class="btn btn-sm btn-light">
                         <i class="ki-filled ki-arrow-left"></i> Kembali
                     </a>
+                    @if ($canEdit)
+                        <a href="{{ route('letter.incoming.edit', $incomingLetter) }}" class="btn btn-sm btn-info">
+                            <i class="ki-filled ki-notepad-edit"></i> Edit Surat
+                        </a>
+                    @endif
                 </div>
             </div>
         </div>
@@ -239,6 +247,103 @@
                         <div class="flex justify-end">
                             <button class="btn btn-primary" type="submit">
                                 <i class="ki-filled ki-check"></i> Tambah Monitoring
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        @endif
+
+        @if ($canEditLeader)
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Ubah Leader Surat</h3>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ route('letter.incoming.leader.update', $incomingLetter) }}"
+                        class="grid gap-4 js-ajax-form" data-form-type="leader">
+                        @csrf
+                        <div class="flex flex-col">
+                            <label class="form-label">Leader Saat Ini</label>
+                            <span class="font-medium">{{ $incomingLetter->targetDirectorate?->name ?? '-' }}</span>
+                        </div>
+                        <div class="flex flex-col">
+                            <label class="form-label">Leader Baru <span class="text-danger">*</span></label>
+                            <select
+                                class="select @error('new_target_directorate_id') border-danger bg-danger-light @enderror"
+                                name="new_target_directorate_id" required>
+                                <option value="">- Pilih Direktorat -</option>
+                                @foreach ($directorates as $directorate)
+                                    @if ((int) $directorate->id !== (int) $incomingLetter->target_directorate_id)
+                                        <option value="{{ $directorate->id }}">{{ $directorate->name }}</option>
+                                    @endif
+                                @endforeach
+                            </select>
+                            @error('new_target_directorate_id')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                            <small class="text-xs text-gray-500 mt-1">
+                                Leader baru otomatis ditambahkan ke daftar sirkulasi apabila belum ada.
+                            </small>
+                        </div>
+                        <div class="flex flex-col">
+                            <label class="form-label">Catatan (opsional)</label>
+                            <textarea class="textarea w-full @error('leader_note') border-danger bg-danger-light @enderror"
+                                name="leader_note" rows="3" placeholder="Alasan perubahan leader...">{{ old('leader_note') }}</textarea>
+                            @error('leader_note')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+                        <div class="flex justify-end">
+                            <button class="btn btn-warning" type="submit">
+                                <i class="ki-filled ki-arrow-right-left"></i> Ubah Leader
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        @endif
+
+        @if ($canRemoveMonitoring && $incomingLetter->circulationDirectorates?->count() > 1)
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Hapus Direktorat Monitoring</h3>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ route('letter.incoming.monitoring.remove', $incomingLetter) }}"
+                        class="grid gap-4 js-ajax-form" data-form-type="monitoring-remove">
+                        @csrf
+                        <div class="flex flex-col">
+                            <label class="form-label">Direktorat Monitoring <span class="text-danger">*</span></label>
+                            <select
+                                class="select @error('monitoring_directorate_id') border-danger bg-danger-light @enderror"
+                                name="monitoring_directorate_id" required>
+                                <option value="">- Pilih Direktorat -</option>
+                                @foreach ($incomingLetter->circulationDirectorates ?? [] as $directorate)
+                                    @if ((int) $directorate->id !== (int) $incomingLetter->target_directorate_id)
+                                        <option value="{{ $directorate->id }}">{{ $directorate->name }}</option>
+                                    @endif
+                                @endforeach
+                            </select>
+                            @error('monitoring_directorate_id')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                            <small class="text-xs text-gray-500 mt-1">
+                                Leader surat saat ini tidak bisa dihapus dari sirkulasi. Ubah leader terlebih dahulu
+                                apabila ingin melepas direktorat tersebut.
+                            </small>
+                        </div>
+                        <div class="flex flex-col">
+                            <label class="form-label">Catatan (opsional)</label>
+                            <textarea class="textarea w-full @error('removal_note') border-danger bg-danger-light @enderror"
+                                name="removal_note" rows="3" placeholder="Alasan penghapusan...">{{ old('removal_note') }}</textarea>
+                            @error('removal_note')
+                                <em class="mt-1 text-sm alert text-danger">{{ $message }}</em>
+                            @enderror
+                        </div>
+                        <div class="flex justify-end">
+                            <button class="btn btn-danger" type="submit">
+                                <i class="ki-filled ki-trash"></i> Hapus dari Monitoring
                             </button>
                         </div>
                     </form>
@@ -757,39 +862,6 @@
         </div>
 
         @if ($canDirectorateUpdate)
-<<<<<<< HEAD
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Input Tindak Lanjut Direktorat</h3>
-                    </div>
-                    <div class="card-body">
-                        <form method="POST" action="{{ route('letter.incoming.directorate.update', $incomingLetter) }}"
-                            enctype="multipart/form-data" class="grid gap-4 js-ajax-form" data-form-type="followup"
-                            id="followup-form">
-                            @csrf
-                            <div class="grid gap-4 lg:grid-cols-2">
-                                <div class="flex flex-col lg:col-span-2">
-                                    <label class="form-label">Tindak Lanjut <span class="text-danger">*</span></label>
-                                    <select class="select" name="followup_action" id="followup_action" required>
-                                        <option value="">- Pilih Tindak Lanjut -</option>
-                                        <option value="meeting"
-                                            {{ old('followup_action', $incomingLetter->followup_action) === 'meeting' ? 'selected' : '' }}>
-                                            Meeting Koordinasi</option>
-                                        <option value="response_letter"
-                                            {{ old('followup_action', $incomingLetter->followup_action) === 'response_letter' ? 'selected' : '' }}>
-                                            Surat Jawaban</option>
-                                        <option value="socialization"
-                                            {{ old('followup_action', $incomingLetter->followup_action) === 'socialization' ? 'selected' : '' }}>
-                                            Sosialisasi</option>
-                                        <option value="invitation"
-                                            {{ old('followup_action', $incomingLetter->followup_action) === 'invitation' ? 'selected' : '' }}>
-                                            Peserta Undangan</option>
-                                        <option value="review"
-                                            {{ old('followup_action', $incomingLetter->followup_action) === 'review' ? 'selected' : '' }}>
-                                            Review / New Ketentuan</option>
-                                    </select>
-                                </div>
-=======
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Input Tindak Lanjut Direktorat</h3>
@@ -824,7 +896,6 @@
                                         Lainnya</option>
                                 </select>
                             </div>
->>>>>>> 7e84cce245b01817c83717d179fd74b0a8e5fcf2
 
                             <div class="flex flex-col followup-field hidden" data-followup="meeting"
                                 data-field="followup_meeting_participants">
@@ -1192,10 +1263,6 @@
                         </div>
                     </form>
                 </div>
-<<<<<<< HEAD
-=======
-            </div>
->>>>>>> 7e84cce245b01817c83717d179fd74b0a8e5fcf2
         @endif
 
         @if ($approvals->count() > 0)
@@ -1654,9 +1721,28 @@
                     return errors;
                 }
 
+                function validateMonitoringRemoveForm($form) {
+                    const errors = {};
+                    const value = $form.find('[name="monitoring_directorate_id"]').val();
+                    if (!value) {
+                        errors.monitoring_directorate_id = 'Silahkan pilih direktorat yang akan dihapus.';
+                    }
+                    return errors;
+                }
+
+                function validateLeaderForm($form) {
+                    const errors = {};
+                    const value = $form.find('[name="new_target_directorate_id"]').val();
+                    if (!value) {
+                        errors.new_target_directorate_id = 'Silahkan pilih leader baru.';
+                    }
+                    return errors;
+                }
+
                 function validateFollowupForm($form) {
                     const errors = {};
                     const action = $form.find('[name="followup_action"]').val();
+
                     if (!action) {
                         errors.followup_action = 'Field ini tidak boleh kosong.';
                         return errors;
@@ -1801,8 +1887,11 @@
                     let errors = {};
                     if (formType === 'monitoring') {
                         errors = validateMonitoringForm($form);
-                    }
-                    if (formType === 'followup') {
+                    } else if (formType === 'monitoring-remove') {
+                        errors = validateMonitoringRemoveForm($form);
+                    } else if (formType === 'leader') {
+                        errors = validateLeaderForm($form);
+                    } else if (formType === 'followup' || formType === 'follow_up') {
                         errors = validateFollowupForm($form);
                     }
 

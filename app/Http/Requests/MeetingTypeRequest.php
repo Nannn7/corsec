@@ -13,7 +13,7 @@ class MeetingTypeRequest extends FormRequest
         $routeMeetingType = $this->route('meetingType') ?? $this->route('meeting_type');
         $id = $routeMeetingType instanceof MeetingType ? $routeMeetingType->id : (is_numeric($routeMeetingType) ? (int) $routeMeetingType : null);
 
-        $uniqueCode = Rule::unique('corsec_meeting_types', 'code');
+        $uniqueCode = Rule::unique('corsec_meeting_types', 'code')->whereNull('deleted_at');
         if (($this->isMethod('put') || $this->isMethod('patch')) && $id) {
             $uniqueCode = $uniqueCode->ignore($id);
         }

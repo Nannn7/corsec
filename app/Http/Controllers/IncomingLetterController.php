@@ -193,10 +193,10 @@ class IncomingLetterController extends Controller
             // upload attachments
             if ($request->hasFile('files')) {
                 foreach ($request->file('files') as $file) {
-                    $path = $file->store('corsec/incoming', 'public');
+                    $path = $file->store('corsec/incoming', 'private');
 
                     $att = Attachment::create([
-                        'disk' => 'public',
+                        'disk' => 'private',
                         'path' => $path,
                         'original_name' => $file->getClientOriginalName(),
                         'file_name' => basename($path),
@@ -305,7 +305,7 @@ class IncomingLetterController extends Controller
             ->first();
 
         $user = Auth::user();
-        if ($user && !$this->permissionService->canViewAllCorsec($user)) {
+        if ($user && !$this->permissionService->canViewAllLetters($user)) {
             $directorateId = $user->directorate_id ?? $user->directorateid;
             $isCreator = (int) $incomingLetter->created_by === (int) $user->id;
             $isTargetDirectorate = $directorateId && (int) $incomingLetter->target_directorate_id === (int) $directorateId;
@@ -349,6 +349,14 @@ class IncomingLetterController extends Controller
     {
         $this->authorizeNonViewerUpdate();
 
+        $user = Auth::user();
+        if ($incomingLetter->status === IncomingLetter::STATUS_VERIFIED) {
+            abort(403, 'Surat masuk ini sudah terverifikasi. Anda tidak dapat mengeditnya.');
+        }
+        if (!$user->hasRole('administrator') && !$this->permissionService->isCorpSecretaryDirectorate($user)) {
+            abort(403, 'Anda tidak memiliki akses untuk mengedit surat masuk ini.');
+        }
+
         $directorates = $this->getCachedDirectorates();
         $senders = $this->getCachedSenders();
         $letterTypes = $this->getCachedLetterTypes();
@@ -363,6 +371,14 @@ class IncomingLetterController extends Controller
     public function update(Request $request, IncomingLetter $incomingLetter)
     {
         $this->authorizeNonViewerUpdate();
+
+        $user = Auth::user();
+        if ($incomingLetter->status === IncomingLetter::STATUS_VERIFIED) {
+            abort(403, 'Surat masuk ini sudah terverifikasi. Anda tidak dapat mengeditnya.');
+        }
+        if (!$user->hasRole('administrator') && !$this->permissionService->isCorpSecretaryDirectorate($user)) {
+            abort(403, 'Anda tidak memiliki akses untuk mengedit surat masuk ini.');
+        }
 
         $request->validate([
             'external_letter_no' => ['required', 'string', 'max:255'],
@@ -387,11 +403,8 @@ class IncomingLetterController extends Controller
 
         $user = auth()->user();
         $submitForApproval = $request->boolean('submit_for_approval', false);
-        if ($submitForApproval && !in_array((string) $incomingLetter->status, [
-            IncomingLetter::STATUS_DRAFT,
-            IncomingLetter::STATUS_RETURNED,
-        ], true)) {
-            abort(422, 'Surat masuk hanya bisa disubmit dari status Draft atau Returned.');
+        if ($submitForApproval && $incomingLetter->status === IncomingLetter::STATUS_VERIFIED) {
+            abort(422, 'Surat masuk yang sudah verified tidak bisa disubmit ulang.');
         }
 
         $circulationDirectorateIds = array_values(array_filter(
@@ -479,9 +492,9 @@ class IncomingLetterController extends Controller
 
             if ($request->hasFile('files')) {
                 foreach ($request->file('files') as $file) {
-                    $path = $file->store('corsec/incoming', 'public');
+                    $path = $file->store('corsec/incoming', 'private');
                     $att = Attachment::create([
-                        'disk' => 'public',
+                        'disk' => 'private',
                         'path' => $path,
                         'original_name' => $file->getClientOriginalName(),
                         'file_name' => basename($path),
@@ -635,22 +648,24 @@ class IncomingLetterController extends Controller
                 ]);
 
             // scope akses (copy dari index lo, biar konsisten)
-            if (!$this->permissionService->canViewAllCorsec($user)) {
-                $directorateId = $user->directorate_id ?? $user->directorateid;
-                $isEoCorpAffairActor = $this->permissionService->isEoCorpAffairActor($user);
-                $query->where(function ($w) use ($user, $directorateId, $isEoCorpAffairActor) {
-                    $w->where('created_by', $user->id)
-                        ->orWhere('target_directorate_id', $user->directorate_id ?? $user->directorateid);
-                    if (!empty($directorateId)) {
-                        $w->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
-                            $circulationQuery->where('directorate_id', $directorateId);
-                        });
-                    }
-                    if ($isEoCorpAffairActor) {
-                        $w->orWhereNotNull('id');
-                    }
-                });
-            }
+            // if (!$this->permissionService->canViewAllCorsec($user)) {
+            //     $directorateId = $user->directorate_id ?? $user->directorateid;
+            //     $isEoCorpAffairActor = $this->permissionService->isEoCorpAffairActor($user);
+            //     $query->where(function ($w) use ($user, $directorateId, $isEoCorpAffairActor) {
+            //         $w->where('created_by', $user->id)
+            //             ->orWhere('target_directorate_id', $user->directorate_id ?? $user->directorateid);
+            //         if (!empty($directorateId)) {
+            //             $w->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
+            //                 $circulationQuery->where('directorate_id', $directorateId);
+            //             });
+            //         }
+            //         if ($isEoCorpAffairActor) {
+            //             $w->orWhereNotNull('id');
+            //         }
+            //     });
+            // }
+	    
+	    $this->scopeIncomingVisibility($query, $user);
 
             $baseCountQuery = clone $query;
 
@@ -1328,6 +1343,123 @@ class IncomingLetterController extends Controller
         return back()->with('success', 'Direktorat monitoring berhasil ditambahkan.');
     }
 
+    public function updateLeader(Request $request, IncomingLetter $incomingLetter)
+    {
+        $this->authorizeNonViewerUpdate();
+
+        $user = Auth::user();
+        $directorateId = $user?->directorate_id ?? $user?->directorateid;
+        $isAdmin = $user?->hasRole('administrator');
+        $isTargetDirectorate = $user && (int) $incomingLetter->target_directorate_id === (int) $directorateId;
+        $isExecutiveOfficer = $this->permissionService->isExecutiveOfficer($user);
+        $isSekretariatDireksi = $this->permissionService->isSekretariatDireksi($user);
+        $isEoCorpSecretaryChecker =
+            $user && $user->can('letter.checker_action') && $this->permissionService->isCorpSecretaryDirectorate($user) && $isExecutiveOfficer;
+
+        if (!$user || (!$isAdmin && !$isTargetDirectorate && !$isEoCorpSecretaryChecker && !$isSekretariatDireksi)) {
+            abort(403, 'Anda tidak memiliki akses untuk mengubah leader.');
+        }
+
+        $request->validate([
+            'new_target_directorate_id' => ['required', 'exists:corsec_directorates,id'],
+            'leader_note' => ['nullable', 'string'],
+        ]);
+
+        $oldTargetDirectorateId = (int) $incomingLetter->target_directorate_id;
+        $newTargetDirectorateId = (int) $request->input('new_target_directorate_id');
+
+        if ($newTargetDirectorateId === $oldTargetDirectorateId) {
+            return back()->withErrors(['new_target_directorate_id' => 'Leader baru harus berbeda dari leader saat ini.'])->withInput();
+        }
+
+        DB::transaction(function () use ($incomingLetter, $newTargetDirectorateId, $oldTargetDirectorateId, $request, $user) {
+            // Leader wajib tetap termasuk di daftar sirkulasi (invariant yang sama dipakai di store/update).
+            $incomingLetter->circulationDirectorates()->syncWithoutDetaching([$newTargetDirectorateId]);
+
+            $incomingLetter->target_directorate_id = $newTargetDirectorateId;
+            $incomingLetter->save();
+
+            $oldDirectorateName = Directorate::find($oldTargetDirectorateId)?->name ?? "#{$oldTargetDirectorateId}";
+            $newDirectorateName = Directorate::find($newTargetDirectorateId)?->name ?? "#{$newTargetDirectorateId}";
+
+            $note = $request->string('leader_note')->toString();
+            $body = "[LEADER CHANGE] Diubah dari {$oldDirectorateName} ke {$newDirectorateName} oleh {$user->name}";
+            if ($note !== '') {
+                $body .= " - {$note}";
+            }
+
+            Comment::create([
+                'commentable_type' => IncomingLetter::class,
+                'commentable_id' => $incomingLetter->id,
+                'body' => $body,
+                'created_by' => $user->id,
+            ]);
+        });
+
+        $this->notifyIncomingDirectorates([$newTargetDirectorateId], $incomingLetter, $user);
+
+        return back()->with('success', 'Leader surat berhasil diubah.');
+    }
+
+    public function removeMonitoringDirectorate(Request $request, IncomingLetter $incomingLetter)
+    {
+        $this->authorizeNonViewerUpdate();
+
+        $user = Auth::user();
+        $directorateId = $user?->directorate_id ?? $user?->directorateid;
+        $isAdmin = $user?->hasRole('administrator');
+        $isTargetDirectorate = $user && (int) $incomingLetter->target_directorate_id === (int) $directorateId;
+        $isExecutiveOfficer = $this->permissionService->isExecutiveOfficer($user);
+        $isSekretariatDireksi = $this->permissionService->isSekretariatDireksi($user);
+        $isEoCorpSecretaryChecker =
+            $user && $user->can('letter.checker_action') && $this->permissionService->isCorpSecretaryDirectorate($user) && $isExecutiveOfficer;
+
+        if (!$user || (!$isAdmin && !$isTargetDirectorate && !$isEoCorpSecretaryChecker && !$isSekretariatDireksi)) {
+            abort(403, 'Anda tidak memiliki akses untuk menghapus monitoring.');
+        }
+
+        $request->validate([
+            'monitoring_directorate_id' => ['required', 'exists:corsec_directorates,id'],
+            'removal_note' => ['nullable', 'string'],
+        ]);
+
+        $removeId = (int) $request->input('monitoring_directorate_id');
+
+        // Leader tidak boleh di-remove dari sirkulasi selagi masih menjabat sebagai leader.
+        // Harus ganti leader dulu lewat updateLeader() sebelum direktorat ini bisa dilepas dari monitoring.
+        if ($removeId === (int) $incomingLetter->target_directorate_id) {
+            return back()->withErrors([
+                'monitoring_directorate_id' => 'Direktorat ini adalah leader surat saat ini. Ubah leader terlebih dahulu sebelum menghapusnya dari monitoring.',
+            ])->withInput();
+        }
+
+        $isCurrentlyInCirculation = $incomingLetter->circulationDirectorates()
+            ->where('corsec_directorates.id', $removeId)
+            ->exists();
+
+        if (!$isCurrentlyInCirculation) {
+            return back()->withErrors(['monitoring_directorate_id' => 'Direktorat ini tidak ada di daftar monitoring.'])->withInput();
+        }
+
+        $incomingLetter->circulationDirectorates()->detach([$removeId]);
+
+        $directorateName = Directorate::find($removeId)?->name ?? "#{$removeId}";
+        $note = $request->string('removal_note')->toString();
+        $body = "[MONITORING REMOVED] {$directorateName} dihapus dari daftar monitoring oleh {$user->name}";
+        if ($note !== '') {
+            $body .= " - {$note}";
+        }
+
+        Comment::create([
+            'commentable_type' => IncomingLetter::class,
+            'commentable_id' => $incomingLetter->id,
+            'body' => $body,
+            'created_by' => $user->id,
+        ]);
+
+        return back()->with('success', 'Direktorat monitoring berhasil dihapus.');
+    }
+
     private function notifyIncomingDirectorates(iterable $directorateIds, IncomingLetter $incomingLetter, User $actor): void
     {
         $ids = collect($directorateIds)->filter()->unique()->values();
@@ -1470,5 +1602,23 @@ class IncomingLetterController extends Controller
         if (!$this->permissionService->canCreateIncoming($user)) {
             abort(403, 'Tambah surat masuk hanya untuk maker staff Corporate Secretary.');
         }
+    }
+
+    private function scopeIncomingVisibility($query, $user): void
+    {
+        if ($this->permissionService->canViewAllLetters($user)) {
+            return;
+        }
+
+        $directorateId = (int) ($user->directorate_id ?? $user->directorateid ?? 0);
+        $query->where(function ($builder) use ($user, $directorateId) {
+            $builder->where('created_by', (int) $user->id);
+            if ($directorateId > 0) {
+                $builder->orWhere('target_directorate_id', $directorateId)
+                    ->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
+                        $circulationQuery->where('directorate_id', $directorateId);
+                    });
+            }
+        });
     }
 }

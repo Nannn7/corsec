@@ -960,7 +960,7 @@ class MeetingWorkflowService
 
     private function getCorpSecretaryDirectorateId(): ?int
     {
-        $corpCode = (string) config('corsec.eo_corp_affair_directorate_code', '');
+        $corpCode = (string) config('corsec.eo_corp_affair_directorate_code', '006');
         if ($corpCode !== '') {
             $directorateId = Directorate::query()
                 ->where('code', $corpCode)

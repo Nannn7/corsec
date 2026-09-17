@@ -213,7 +213,7 @@
                         <div class="flex flex-col perihal-field hidden" data-perihal="tanggapan_surat_masuk">
                             <label class="form-label">Surat Masuk</label>
                             <select
-                                class="select @error('perihal_incoming_letter_id') border-danger bg-danger-light @enderror"
+                                class="select tomselect @error('perihal_incoming_letter_id') border-danger bg-danger-light @enderror"
                                 name="perihal_incoming_letter_id" id="perihal_incoming_letter_id">
                                 <option value="">- Pilih Surat Masuk -</option>
                                 @foreach ($incomingLetters as $incomingLetter)
@@ -245,7 +245,7 @@
                         </div>
 
                         <div class="flex flex-col perihal-field hidden" data-perihal="rutinitas">
-                            <label class="form-label">Keterangan Rutinitas</label>
+                            <label class="form-label">Keterangan Rutinitas <span class="text-danger">*</span></label>
                             <input class="input @error('perihal_text') border-danger bg-danger-light @enderror"
                                 type="text" name="perihal_text_rutinitas" id="perihal_text_rutinitas"
                                 value="{{ old('perihal_text_rutinitas', $selectedPerihalType === 'rutinitas' ? old('perihal_text', $outgoingLetter?->perihal_text) : '') }}"
@@ -256,7 +256,7 @@
                         </div>
 
                         <div class="flex flex-col perihal-field hidden" data-perihal="insidentil">
-                            <label class="form-label">Keterangan Insidentil</label>
+                            <label class="form-label">Keterangan Insidentil <span class="text-danger">*</span></label>
                             <input class="input @error('perihal_text') border-danger bg-danger-light @enderror"
                                 type="text" name="perihal_text_insidentil" id="perihal_text_insidentil"
                                 value="{{ old('perihal_text_insidentil', $selectedPerihalType === 'insidentil' ? old('perihal_text', $outgoingLetter?->perihal_text) : '') }}"

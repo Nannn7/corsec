@@ -17,6 +17,7 @@ use RecursiveIteratorIterator;
 use Spatie\Activitylog\Traits\LogsActivity;
 use Throwable;
 use Modules\Corsec\Console\SyncDirectorateMeetingScheduleCommand;
+use Modules\Corsec\Console\MigrateAttachmentsToPrivateDiskCommand;
 
 class CorsecServiceProvider extends ServiceProvider
 {
@@ -59,6 +60,7 @@ class CorsecServiceProvider extends ServiceProvider
     {
         $this->commands([
             SyncDirectorateMeetingScheduleCommand::class,
+            MigrateAttachmentsToPrivateDiskCommand::class,
         ]);
     }
 

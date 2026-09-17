@@ -306,6 +306,7 @@
         const canDelete = @json((bool) ($permissionFlags['can_delete'] ?? false));
         const canEditAction = @json((bool) ($permissionFlags['can_edit_action'] ?? false));
         const canComment = @json((bool) ($permissionFlags['can_comment'] ?? false));
+        const isCorpSecretary = @json((bool) ($permissionFlags['is_corp_secretary'] ?? false));
 
         // --- Filter panel (Status, Pengirim, rentang Tanggal Surat & Tanggal Diterima) ---
         const filterElements = {
@@ -546,10 +547,9 @@
                     title: 'Action',
                     render: (item, data) => {
                         const status = (data.status ?? '').toString().toLowerCase();
-                        const editableStatuses = ['draft', 'returned'];
                         const deletableStatuses = ['draft', 'returned'];
-                        const canEditStatus = editableStatuses.includes(status);
                         const canDeleteStatus = isAdmin || deletableStatuses.includes(status);
+                        const canEditStatus = isCorpSecretary ? status !== 'verified' : ['draft', 'returned'].includes(status);
                         const rowKey = data.uuid ?? data.id;
                         let html = `<div class="flex flex-nowrap justify-center">`;
 
