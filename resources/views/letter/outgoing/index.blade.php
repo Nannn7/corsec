@@ -465,6 +465,7 @@
                 if (!attachment?.view_url) return '';
                 return `<a class="btn btn-xs btn-light justify-start" target="_blank" href="${attachment.view_url}">
 <<<<<<< HEAD
+<<<<<<< HEAD
                     <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
                 </a>`;
 =======
@@ -476,11 +477,16 @@
                 </a>`;
 >>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
 >>>>>>> 4773762663b025baff535a4ccf0a0ba07c294817
+=======
+                    <i class="ki-outline ki-eye"></i>${escapeHtml(attachment.name || 'Attachment')}
+                </a>`;
+>>>>>>> 9160304155d6118410a407db941f8ce8edc6c44e
             }).join('')}</div>`;
         };
 
         const renderComments = (data) => {
             const comments = Array.isArray(data.comments) ? data.comments : [];
+<<<<<<< HEAD
 <<<<<<< HEAD
 =======
 <<<<<<< HEAD
@@ -492,12 +498,15 @@
                 '<div class="mb-2 text-xs text-gray-500">Belum ada komentar.</div>';
 =======
 >>>>>>> 4773762663b025baff535a4ccf0a0ba07c294817
+=======
+>>>>>>> 9160304155d6118410a407db941f8ce8edc6c44e
             const commentList = comments.length > 0
                 ? `<div class="mb-2 space-y-1">${comments.map((comment) => `<div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs">
                     <div>${escapeHtml(comment.body || '-')}</div>
                     <div class="mt-1 text-[11px] text-gray-500">${escapeHtml(comment.created_by || '')}</div>
                 </div>`).join('')}</div>`
                 : '<div class="mb-2 text-xs text-gray-500">Belum ada komentar.</div>';
+<<<<<<< HEAD
 <<<<<<< HEAD
 =======
 >>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
@@ -519,6 +528,25 @@
             if (val === 'waiting_compliance_approval') normalized = 'waiting_compliance_approval';
             if (val === 'waiting_final_upload' || val === 'final_uploaded' || val === 'waiting_verification')
                 normalized = 'waiting_final_upload';
+=======
+
+            if (!canComment || !data.comment_url) return commentList;
+
+            return `${commentList}<div class="flex flex-col gap-1">
+                <textarea class="textarea textarea-sm min-h-16" data-table-comment-input placeholder="Tulis komentar..."></textarea>
+                <button type="button" class="btn btn-xs btn-primary self-start" data-table-comment-submit data-comment-url="${data.comment_url}">Simpan</button>
+            </div>`;
+        };
+
+        const statusBadge = (status) => {
+            const val = (status ?? '').toString().toLowerCase();
+            let normalized = 'draft';
+            if (val === 'waiting_dir_approval') normalized = 'waiting_dir_approval';
+            if (val === 'compliance_review') normalized = 'compliance_review';
+            if (val === 'waiting_compliance_approval') normalized = 'waiting_compliance_approval';
+            if (val === 'waiting_final_upload' || val === 'final_uploaded' || val === 'waiting_verification')
+                normalized = 'waiting_final_upload';
+>>>>>>> 9160304155d6118410a407db941f8ce8edc6c44e
             if (val === 'waiting_cancel_approval') normalized = 'waiting_cancel_approval';
             if (val === 'waiting_response_letter') normalized = 'waiting_response_letter';
             if (val === 'verified') normalized = 'done';
@@ -661,6 +689,7 @@
                         }
 
                         const status = (data.status ?? '').toString().toLowerCase();
+<<<<<<< HEAD
                         const editableStatuses = ['draft', 'returned'];
                         const deletableStatuses = ['draft', 'returned'];
                         const cancellableStatuses = [
@@ -754,6 +783,91 @@
                     body: JSON.stringify({ note })
 >>>>>>> 41a6d587a986009fad13830696d5399143b77ee3
 >>>>>>> 4773762663b025baff535a4ccf0a0ba07c294817
+=======
+                        const editableStatuses = ['draft', 'returned'];
+                        const deletableStatuses = ['draft', 'returned'];
+                        const cancellableStatuses = [
+                            'draft',
+                            'returned',
+                            'waiting_dir_approval',
+                            'compliance_review',
+                            'waiting_compliance_approval',
+                            'waiting_final_upload'
+                        ];
+                        const canEditStatus = editableStatuses.includes(status);
+                        const canDeleteStatus = isAdmin || deletableStatuses.includes(status);
+                        const isRequesterMakerStaff = isAdmin || (
+                            hasMakerRole &&
+                            isStaffPosition &&
+                            Number(data.created_by ?? 0) === Number(currentUserId) &&
+                            Number(data.requester_directorate_id ?? 0) === Number(currentUserDirectorateId)
+                        );
+                        const canCancelRequest = canCreateOrUpdate && isRequesterMakerStaff && cancellableStatuses
+                            .includes(status);
+                        const rowKey = data.uuid ?? data.id;
+                        let html = `<div class="flex flex-nowrap justify-center">`;
+
+                        if (canRead) {
+                            html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}">
+                                <i class="ki-outline ki-eye"></i>
+                            </a>`;
+                        }
+
+                        if (canEditAction) {
+                            if (canEditStatus) {
+                                html += `<a class="btn btn-sm btn-icon btn-clear btn-info" href="${baseUrl}/${rowKey}/edit">
+                                    <i class="ki-outline ki-notepad-edit"></i>
+                                </a>`;
+                            }
+                        }
+
+                        if (canDelete) {
+                            if (canDeleteStatus) {
+                                html += `<a onclick="deleteData('${rowKey}')" class="btn btn-sm btn-icon btn-clear btn-danger">
+                                    <i class="ki-outline ki-trash"></i>
+                                </a>`;
+                            }
+                        }
+
+                        if (canCancelRequest) {
+                            html += `<a onclick="cancelRequestData('${rowKey}')" class="btn btn-sm btn-icon btn-clear btn-warning" title="Ajukan Pembatalan">
+                                <i class="ki-outline ki-cross-circle"></i>
+                            </a>`;
+                        }
+
+                        html += `</div>`;
+                        return html;
+                    },
+                }
+            },
+        };
+
+        let dataTable = new KTDataTable(element, dataTableOptions);
+
+        document.addEventListener('click', async (event) => {
+            const button = event.target.closest('[data-table-comment-submit]');
+            if (!button) return;
+
+            const wrapper = button.closest('td') || button.parentElement;
+            const input = wrapper?.querySelector('[data-table-comment-input]');
+            const note = input?.value?.trim() ?? '';
+            const url = button.getAttribute('data-comment-url');
+            if (!note || !url) {
+                Swal.fire('Peringatan', 'Komentar wajib diisi.', 'warning');
+                return;
+            }
+
+            button.disabled = true;
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ note })
+>>>>>>> 9160304155d6118410a407db941f8ce8edc6c44e
                 });
                 if (!response.ok) throw response;
                 if (typeof dataTable.reload === 'function') dataTable.reload();
