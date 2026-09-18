@@ -380,7 +380,7 @@
                                         @endphp
                                         @if ($attachment)
                                             <a class="text-primary hover:underline"
-                                                href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($attachment->path) }}"
+                                                href="{{ route('attachment.inline', $attachment) }}"
                                                 target="_blank" rel="noopener">
                                                 {{ $attachment->original_name ?? $attachment->file_name }}
                                             </a>
@@ -403,7 +403,7 @@
                                         @endphp
                                         @if ($attachment)
                                             <a class="text-primary hover:underline"
-                                                href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($attachment->path) }}"
+                                                href="{{ route('attachment.inline', $attachment) }}"
                                                 target="_blank" rel="noopener">
                                                 {{ $attachment->original_name ?? $attachment->file_name }}
                                             </a>
@@ -522,7 +522,7 @@
                                     <span class="text-gray-600">Final Surat Jawaban:</span>
                                     <span class="font-medium">
                                         <a class="text-primary hover:underline"
-                                            href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($responseOutgoingLetter->finalAttachment->path) }}"
+                                            href="{{ route('attachment.inline', $responseOutgoingLetter->finalAttachment) }}"
                                             target="_blank" rel="noopener">
                                             {{ $responseOutgoingLetter->finalAttachment->original_name ?? $responseOutgoingLetter->finalAttachment->file_name }}
                                         </a>
@@ -590,7 +590,7 @@
                                                 @endphp
                                                 @if ($attachment)
                                                     <a class="text-primary hover:underline"
-                                                        href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($attachment->path) }}"
+                                                        href="{{ route('attachment.inline', $attachment) }}"
                                                         target="_blank" rel="noopener">
                                                         {{ $attachment->original_name ?? $attachment->file_name }}
                                                     </a>
@@ -737,7 +737,7 @@
                                                 @endphp
                                                 @if ($lainnyaAttachment)
                                                     <a class="text-primary hover:underline"
-                                                        href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($lainnyaAttachment->path) }}"
+                                                        href="{{ route('attachment.inline', $lainnyaAttachment) }}"
                                                         target="_blank" rel="noopener">
                                                         {{ $lainnyaAttachment->original_name ?? $lainnyaAttachment->file_name }}
                                                     </a>
@@ -1742,21 +1742,6 @@
                 function validateFollowupForm($form) {
                     const errors = {};
                     const action = $form.find('[name="followup_action"]').val();
-                    if (formType === 'monitoring') {
-                        errors = validateMonitoringForm($form);
-                    }
-
-                    if (formType === 'monitoring-remove') {
-                        errors = validateMonitoringRemoveForm($form);
-                    }
-
-                    if (formType === 'leader') {
-                        errors = validateLeaderForm($form);
-                    }
-
-                    if (formType === 'follow_up') {
-                        errors = validateFollowupForm($form);
-                    }
 
                     if (!action) {
                         errors.followup_action = 'Field ini tidak boleh kosong.';
@@ -1902,8 +1887,11 @@
                     let errors = {};
                     if (formType === 'monitoring') {
                         errors = validateMonitoringForm($form);
-                    }
-                    if (formType === 'followup') {
+                    } else if (formType === 'monitoring-remove') {
+                        errors = validateMonitoringRemoveForm($form);
+                    } else if (formType === 'leader') {
+                        errors = validateLeaderForm($form);
+                    } else if (formType === 'followup' || formType === 'follow_up') {
                         errors = validateFollowupForm($form);
                     }
 

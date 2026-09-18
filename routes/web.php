@@ -101,6 +101,8 @@ Route::middleware(['auth', LogCorsecRequestErrors::class])->group(function () us
         Route::get('/guideline', [LibraryController::class, 'guidelineIndex'])->middleware('permission:library.read')->name('guideline.index');
         Route::get('/create', [LibraryController::class, 'create'])->middleware('permission:library.create')->name('create');
         Route::post('/', [LibraryController::class, 'store'])->middleware(['permission:library.create', $writeHeavyThrottle])->name('store');
+        Route::get('/{libraryItem}/preview', [LibraryController::class, 'preview'])->middleware('permission:library.read')->name('preview');
+        Route::get('/{libraryItem}/inline', [LibraryController::class, 'inline'])->middleware('permission:library.read')->name('inline');
         Route::get('/{libraryItem}/download', [LibraryController::class, 'download'])->middleware('permission:library.read')->name('download');
         Route::get('/{libraryItem}/edit', [LibraryController::class, 'edit'])->middleware('permission:library.create')->name('edit');
         Route::put('/{libraryItem}', [LibraryController::class, 'update'])->middleware(['permission:library.create', $writeHeavyThrottle])->name('update');

@@ -1136,10 +1136,10 @@
                                                                                 $photoAttachable->attachment;
                                                                         @endphp
                                                                         @if ($photoAttachment)
-                                                                            <a href="{{ \Illuminate\Support\Facades\Storage::disk($photoAttachment->disk ?? 'public')->url($photoAttachment->path) }}"
+                                                                            <a href="{{ route('attachment.inline', $photoAttachment) }}"
                                                                                 target="_blank" rel="noopener"
                                                                                 class="block overflow-hidden rounded-xl border border-gray-200">
-                                                                                <img src="{{ \Illuminate\Support\Facades\Storage::disk($photoAttachment->disk ?? 'public')->url($photoAttachment->path) }}"
+                                                                                <img src="{{ route('attachment.inline', $photoAttachment) }}"
                                                                                     alt="{{ $photoAttachment->original_name ?? $photoAttachment->file_name }}"
                                                                                     class="h-32 w-full object-cover">
                                                                             </a>
@@ -1473,7 +1473,7 @@
                             <span class="font-medium">
                                 @if ($minutes->minutesAttachment)
                                     <a class="text-primary hover:underline"
-                                        href="{{ \Illuminate\Support\Facades\Storage::disk($minutes->minutesAttachment->disk ?? 'public')->url($minutes->minutesAttachment->path) }}"
+                                        href="{{ route('attachment.inline', $minutes->minutesAttachment) }}"
                                         target="_blank" rel="noopener">
                                         {{ $minutes->minutesAttachment->original_name ?? $minutes->minutesAttachment->file_name }}
                                     </a>
@@ -1487,7 +1487,7 @@
                             <span class="font-medium">
                                 @if ($minutes->finalMinutesAttachment)
                                     <a class="text-primary hover:underline"
-                                        href="{{ \Illuminate\Support\Facades\Storage::disk($minutes->finalMinutesAttachment->disk ?? 'public')->url($minutes->finalMinutesAttachment->path) }}"
+                                        href="{{ route('attachment.inline', $minutes->finalMinutesAttachment) }}"
                                         target="_blank" rel="noopener">
                                         {{ $minutes->finalMinutesAttachment->original_name ?? $minutes->finalMinutesAttachment->file_name }}
                                     </a>
@@ -1592,10 +1592,10 @@
                                                             $photoAttachment = $photoAttachable->attachment;
                                                         @endphp
                                                         @if ($photoAttachment)
-                                                            <a href="{{ \Illuminate\Support\Facades\Storage::disk($photoAttachment->disk ?? 'public')->url($photoAttachment->path) }}"
+                                                            <a href="{{ route('attachment.inline', $photoAttachment) }}"
                                                                 target="_blank" rel="noopener"
                                                                 class="block overflow-hidden rounded-xl border border-gray-200">
-                                                                <img src="{{ \Illuminate\Support\Facades\Storage::disk($photoAttachment->disk ?? 'public')->url($photoAttachment->path) }}"
+                                                                <img src="{{ route('attachment.inline', $photoAttachment) }}"
                                                                     alt="{{ $photoAttachment->original_name ?? $photoAttachment->file_name }}"
                                                                     class="h-36 w-full object-cover">
                                                             </a>
@@ -1958,7 +1958,7 @@
                                                     @foreach ($update->attachables as $attachable)
                                                         @if ($attachable->attachment)
                                                             <a class="text-primary hover:underline text-xs"
-                                                                href="{{ \Illuminate\Support\Facades\Storage::disk($attachable->attachment->disk ?? 'public')->url($attachable->attachment->path) }}"
+                                                                href="{{ route('attachment.inline', $attachable->attachment) }}"
                                                                 target="_blank" rel="noopener">
                                                                 {{ $attachable->attachment->original_name ?? $attachable->attachment->file_name }}
                                                             </a>
