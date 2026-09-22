@@ -235,7 +235,7 @@
                                                 @foreach ($files as $attachable)
                                                     @if ($attachable->attachment)
                                                         <a class="text-primary hover:underline text-xs"
-                                                            href="{{ Storage::disk($attachable->attachment->disk ?? 'public')->url($attachable->attachment->path) }}"
+                                                            href="{{ route('attachment.inline', $attachable->attachment) }}"
                                                             target="_blank" rel="noopener">
                                                             {{ $attachable->attachment->original_name ?? $attachable->attachment->file_name }}
                                                         </a>
@@ -362,7 +362,7 @@
                                                     @foreach ($update->attachables as $attachable)
                                                         @if ($attachable->attachment)
                                                             <a class="text-primary hover:underline text-xs"
-                                                                href="{{ Storage::disk($attachable->attachment->disk ?? 'public')->url($attachable->attachment->path) }}"
+                                                                href="{{ route('attachment.inline', $attachable->attachment) }}"
                                                                 target="_blank" rel="noopener">
                                                                 {{ $attachable->attachment->original_name ?? $attachable->attachment->file_name }}
                                                             </a>

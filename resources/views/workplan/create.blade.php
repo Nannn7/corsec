@@ -215,7 +215,7 @@
                                         {{ !$isEdit ? 'required' : '' }}>
                                     @if ($existingAttachment)
                                         <a class="text-primary hover:underline text-xs mt-1"
-                                            href="{{ Storage::disk($existingAttachment->disk ?? 'public')->url($existingAttachment->path) }}"
+                                            href="{{ route('attachment.inline', $existingAttachment) }}"
                                             target="_blank" rel="noopener">
                                             File existing:
                                             {{ $existingAttachment->original_name ?? $existingAttachment->file_name }}

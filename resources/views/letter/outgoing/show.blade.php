@@ -128,7 +128,7 @@
                         <span class="font-medium">
                             @if ($outgoingLetter->draftAttachment)
                                 <a class="text-primary hover:underline"
-                                    href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($outgoingLetter->draftAttachment->path) }}"
+                                    href="{{ route('attachment.inline', $outgoingLetter->draftAttachment) }}"
                                     target="_blank" rel="noopener">
                                     {{ $outgoingLetter->draftAttachment->original_name ?? $outgoingLetter->draftAttachment->file_name }}
                                 </a>
@@ -142,7 +142,7 @@
                         <span class="font-medium">
                             @if ($outgoingLetter->complianceAttachment)
                                 <a class="text-primary hover:underline"
-                                    href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($outgoingLetter->complianceAttachment->path) }}"
+                                    href="{{ route('attachment.inline', $outgoingLetter->complianceAttachment) }}"
                                     target="_blank" rel="noopener">
                                     {{ $outgoingLetter->complianceAttachment->original_name ?? $outgoingLetter->complianceAttachment->file_name }}
                                 </a>
@@ -156,7 +156,7 @@
                         <span class="font-medium">
                             @if ($outgoingLetter->finalAttachment)
                                 <a class="text-primary hover:underline"
-                                    href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($outgoingLetter->finalAttachment->path) }}"
+                                    href="{{ route('attachment.inline', $outgoingLetter->finalAttachment) }}"
                                     target="_blank" rel="noopener">
                                     {{ $outgoingLetter->finalAttachment->original_name ?? $outgoingLetter->finalAttachment->file_name }}
                                 </a>

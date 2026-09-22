@@ -73,6 +73,11 @@ Breadcrumbs::for('library.edit', function (BreadcrumbTrail $trail, $libraryItem)
     $trail->push('Edit Dokumen', route('library.edit', $libraryItem));
 });
 
+Breadcrumbs::for('library.preview', function (BreadcrumbTrail $trail, $libraryItem) {
+    $trail->parent('library.index');
+    $trail->push('Preview Dokumen', route('library.preview', $libraryItem));
+});
+
 Breadcrumbs::for('meeting.create', function (BreadcrumbTrail $trail) {
     $trail->parent('meeting.index');
     $trail->push('Input Meeting', route('meeting.create'));

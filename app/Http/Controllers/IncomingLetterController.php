@@ -305,7 +305,7 @@ class IncomingLetterController extends Controller
             ->first();
 
         $user = Auth::user();
-        if ($user && !$this->permissionService->canViewAllCorsec($user)) {
+        if ($user && !$this->permissionService->canViewAllLetters($user)) {
             $directorateId = $user->directorate_id ?? $user->directorateid;
             $isCreator = (int) $incomingLetter->created_by === (int) $user->id;
             $isTargetDirectorate = $directorateId && (int) $incomingLetter->target_directorate_id === (int) $directorateId;
@@ -648,22 +648,24 @@ class IncomingLetterController extends Controller
                 ]);
 
             // scope akses (copy dari index lo, biar konsisten)
-            if (!$this->permissionService->canViewAllCorsec($user)) {
-                $directorateId = $user->directorate_id ?? $user->directorateid;
-                $isEoCorpAffairActor = $this->permissionService->isEoCorpAffairActor($user);
-                $query->where(function ($w) use ($user, $directorateId, $isEoCorpAffairActor) {
-                    $w->where('created_by', $user->id)
-                        ->orWhere('target_directorate_id', $user->directorate_id ?? $user->directorateid);
-                    if (!empty($directorateId)) {
-                        $w->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
-                            $circulationQuery->where('directorate_id', $directorateId);
-                        });
-                    }
-                    if ($isEoCorpAffairActor) {
-                        $w->orWhereNotNull('id');
-                    }
-                });
-            }
+            // if (!$this->permissionService->canViewAllCorsec($user)) {
+            //     $directorateId = $user->directorate_id ?? $user->directorateid;
+            //     $isEoCorpAffairActor = $this->permissionService->isEoCorpAffairActor($user);
+            //     $query->where(function ($w) use ($user, $directorateId, $isEoCorpAffairActor) {
+            //         $w->where('created_by', $user->id)
+            //             ->orWhere('target_directorate_id', $user->directorate_id ?? $user->directorateid);
+            //         if (!empty($directorateId)) {
+            //             $w->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
+            //                 $circulationQuery->where('directorate_id', $directorateId);
+            //             });
+            //         }
+            //         if ($isEoCorpAffairActor) {
+            //             $w->orWhereNotNull('id');
+            //         }
+            //     });
+            // }
+                
+            $this->scopeIncomingVisibility($query, $user);
 
             $baseCountQuery = clone $query;
 
@@ -1600,5 +1602,23 @@ class IncomingLetterController extends Controller
         if (!$this->permissionService->canCreateIncoming($user)) {
             abort(403, 'Tambah surat masuk hanya untuk maker staff Corporate Secretary.');
         }
+    }
+
+    private function scopeIncomingVisibility($query, $user): void
+    {
+        if ($this->permissionService->canViewAllLetters($user)) {
+            return;
+        }
+
+        $directorateId = (int) ($user->directorate_id ?? $user->directorateid ?? 0);
+        $query->where(function ($builder) use ($user, $directorateId) {
+            $builder->where('created_by', (int) $user->id);
+            if ($directorateId > 0) {
+                $builder->orWhere('target_directorate_id', $directorateId)
+                    ->orWhereHas('circulationDirectorates', function ($circulationQuery) use ($directorateId) {
+                        $circulationQuery->where('directorate_id', $directorateId);
+                    });
+            }
+        });
     }
 }

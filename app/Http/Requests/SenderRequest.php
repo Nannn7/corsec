@@ -13,7 +13,7 @@ class SenderRequest extends FormRequest
         $routeSender = $this->route('sender');
         $id = $routeSender instanceof Sender ? $routeSender->id : (is_numeric($routeSender) ? (int) $routeSender : null);
 
-        $uniqueCode = Rule::unique('corsec_senders', 'code');
+        $uniqueCode = Rule::unique('corsec_senders', 'code')->whereNull('deleted_at');
         if (($this->isMethod('put') || $this->isMethod('patch')) && $id) {
             $uniqueCode = $uniqueCode->ignore($id);
         }

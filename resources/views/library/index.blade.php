@@ -118,6 +118,10 @@
                                         </td>
                                         <td>
                                             <div class="flex flex-wrap justify-center gap-2">
+                                                <a href="{{ route('library.preview', $item) }}"
+                                                    class="btn btn-sm btn-info" target="_blank">
+                                                    Preview
+                                                </a>
                                                 <a href="{{ route('library.download', $item) }}"
                                                     class="btn btn-sm btn-primary">
                                                     Download
